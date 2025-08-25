@@ -1,0 +1,115 @@
+use argon2::{Argon2, PasswordHash, PasswordVerifier};
+use diesel::prelude::*;
+use hypertext::prelude::*;
+use rocket::{FromForm, Responder, form::Form, get, http::CookieJar, post, response::Redirect};
+use url::Url;
+
+use crate::{
+    auth::{User, set_login_cookie},
+    schema::users,
+    state::LockedConn,
+    template::Page,
+};
+
+#[get("/login")]
+pub async fn login_page(user: Option<User>) -> LoginResponse {
+    if user.is_some() {
+        return LoginResponse::UserAlreadyLoggedIn(
+            Page::new()
+                .user_opt(user)
+                .body(maud! {
+                    div class="alert alert-danger" role="alert" {
+                        "You are already logged in, so cannot log in!"
+                    }
+                })
+                .render(),
+        );
+    }
+
+    LoginResponse::TryAgain(Page::new().user_opt(user).body(maud! {
+        form method="post" {
+            div class="form-group" {
+                label for="email" { "Email address" }
+                input type="email" class="form-control" id="email" name="email" placeholder="Enter email";
+            }
+            div class="form-group" {
+                label for="password" { "Password" }
+                input type="password" class="form-control" id="password" name="password" placeholder="Password";
+            }
+            button type="submit" class="btn btn-primary" { "Submit" }
+        }
+    }).render())
+}
+
+#[derive(Responder)]
+pub enum LoginResponse {
+    UserAlreadyLoggedIn(Rendered<String>),
+    TryAgain(Rendered<String>),
+    Success(Redirect),
+}
+
+#[derive(FromForm)]
+pub struct LoginForm {
+    id: String,
+    password: String,
+}
+
+#[post("/login?<next>", data = "<form>")]
+pub async fn do_login(
+    user: Option<User>,
+    next: Option<&str>,
+    mut conn: LockedConn<'_>,
+    form: Form<LoginForm>,
+    jar: &CookieJar<'_>,
+) -> LoginResponse {
+    let user1 =
+        match users::table
+            .filter(users::email.eq(&form.id).or(users::username.eq(&form.id)))
+            .first::<User>(&mut *conn)
+            .optional()
+            .unwrap()
+        {
+            Some(user) => user,
+            None => return LoginResponse::TryAgain(
+                Page::new()
+                    .user_opt(user)
+                    .body(maud! {
+                        div class="alert alert-danger" role="alert" {
+                            "No such user exists. Please return to the previous page and try again."
+                        }
+                    })
+                    .render(),
+            ),
+        };
+
+    let parsed_hash = PasswordHash::new(&user1.password_hash).unwrap();
+    if !Argon2::default()
+        .verify_password(form.password.as_bytes(), &parsed_hash)
+        .is_ok()
+    {
+        // todo: password rate limiting
+        return LoginResponse::TryAgain(
+            Page::new()
+                .user_opt(user)
+                .body(maud! {
+                    div class="alert alert-danger" role="alert" {
+                        "Incorrect password. Please return to the previous page
+                         and try again."
+                    }
+                })
+                .render(),
+        );
+    }
+
+    set_login_cookie(user1.id, jar);
+
+    LoginResponse::Success({
+        let redirect_to = if let Some(url) = next.map(|url| url.parse::<Url>().ok()).flatten() {
+            url.path().to_string()
+        } else {
+            "/".to_string()
+        };
+
+        Redirect::to(redirect_to)
+    })
+}

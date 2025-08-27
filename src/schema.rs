@@ -22,6 +22,15 @@ diesel::table! {
 }
 
 diesel::table! {
+    tournament_break_categories (id) {
+        id -> Text,
+        tournament_id -> Text,
+        name -> Text,
+        priority -> BigInt,
+    }
+}
+
+diesel::table! {
     tournament_debate_judges (debate_id, judge_id) {
         debate_id -> Text,
         judge_id -> Text,
@@ -142,6 +151,7 @@ diesel::table! {
         seq -> BigInt,
         name -> Text,
         kind -> Text,
+        break_category -> Nullable<Text>,
     }
 }
 
@@ -239,6 +249,7 @@ diesel::joinable!(tournament_ballots -> tournament_debates (debate_id));
 diesel::joinable!(tournament_ballots -> tournament_judges (judge_id));
 diesel::joinable!(tournament_ballots -> tournaments (tournament_id));
 diesel::joinable!(tournament_ballots -> users (editor_id));
+diesel::joinable!(tournament_break_categories -> tournaments (tournament_id));
 diesel::joinable!(tournament_debate_judges -> tournament_debates (debate_id));
 diesel::joinable!(tournament_debate_judges -> tournament_judges (judge_id));
 diesel::joinable!(tournament_debate_teams -> tournament_debates (debate_id));
@@ -263,6 +274,7 @@ diesel::joinable!(tournament_participants -> tournaments (tournament_id));
 diesel::joinable!(tournament_rooms -> tournaments (tournament_id));
 diesel::joinable!(tournament_round_motions -> tournament_rounds (round_id));
 diesel::joinable!(tournament_round_motions -> tournaments (tournament_id));
+diesel::joinable!(tournament_rounds -> tournament_break_categories (break_category));
 diesel::joinable!(tournament_rounds -> tournaments (tournament_id));
 diesel::joinable!(tournament_snapshots -> tournaments (tournament_id));
 diesel::joinable!(tournament_speaker_score_entries -> tournament_ballots (ballot_id));
@@ -280,6 +292,7 @@ diesel::joinable!(tournament_teams -> tournaments (tournament_id));
 diesel::allow_tables_to_appear_in_same_query!(
     tournament_action_logs,
     tournament_ballots,
+    tournament_break_categories,
     tournament_debate_judges,
     tournament_debate_teams,
     tournament_debates,

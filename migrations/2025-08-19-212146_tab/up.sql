@@ -150,12 +150,21 @@ create table if not exists tournament_rooms (
     unique (tournament_id, name)
 );
 
+create table if not exists tournament_break_categories (
+    id text primary key not null,
+    tournament_id text not null references tournaments (id),
+    name text not null,
+    priority integer not null,
+    check (priority >= 0)
+);
+
 create table if not exists tournament_rounds (
     id text primary key not null,
     tournament_id text not null references tournaments (id),
     seq integer not null,
     name text not null,
     kind text not null check (kind in ('E', 'P')),
+    break_category text references tournament_break_categories (id),
     unique (tournament_id, seq),
     unique (tournament_id, name)
 );

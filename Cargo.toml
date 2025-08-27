@@ -9,6 +9,7 @@ chrono = { version = "0.4.41", features = ["serde"] }
 diesel = { version = "2.2.12", features = ["chrono", "r2d2", "sqlite"] }
 diesel_migrations = { version = "2.2.0", features = ["sqlite"] }
 hypertext = { version = "0.12.1", features = ["rocket"] }
+itertools = "0.14.0"
 once_cell = "1.21.3"
 regex = "1.11.1"
 rocket = { version = "0.5.1", features = ["secrets"] }

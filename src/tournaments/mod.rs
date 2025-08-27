@@ -14,9 +14,11 @@ use crate::{
     state::{Conn, DbPool},
 };
 
+pub mod categories;
 pub mod config;
 pub mod create;
 pub mod participants;
+pub mod rounds;
 pub mod snapshots;
 pub mod teams;
 pub mod view;

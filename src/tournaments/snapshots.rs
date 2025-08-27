@@ -22,6 +22,28 @@ pub struct SnapshotData {}
 ///
 /// I would expect this function to be sufficiently slow that it should be run
 /// on a worker thread (so as to not block the async executor).
+///
+/// This implementation is naive -- it would probably make more sense to store
+/// this as something like
+///
+/// ```ignore
+/// pub struct Changeset(Vec<Change>);
+///
+/// pub struct Change {
+///     obj_id: String,
+///     table_name: String,
+///     before: State,
+///     after: State
+/// }
+///
+/// pub struct State {
+///     /// Does not exit
+///     Dne,
+///     Object(serde_json::Value)
+/// }
+/// ```
+///
+/// Callers would then need to specify the exact change.
 pub fn take_snapshot(tid: &str, mut conn: LockedConn<'_>) -> String {
     let latest = tournament_snapshots::table
         .order_by(tournament_snapshots::created_at.desc())
@@ -54,6 +76,14 @@ pub fn take_snapshot(tid: &str, mut conn: LockedConn<'_>) -> String {
             ) FROM tournament_debate_judges WHERE debate_id IN (
                 SELECT id FROM tournament_debates WHERE tournament_id = $1
             )),
+            'tournament_break_categories', (SELECT json_group_array(
+                json_object(
+                    'id', id,
+                    'tournament_id', tournament_id,
+                    'name', name,
+                    'priority', priority
+                )
+            ) FROM tournament_break_categories WHERE tournament_id = $1),
             'tournament_debate_teams', (SELECT json_group_array(
                 json_object(
                     'rowid', rowid,
@@ -157,6 +187,7 @@ pub fn take_snapshot(tid: &str, mut conn: LockedConn<'_>) -> String {
                     'tournament_id', tournament_id,
                     'seq', seq,
                     'name', name,
+                    'break_category', break_category,
                     'kind', kind
                 )
             ) FROM tournament_rounds WHERE tournament_id = $1),
@@ -276,6 +307,6 @@ pub fn take_snapshot(tid: &str, mut conn: LockedConn<'_>) -> String {
 
 #[derive(QueryableByName)]
 struct JsonResult {
-    #[sql_type = "Text"]
+    #[diesel(sql_type = Text)]
     json: String,
 }

@@ -1,6 +1,6 @@
 use diesel::prelude::*;
 use hypertext::prelude::*;
-use rocket::{FromForm, Responder, form::Form, get, post, response::Redirect};
+use rocket::{FromForm, form::Form, get, post, response::Redirect};
 use tokio::task::spawn_blocking;
 
 use crate::{
@@ -10,6 +10,7 @@ use crate::{
     state::{Conn, LockedConn},
     template::Page,
     tournaments::{Tournament, rounds::Round, snapshots::take_snapshot},
+    util_resp::GenerallyUsefulResponse,
 };
 
 #[get("/tournaments/<tid>/rounds/<rid>/edit")]
@@ -83,15 +84,6 @@ pub struct EditRoundForm {
     seq: u32,
 }
 
-#[derive(Responder)]
-pub enum DoEditRoundResponse {
-    Success(Redirect),
-    #[response(status = 400)]
-    BadReq(Rendered<String>),
-    #[response(status = 404)]
-    NotFound(()),
-}
-
 #[post("/tournaments/<tid>/rounds/<rid>/edit", data = "<form>")]
 pub async fn do_edit_round(
     tid: &str,
@@ -101,7 +93,7 @@ pub async fn do_edit_round(
     tournament: Tournament,
     form: Form<EditRoundForm>,
     conn: Conn,
-) -> DoEditRoundResponse {
+) -> GenerallyUsefulResponse {
     let tid = tid.to_string();
     let rid = rid.to_string();
     spawn_blocking(move || {
@@ -114,7 +106,7 @@ pub async fn do_edit_round(
             .unwrap()
         {
             Some(round) => round,
-            None => return DoEditRoundResponse::NotFound(()),
+            None => return GenerallyUsefulResponse::NotFound(()),
         };
 
         let max = tournament_rounds::table
@@ -125,7 +117,7 @@ pub async fn do_edit_round(
             .unwrap_or(1i64);
 
         if max + 1 < (form.seq as i64) {
-            return DoEditRoundResponse::BadReq(
+            return GenerallyUsefulResponse::BadRequest(
                 Page::new()
                     .user(user)
                     .tournament(tournament)
@@ -154,7 +146,7 @@ pub async fn do_edit_round(
 
         take_snapshot(&tid, conn);
 
-        return DoEditRoundResponse::Success(Redirect::to(format!(
+        return GenerallyUsefulResponse::Success(Redirect::to(format!(
             "/tournaments/{tid}/rounds"
         )));
     })

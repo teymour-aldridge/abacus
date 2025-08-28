@@ -3,7 +3,7 @@ use diesel::{
     prelude::*,
 };
 use hypertext::prelude::*;
-use rocket::{FromForm, Responder, form::Form, get, response::Redirect};
+use rocket::{FromForm, form::Form, get, response::Redirect};
 use tokio::task::spawn_blocking;
 use uuid::Uuid;
 
@@ -16,6 +16,7 @@ use crate::{
     tournaments::{
         Tournament, participants::Institution, snapshots::take_snapshot,
     },
+    util_resp::GenerallyUsefulResponse,
 };
 
 #[get("/tournaments/<_tid>/teams/create")]
@@ -70,13 +71,6 @@ pub struct CreateTeamForm {
     pub institution_id: String,
 }
 
-#[derive(Responder)]
-pub enum CreateTeamResponse {
-    #[response(status = 400)]
-    BadRequest(Rendered<String>),
-    Created(Redirect),
-}
-
 #[get("/tournaments/<tid>/teams/create", data = "<form>")]
 pub async fn do_create_team(
     tid: &str,
@@ -85,7 +79,7 @@ pub async fn do_create_team(
     user: User,
     _tab: IsTabDirector,
     form: Form<CreateTeamForm>,
-) -> CreateTeamResponse {
+) -> GenerallyUsefulResponse {
     let tid = tid.to_string();
     spawn_blocking(move || {
         let mut conn = conn.get_sync();
@@ -105,7 +99,7 @@ pub async fn do_create_team(
                 {
                     Some(inst) => Some(inst),
                     None => {
-                        return CreateTeamResponse::BadRequest(
+                        return GenerallyUsefulResponse::BadRequest(
                             Page::new()
                                 .user(user)
                                 .tournament(tournament)
@@ -137,7 +131,7 @@ pub async fn do_create_team(
         .unwrap();
 
         if exists {
-            return CreateTeamResponse::BadRequest(
+            return GenerallyUsefulResponse::BadRequest(
                 Page::new()
                     .user(user)
                     .tournament(tournament)
@@ -164,7 +158,7 @@ pub async fn do_create_team(
 
         take_snapshot(&tid, conn);
 
-        return CreateTeamResponse::Created(Redirect::to(format!(
+        return GenerallyUsefulResponse::Success(Redirect::to(format!(
             "/tournaments/{}/participants",
             tournament.id
         )));

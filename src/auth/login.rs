@@ -1,7 +1,9 @@
 use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use diesel::prelude::*;
 use hypertext::prelude::*;
-use rocket::{FromForm, Responder, form::Form, get, http::CookieJar, post, response::Redirect};
+use rocket::{
+    FromForm, form::Form, get, http::CookieJar, post, response::Redirect,
+};
 use url::Url;
 
 use crate::{
@@ -9,12 +11,13 @@ use crate::{
     schema::users,
     state::LockedConn,
     template::Page,
+    util_resp::GenerallyUsefulResponse,
 };
 
 #[get("/login")]
-pub async fn login_page(user: Option<User>) -> LoginResponse {
+pub async fn login_page(user: Option<User>) -> GenerallyUsefulResponse {
     if user.is_some() {
-        return LoginResponse::UserAlreadyLoggedIn(
+        return GenerallyUsefulResponse::BadRequest(
             Page::new()
                 .user_opt(user)
                 .body(maud! {
@@ -26,7 +29,7 @@ pub async fn login_page(user: Option<User>) -> LoginResponse {
         );
     }
 
-    LoginResponse::TryAgain(Page::new().user_opt(user).body(maud! {
+    GenerallyUsefulResponse::BadRequest(Page::new().user_opt(user).body(maud! {
         form method="post" {
             div class="form-group" {
                 label for="email" { "Email address" }
@@ -39,13 +42,6 @@ pub async fn login_page(user: Option<User>) -> LoginResponse {
             button type="submit" class="btn btn-primary" { "Submit" }
         }
     }).render())
-}
-
-#[derive(Responder)]
-pub enum LoginResponse {
-    UserAlreadyLoggedIn(Rendered<String>),
-    TryAgain(Rendered<String>),
-    Success(Redirect),
 }
 
 #[derive(FromForm)]
@@ -61,7 +57,7 @@ pub async fn do_login(
     mut conn: LockedConn<'_>,
     form: Form<LoginForm>,
     jar: &CookieJar<'_>,
-) -> LoginResponse {
+) -> GenerallyUsefulResponse {
     let user1 =
         match users::table
             .filter(users::email.eq(&form.id).or(users::username.eq(&form.id)))
@@ -70,7 +66,7 @@ pub async fn do_login(
             .unwrap()
         {
             Some(user) => user,
-            None => return LoginResponse::TryAgain(
+            None => return GenerallyUsefulResponse::BadRequest(
                 Page::new()
                     .user_opt(user)
                     .body(maud! {
@@ -88,7 +84,7 @@ pub async fn do_login(
         .is_ok()
     {
         // todo: password rate limiting
-        return LoginResponse::TryAgain(
+        return GenerallyUsefulResponse::BadRequest(
             Page::new()
                 .user_opt(user)
                 .body(maud! {
@@ -103,8 +99,10 @@ pub async fn do_login(
 
     set_login_cookie(user1.id, jar);
 
-    LoginResponse::Success({
-        let redirect_to = if let Some(url) = next.map(|url| url.parse::<Url>().ok()).flatten() {
+    GenerallyUsefulResponse::Success({
+        let redirect_to = if let Some(url) =
+            next.map(|url| url.parse::<Url>().ok()).flatten()
+        {
             url.path().to_string()
         } else {
             "/".to_string()

@@ -2,25 +2,20 @@ use chrono::Utc;
 use diesel::prelude::*;
 use hypertext::prelude::*;
 use rocket::form::Form;
-use rocket::{FromForm, Responder, get, post, response::Redirect};
+use rocket::{FromForm, get, post, response::Redirect};
 use uuid::Uuid;
 
 use crate::schema::{tournament_members, tournaments};
 use crate::template::Page;
 
 use crate::tournaments::config::{SpeakerMetric, TeamMetric};
+use crate::util_resp::GenerallyUsefulResponse;
 use crate::validation::is_valid_slug;
 use crate::{auth::User, state::LockedConn};
 
-#[derive(Responder)]
-pub enum CreateTournamentResponse {
-    TryAgain(Rendered<String>),
-    Success(Redirect),
-}
-
 #[get("/tournaments/create")]
-pub async fn create_tournament_page(user: User) -> CreateTournamentResponse {
-    CreateTournamentResponse::TryAgain(
+pub async fn create_tournament_page(user: User) -> GenerallyUsefulResponse {
+    GenerallyUsefulResponse::BadRequest(
         Page::new()
             .user(user)
             .body(maud! {
@@ -93,7 +88,7 @@ pub async fn do_create_tournament(
     form: Form<CreateTournamentForm<'_>>,
     user: User,
     mut conn: LockedConn<'_>,
-) -> CreateTournamentResponse {
+) -> GenerallyUsefulResponse {
     let tid = Uuid::now_v7().to_string();
 
     let n = diesel::insert_into(tournaments::table)
@@ -121,10 +116,9 @@ pub async fn do_create_tournament(
                 TeamMetric::DrawStrengthByWins,
             ])
             .unwrap()),
-            tournaments::speaker_standings_metrics.eq(serde_json::to_string(&[
-                SpeakerMetric::Avg,
-                SpeakerMetric::StdDev,
-            ])
+            tournaments::speaker_standings_metrics.eq(serde_json::to_string(
+                &[SpeakerMetric::Avg, SpeakerMetric::StdDev],
+            )
             .unwrap()),
             tournaments::exclude_from_speaker_standings_after.eq(-1),
         ))
@@ -145,5 +139,8 @@ pub async fn do_create_tournament(
         .unwrap();
     assert_eq!(n, 1);
 
-    CreateTournamentResponse::Success(Redirect::to(format!("/tournaments/{}", tid)))
+    GenerallyUsefulResponse::Success(Redirect::to(format!(
+        "/tournaments/{}",
+        tid
+    )))
 }

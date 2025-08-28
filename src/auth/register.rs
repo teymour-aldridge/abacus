@@ -5,28 +5,24 @@ use argon2::password_hash::rand_core::OsRng;
 use chrono::Utc;
 use diesel::{insert_into, prelude::*};
 use hypertext::prelude::*;
-use rocket::{FromForm, Responder, form::Form, get, post, response::Redirect};
+use rocket::{FromForm, form::Form, get, post, response::Redirect};
 use serde::Serialize;
 use uuid::Uuid;
 
+use crate::util_resp::GenerallyUsefulResponse;
 use crate::validation::*;
 use crate::{auth::User, schema::users, state::LockedConn, template::Page};
 
-#[derive(Responder)]
-pub enum RegisterResponse {
-    TryAgain(Rendered<String>),
-    AlreadyLoggedIn(Redirect),
-    Success(Redirect),
-}
-
 #[get("/register")]
-pub async fn register_page(user: Option<User>) -> RegisterResponse {
+pub async fn register_page(user: Option<User>) -> GenerallyUsefulResponse {
     if user.is_some() {
         // todo: flash message
-        return RegisterResponse::AlreadyLoggedIn(Redirect::to("/"));
+        return GenerallyUsefulResponse::BadRequest(
+            maud! {p {"You are already logged in!"}}.render(),
+        );
     }
 
-    RegisterResponse::TryAgain(
+    GenerallyUsefulResponse::BadRequest(
         Page::new()
             .body(maud! {
                 h1 {"Register"}
@@ -73,10 +69,12 @@ pub async fn do_register(
     user: Option<User>,
     mut conn: LockedConn<'_>,
     form: Form<RegisterForm<'_>>,
-) -> RegisterResponse {
+) -> GenerallyUsefulResponse {
     if user.is_some() {
         // todo: flash message
-        return RegisterResponse::AlreadyLoggedIn(Redirect::to("/"));
+        return GenerallyUsefulResponse::BadRequest(
+            maud! {p {"You are already logged in!"}}.render(),
+        );
     }
 
     let existing = users::table
@@ -93,7 +91,7 @@ pub async fn do_register(
         Some(user) => {
             let is_email_problem = user.email == form.email;
 
-            return RegisterResponse::TryAgain(
+            return GenerallyUsefulResponse::BadRequest(
                 Page::new()
                     .body(maud! {
                         div class="alert alert-danger" role="alert" {
@@ -130,7 +128,7 @@ pub async fn do_register(
                 .execute(&mut *conn)
                 .unwrap();
 
-            RegisterResponse::Success(Redirect::to("/user"))
+            GenerallyUsefulResponse::Success(Redirect::to("/user"))
         }
     }
 }

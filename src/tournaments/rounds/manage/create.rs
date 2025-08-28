@@ -8,7 +8,7 @@
 
 use diesel::prelude::*;
 use hypertext::prelude::*;
-use rocket::{FromForm, Responder, form::Form, get, post, response::Redirect};
+use rocket::{FromForm, form::Form, get, post, response::Redirect};
 use uuid::Uuid;
 
 use crate::{
@@ -18,6 +18,7 @@ use crate::{
     state::LockedConn,
     template::Page,
     tournaments::{Tournament, categories::BreakCategory},
+    util_resp::GenerallyUsefulResponse,
 };
 
 #[get("/tournaments/<tid>/rounds/create")]
@@ -125,15 +126,6 @@ pub async fn create_new_round_of_specific_category_page(
     )
 }
 
-#[derive(Responder)]
-pub enum CreateNewRoundResponse {
-    Success(Redirect),
-    #[response(status = 400)]
-    Error(Rendered<String>),
-    #[response(status = 404)]
-    NotFound(()),
-}
-
 #[derive(FromForm)]
 pub struct CreateNewRoundForm {
     #[field(validate = len(4..=32))]
@@ -150,7 +142,7 @@ pub async fn do_create_new_round_of_specific_category(
     tournament: Tournament,
     _tab: IsTabDirector,
     form: Form<CreateNewRoundForm>,
-) -> CreateNewRoundResponse {
+) -> GenerallyUsefulResponse {
     let break_cat = if category_id == "in_round" {
         diesel::update(
             tournament_rounds::table.filter(
@@ -174,7 +166,7 @@ pub async fn do_create_new_round_of_specific_category(
             .unwrap()
         {
             Some(t) => t,
-            None => return CreateNewRoundResponse::NotFound(()),
+            None => return GenerallyUsefulResponse::NotFound(()),
         };
         Some(cat)
     };
@@ -191,7 +183,7 @@ pub async fn do_create_new_round_of_specific_category(
         .execute(&mut *conn)
         .unwrap();
 
-    CreateNewRoundResponse::Success(Redirect::to(format!(
+    GenerallyUsefulResponse::Success(Redirect::to(format!(
         "/tournament/{}/rounds",
         tournament.id
     )))

@@ -11,13 +11,11 @@ use crate::{
     template::Page,
     tournaments::{
         Tournament,
-        participants::{
-            Institution,
-            manage::create_team::{CreateTeamForm, CreateTeamResponse},
-        },
+        participants::{Institution, manage::create_team::CreateTeamForm},
         snapshots::take_snapshot,
         teams::Team,
     },
+    util_resp::GenerallyUsefulResponse,
 };
 
 #[get("/tournaments/<tournament_id>/teams/<team_id>")]
@@ -159,7 +157,7 @@ pub async fn do_edit_team_details(
     conn: Conn,
     _tab: IsTabDirector,
     form: Form<CreateTeamForm>,
-) -> CreateTeamResponse {
+) -> GenerallyUsefulResponse {
     let tournament_id = tournament_id.to_string();
     let team_id = team_id.to_string();
     spawn_blocking(move || {
@@ -177,7 +175,7 @@ pub async fn do_edit_team_details(
         {
             Some(team) => team,
             None => {
-                return CreateTeamResponse::BadRequest(
+                return GenerallyUsefulResponse::BadRequest(
                     Page::new()
                         .tournament(tournament)
                         .user(user)
@@ -206,7 +204,7 @@ pub async fn do_edit_team_details(
                 {
                     Some(inst) => Some(inst),
                     None => {
-                        return CreateTeamResponse::BadRequest(
+                        return GenerallyUsefulResponse::BadRequest(
                             Page::new()
                                 .user(user)
                                 .tournament(tournament)
@@ -235,7 +233,7 @@ pub async fn do_edit_team_details(
 
         take_snapshot(&tournament.id, conn);
 
-        CreateTeamResponse::Created(Redirect::to(format!(
+        GenerallyUsefulResponse::Success(Redirect::to(format!(
             "/tournaments/{}/teams/{}",
             tournament.id, team.id
         )))

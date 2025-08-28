@@ -1,15 +1,10 @@
 use hypertext::prelude::*;
-use rocket::{Responder, get};
+use rocket::get;
 
 use crate::{
     auth::User, permission::IsTabDirector, template::Page,
     tournaments::Tournament,
 };
-
-#[derive(Responder)]
-pub enum ViewTournamentResponse {
-    Page(Rendered<String>),
-}
 
 #[get("/tournaments/<_tid>", rank = 1)]
 /// Returns the tournament view for an administrator. We use lower-ranking

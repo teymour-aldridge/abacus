@@ -1,9 +1,11 @@
 use chrono::{NaiveDateTime, Utc};
-use diesel::{prelude::*, sql_types::Text};
+use diesel::{
+    connection::LoadConnection, prelude::*, sql_types::Text, sqlite::Sqlite,
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{schema::tournament_snapshots, state::LockedConn};
+use crate::schema::tournament_snapshots;
 
 #[derive(Queryable, Serialize, Deserialize)]
 pub struct Snapshot {
@@ -44,7 +46,11 @@ pub struct SnapshotData {}
 /// ```
 ///
 /// Callers would then need to specify the exact change.
-pub fn take_snapshot(tid: &str, mut conn: LockedConn<'_>) -> String {
+// todo: can simplify this using the schema table
+pub fn take_snapshot(
+    tid: &str,
+    conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+) -> String {
     let latest = tournament_snapshots::table
         .order_by(tournament_snapshots::created_at.desc())
         .first::<Snapshot>(&mut *conn)

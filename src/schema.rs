@@ -15,6 +15,7 @@ diesel::table! {
         debate_id -> Text,
         judge_id -> Text,
         submitted_at -> Timestamp,
+        motion_id -> Text,
         version -> BigInt,
         change -> Nullable<Text>,
         editor_id -> Nullable<Text>,
@@ -39,8 +40,8 @@ diesel::table! {
 }
 
 diesel::table! {
-    tournament_debate_teams (rowid) {
-        rowid -> BigInt,
+    tournament_debate_teams (id) {
+        id -> Text,
         debate_id -> Text,
         team_id -> Text,
         side -> BigInt,
@@ -54,7 +55,6 @@ diesel::table! {
         tournament_id -> Text,
         draw_id -> Text,
         room_id -> Nullable<Text>,
-        motion_id -> Text,
     }
 }
 
@@ -78,11 +78,30 @@ diesel::table! {
 }
 
 diesel::table! {
+    tournament_judge_availability (id) {
+        id -> Text,
+        round_id -> Text,
+        judge_id -> Text,
+        available -> Bool,
+        comment -> Nullable<Text>,
+    }
+}
+
+diesel::table! {
     tournament_judge_judge_clash (id) {
         id -> Text,
         tournament_id -> Text,
         judge1_id -> Text,
         judge2_id -> Text,
+    }
+}
+
+diesel::table! {
+    tournament_judge_stated_eligibility (id) {
+        id -> Text,
+        round_id -> Text,
+        judge_id -> Text,
+        available -> Bool,
     }
 }
 
@@ -145,6 +164,18 @@ diesel::table! {
 }
 
 diesel::table! {
+    tournament_round_tickets (id) {
+        id -> Text,
+        round_id -> Text,
+        seq -> BigInt,
+        kind -> Text,
+        acquired -> Timestamp,
+        released -> Bool,
+        error -> Nullable<Text>,
+    }
+}
+
+diesel::table! {
     tournament_rounds (id) {
         id -> Text,
         tournament_id -> Text,
@@ -167,7 +198,8 @@ diesel::table! {
 }
 
 diesel::table! {
-    tournament_speaker_score_entries (ballot_id, team_id, speaker_id) {
+    tournament_speaker_score_entries (id) {
+        id -> Text,
         ballot_id -> Text,
         team_id -> Text,
         speaker_id -> Text,
@@ -187,10 +219,11 @@ diesel::table! {
 }
 
 diesel::table! {
-    tournament_team_score_entries (ballot_id, team_id) {
-        ballot_id -> Text,
+    tournament_team_availability (id) {
+        id -> Text,
+        round_id -> Text,
         team_id -> Text,
-        score -> BigInt,
+        available -> Bool,
     }
 }
 
@@ -247,6 +280,7 @@ diesel::table! {
 diesel::joinable!(tournament_action_logs -> tournament_snapshots (snapshot_id));
 diesel::joinable!(tournament_ballots -> tournament_debates (debate_id));
 diesel::joinable!(tournament_ballots -> tournament_judges (judge_id));
+diesel::joinable!(tournament_ballots -> tournament_round_motions (motion_id));
 diesel::joinable!(tournament_ballots -> tournaments (tournament_id));
 diesel::joinable!(tournament_ballots -> users (editor_id));
 diesel::joinable!(tournament_break_categories -> tournaments (tournament_id));
@@ -256,12 +290,15 @@ diesel::joinable!(tournament_debate_teams -> tournament_debates (debate_id));
 diesel::joinable!(tournament_debate_teams -> tournament_teams (team_id));
 diesel::joinable!(tournament_debates -> tournament_draws (draw_id));
 diesel::joinable!(tournament_debates -> tournament_rooms (room_id));
-diesel::joinable!(tournament_debates -> tournament_round_motions (motion_id));
 diesel::joinable!(tournament_debates -> tournaments (tournament_id));
 diesel::joinable!(tournament_draws -> tournament_rounds (round_id));
 diesel::joinable!(tournament_draws -> tournaments (tournament_id));
 diesel::joinable!(tournament_institutions -> tournaments (tournament_id));
+diesel::joinable!(tournament_judge_availability -> tournament_judges (judge_id));
+diesel::joinable!(tournament_judge_availability -> tournament_rounds (round_id));
 diesel::joinable!(tournament_judge_judge_clash -> tournaments (tournament_id));
+diesel::joinable!(tournament_judge_stated_eligibility -> tournament_judges (judge_id));
+diesel::joinable!(tournament_judge_stated_eligibility -> tournament_rounds (round_id));
 diesel::joinable!(tournament_judge_team_clash -> tournament_judges (judge_id));
 diesel::joinable!(tournament_judge_team_clash -> tournament_teams (team_id));
 diesel::joinable!(tournament_judge_team_clash -> tournaments (tournament_id));
@@ -274,6 +311,7 @@ diesel::joinable!(tournament_participants -> tournaments (tournament_id));
 diesel::joinable!(tournament_rooms -> tournaments (tournament_id));
 diesel::joinable!(tournament_round_motions -> tournament_rounds (round_id));
 diesel::joinable!(tournament_round_motions -> tournaments (tournament_id));
+diesel::joinable!(tournament_round_tickets -> tournament_rounds (round_id));
 diesel::joinable!(tournament_rounds -> tournament_break_categories (break_category));
 diesel::joinable!(tournament_rounds -> tournaments (tournament_id));
 diesel::joinable!(tournament_snapshots -> tournaments (tournament_id));
@@ -282,8 +320,8 @@ diesel::joinable!(tournament_speaker_score_entries -> tournament_speakers (speak
 diesel::joinable!(tournament_speaker_score_entries -> tournament_teams (team_id));
 diesel::joinable!(tournament_speakers -> tournament_participants (participant_id));
 diesel::joinable!(tournament_speakers -> tournaments (tournament_id));
-diesel::joinable!(tournament_team_score_entries -> tournament_ballots (ballot_id));
-diesel::joinable!(tournament_team_score_entries -> tournament_teams (team_id));
+diesel::joinable!(tournament_team_availability -> tournament_rounds (round_id));
+diesel::joinable!(tournament_team_availability -> tournament_teams (team_id));
 diesel::joinable!(tournament_team_speakers -> tournament_speakers (speaker_id));
 diesel::joinable!(tournament_team_speakers -> tournament_teams (team_id));
 diesel::joinable!(tournament_teams -> tournament_institutions (institution_id));
@@ -298,18 +336,21 @@ diesel::allow_tables_to_appear_in_same_query!(
     tournament_debates,
     tournament_draws,
     tournament_institutions,
+    tournament_judge_availability,
     tournament_judge_judge_clash,
+    tournament_judge_stated_eligibility,
     tournament_judge_team_clash,
     tournament_judges,
     tournament_members,
     tournament_participants,
     tournament_rooms,
     tournament_round_motions,
+    tournament_round_tickets,
     tournament_rounds,
     tournament_snapshots,
     tournament_speaker_score_entries,
     tournament_speakers,
-    tournament_team_score_entries,
+    tournament_team_availability,
     tournament_team_speakers,
     tournament_teams,
     tournaments,

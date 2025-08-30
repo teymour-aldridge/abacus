@@ -69,6 +69,7 @@ impl<'r> FromRequest<'r> for IsTabDirector {
 }
 
 /// The same as [`IsTabDirector`], except does not run in a transaction.
+// TODO: we can probably use polymorphism to delete the NoTx types.
 pub struct IsTabDirectorNoTx;
 
 #[rocket::async_trait]

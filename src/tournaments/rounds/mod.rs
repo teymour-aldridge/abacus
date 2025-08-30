@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::schema::tournament_rounds;
 
+pub mod ballots;
+pub mod draws;
 pub mod manage;
 
 #[derive(Serialize, Deserialize, Queryable, Clone)]

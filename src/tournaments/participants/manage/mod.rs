@@ -137,8 +137,8 @@ pub async fn tournament_participant_updates(
     Some(ws.channel(move |mut stream| {
         Box::pin(async move {
             // we send this once at the start in order to populate the data in
-            // the table. I believe this is faster than what Tabbycat does,
-            // because it embeds all the data in the page.
+            // the table. I believe this is faster than what Tabbycat does
+            // (embedding all the data in the page)
             let serialized_data =
                 spawn_blocking(get_serializable_data.clone()).await.unwrap();
             let _ =

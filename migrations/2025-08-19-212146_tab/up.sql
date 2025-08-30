@@ -182,18 +182,65 @@ create table if not exists tournament_draws (
     tournament_id text not null references tournaments (id),
     round_id text not null references tournament_rounds(id),
     status text not null default 'D' check (status in ('D', 'C', 'R')),
-    released_at timestamp
+    released_at timestamp,
+    unique (tournament_id, round_id)
+);
+
+-- When generating draws, we have a ticketing system. This allows us to avoid
+-- running the (sometimes) long-running draw or adjumo operations inside a
+-- transaction (in SQLite this locks other processes and prevents them from
+-- making progress).
+--
+-- The `acquired` field is useful for ensuring that tickets cannot be generated
+-- too often (this prevents accidental DoS attacks).
+create table if not exists tournament_round_tickets (
+    id text not null primary key,
+    round_id text not null references tournament_rounds (id),
+    seq integer not null,
+    kind text not null check (kind in ('draw', 'adjumo')),
+    -- when the ticket was created (useful for rate limiting)
+    acquired timestamp not null default CURRENT_TIMESTAMP,
+    -- denotes whether the process which acquired the ticket subsequently
+    -- released it
+    released boolean not null,
+    -- if a process encounters an error, it logs the text here
+    error text,
+    unique (round_id, seq)
+);
+
+create table if not exists tournament_team_availability (
+    id text primary key not null,
+    round_id text not null references tournament_rounds (id),
+    team_id text not null references tournament_teams (id),
+    available bool not null default 'f'
+);
+
+-- Eligibility, as specified by judges.
+create table if not exists tournament_judge_stated_eligibility (
+    id text primary key not null,
+    round_id text not null references tournament_rounds (id),
+    judge_id text not null references tournament_judges (id),
+    available bool not null default 'f'
+);
+
+-- The actual judge eligibility.
+create table if not exists tournament_judge_availability (
+    id text primary key not null,
+    round_id text not null references tournament_rounds (id),
+    judge_id text not null references tournament_judges (id),
+    available bool not null default 'f',
+    comment text
 );
 
 create table if not exists tournament_debates (
     id text primary key not null,
     tournament_id text not null references tournaments (id),
     draw_id text not null references tournament_draws(id),
-    room_id text references tournament_rooms(id),
-    motion_id text not null references tournament_round_motions(id)
+    room_id text references tournament_rooms(id)
 );
 
 create table if not exists tournament_debate_teams (
+    id text primary key not null,
     debate_id text not null references tournament_debates(id),
     team_id text not null references tournament_teams(id),
     side integer not null check (side >= 0),
@@ -215,6 +262,7 @@ create table if not exists tournament_ballots (
     debate_id text not null references tournament_debates(id),
     judge_id text not null references tournament_judges(id),
     submitted_at timestamp not null default CURRENT_TIMESTAMP,
+    motion_id text not null references tournament_round_motions (id),
 
     -- version control
     version integer not null check (version >= 0),
@@ -229,18 +277,12 @@ create table if not exists tournament_ballots (
 -- Team scores are required. Speaker scores are only required in some (most)
 -- formats.
 
-create table if not exists tournament_team_score_entries (
-    ballot_id text not null references tournament_ballots(id),
-    team_id text not null references tournament_teams(id),
-    score integer not null,
-    primary key (ballot_id, team_id)
-);
-
 create table if not exists tournament_speaker_score_entries (
+    id text primary key not null,
     ballot_id text not null references tournament_ballots(id),
     team_id text not null references tournament_teams(id),
     speaker_id text not null references tournament_speakers(id),
     speaker_position integer not null,
     score float not null,
-    primary key (ballot_id, team_id, speaker_id)
+    unique (ballot_id, team_id, speaker_id)
 );

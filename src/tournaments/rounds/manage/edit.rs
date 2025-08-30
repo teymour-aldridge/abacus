@@ -144,7 +144,7 @@ pub async fn do_edit_round(
         .unwrap();
         assert_eq!(n, 1);
 
-        take_snapshot(&tid, conn);
+        take_snapshot(&tid, &mut *conn);
 
         return GenerallyUsefulResponse::Success(Redirect::to(format!(
             "/tournaments/{tid}/rounds"

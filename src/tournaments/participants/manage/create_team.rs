@@ -156,7 +156,7 @@ pub async fn do_create_team(
             .unwrap();
         assert_eq!(n, 1);
 
-        take_snapshot(&tid, conn);
+        take_snapshot(&tid, &mut* conn);
 
         return GenerallyUsefulResponse::Success(Redirect::to(format!(
             "/tournaments/{}/participants",

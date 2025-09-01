@@ -183,6 +183,7 @@ diesel::table! {
         name -> Text,
         kind -> Text,
         break_category -> Nullable<Text>,
+        completed -> Bool,
     }
 }
 

@@ -17,6 +17,34 @@ pub struct Round {
     name: String,
     kind: String,
     break_cat: Option<String>,
+    completed: bool,
+}
+
+impl Round {
+    /// Retrieves the current rounds.
+    pub fn current_rounds(
+        tid: &str,
+        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+    ) -> Vec<Self> {
+        let ret = tournament_rounds::table
+            .filter(
+                tournament_rounds::tournament_id
+                    .eq(tid)
+                    .and(tournament_rounds::completed.eq(false)),
+            )
+            .order_by(tournament_rounds::seq.asc())
+            .load::<Round>(conn)
+            .unwrap();
+
+        // TODO: is this desirable?
+        debug_assert!(if ret.iter().any(|r| r.kind == "P") {
+            ret.iter().all(|r| r.kind == "E")
+        } else {
+            true
+        });
+
+        ret
+    }
 }
 
 pub struct TournamentRounds {

@@ -17,11 +17,12 @@ use crate::{
 pub mod categories;
 pub mod config;
 pub mod create;
+pub mod manage;
 pub mod participants;
+pub mod public;
 pub mod rounds;
 pub mod snapshots;
 pub mod teams;
-pub mod view;
 
 #[derive(Queryable, Clone, Debug)]
 pub struct Tournament {

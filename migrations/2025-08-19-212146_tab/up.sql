@@ -165,6 +165,7 @@ create table if not exists tournament_rounds (
     name text not null,
     kind text not null check (kind in ('E', 'P')),
     break_category text references tournament_break_categories (id),
+    completed boolean not null,
     unique (tournament_id, seq),
     unique (tournament_id, name)
 );
@@ -177,6 +178,7 @@ create table if not exists tournament_round_motions (
     motion text not null
 );
 
+-- TODO: should implement versioning in the application?
 create table if not exists tournament_draws (
     id text primary key not null,
     tournament_id text not null references tournaments (id),

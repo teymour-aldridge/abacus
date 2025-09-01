@@ -1,6 +1,7 @@
 use crate::schema::tournament_ballots;
 use crate::schema::tournament_debate_teams;
 use crate::schema::tournament_debates;
+use crate::schema::tournament_draws;
 use crate::tournaments::rounds::ballots::BallotRepr;
 
 use chrono::NaiveDateTime;
@@ -11,6 +12,7 @@ use diesel::{QueryableByName, prelude::Queryable};
 use serde::{Deserialize, Serialize};
 
 pub mod manage;
+pub mod public;
 
 #[derive(Queryable, Serialize, Deserialize)]
 pub struct Draw {
@@ -38,6 +40,17 @@ pub struct DrawRepr {
 }
 
 impl DrawRepr {
+    pub fn of_id(
+        draw: &str,
+        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+    ) -> Self {
+        let draw = tournament_draws::table
+            .find(draw)
+            .first::<Draw>(conn)
+            .unwrap();
+        Self::of_draw(draw, conn)
+    }
+
     pub fn of_draw(
         draw: Draw,
         conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),

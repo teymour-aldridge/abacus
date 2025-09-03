@@ -12,6 +12,7 @@ use crate::{
     state::LockedConn,
     template::Page,
     util_resp::GenerallyUsefulResponse,
+    widgets::alert::ErrorAlert,
 };
 
 #[get("/login")]
@@ -21,9 +22,8 @@ pub async fn login_page(user: Option<User>) -> GenerallyUsefulResponse {
             Page::new()
                 .user_opt(user)
                 .body(maud! {
-                    div class="alert alert-danger" role="alert" {
-                        "You are already logged in, so cannot log in!"
-                    }
+                    ErrorAlert
+                        msg = "You are already logged in, so cannot log in!";
                 })
                 .render(),
         );
@@ -70,9 +70,9 @@ pub async fn do_login(
                 Page::new()
                     .user_opt(user)
                     .body(maud! {
-                        div class="alert alert-danger" role="alert" {
-                            "No such user exists. Please return to the previous page and try again."
-                        }
+                        ErrorAlert
+                            msg =  "No such user exists. Please return to the
+                                    previous page and try again.";
                     })
                     .render(),
             ),
@@ -88,10 +88,9 @@ pub async fn do_login(
             Page::new()
                 .user_opt(user)
                 .body(maud! {
-                    div class="alert alert-danger" role="alert" {
+                    ErrorAlert msg =
                         "Incorrect password. Please return to the previous page
-                         and try again."
-                    }
+                         and try again.";
                 })
                 .render(),
         );

@@ -20,6 +20,7 @@ use crate::{
         },
     },
     util_resp::GenerallyUsefulResponse,
+    widgets::alert::ErrorAlert,
 };
 
 #[get("/tournaments/<_tournament_id>/rounds/<round_id>/draw/create")]
@@ -60,10 +61,9 @@ pub async fn generate_draw_page(
             .user(user)
             .body(maud! {
                 @if draw.is_some() {
-                    div class="alert alert-danger" role="alert" {
-                        "Warning: a draw already exists for this round. Creating
-                         a new draw will delete the old draw!"
-                    }
+                    ErrorAlert
+                        msg = "Warning: a draw already exists for this round. Creating
+                         a new draw will delete the old draw!";
                 }
 
                 form {

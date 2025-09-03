@@ -10,6 +10,7 @@ use crate::{
         participants::{DebateJudge, Judge},
         rounds::draws::Debate,
     },
+    widgets::alert::ErrorAlert,
 };
 use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
 use hypertext::prelude::*;
@@ -252,10 +253,8 @@ pub async fn submit_cmd_tab_dir<'r>(
         Ok(cmd) => cmd,
         Err(e) => {
             return FallibleResponse::BadReq(
-                maud! {
-                    div class="alert alert-danger" role="alert" {
-                        "Invalid command provided: " (e)
-                    }
+                ErrorAlert {
+                    msg: format!("Invalid command provided: {e}"),
                 }
                 .render(),
             );
@@ -291,10 +290,8 @@ pub async fn submit_cmd_tab_dir<'r>(
         }
         Err(e) => {
             return FallibleResponse::BadReq(
-                maud! {
-                    div class="alert alert-danger" role="alert" {
-                        "Error evaluating command: " (e)
-                    }
+                ErrorAlert {
+                    msg: format!("Error evaluating command: {e}"),
                 }
                 .render(),
             );

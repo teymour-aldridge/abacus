@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use crate::util_resp::GenerallyUsefulResponse;
 use crate::validation::*;
+use crate::widgets::alert::ErrorAlert;
 use crate::{auth::User, schema::users, state::LockedConn, template::Page};
 
 #[get("/register")]
@@ -94,15 +95,11 @@ pub async fn do_register(
             return GenerallyUsefulResponse::BadRequest(
                 Page::new()
                     .body(maud! {
-                        div class="alert alert-danger" role="alert" {
-                            @if is_email_problem {
-                                "That email is already taken"
-                            } @else {
-                                "That username is already taken"
-                            }
-
-                            ". Please return to the previous page and try again."
-                        }
+                        ErrorAlert msg=(match is_email_problem {
+                            true => "That email is already taken",
+                            false => "That username is already taken"
+                        }.to_string() +
+                        ". Please return to the previous page and try again.");
                     })
                     .render(),
             );

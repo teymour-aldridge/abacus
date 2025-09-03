@@ -20,6 +20,7 @@ pub mod tournaments;
 pub mod util_resp;
 /// Code for validating data input to the tab system.
 pub mod validation;
+pub mod widgets;
 
 #[launch]
 async fn launch() -> _ {

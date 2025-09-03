@@ -12,6 +12,7 @@ pub mod form;
 pub struct Page<R: Renderable> {
     body: Option<R>,
     user: Option<User>,
+    hx_ext: Option<String>,
 }
 
 impl<R: Renderable> Page<R> {
@@ -38,6 +39,11 @@ impl<R: Renderable> Page<R> {
         self.user = user;
         self
     }
+
+    pub fn hx_ext(mut self, set: &str) -> Self {
+        self.hx_ext = Some(set.to_string());
+        self
+    }
 }
 
 impl<R: Renderable> Renderable for Page<R> {
@@ -61,7 +67,7 @@ impl<R: Renderable> Renderable for Page<R> {
                         name="viewport"
                         content="width=device-width, initial-scale=1";
                 }
-                body {
+                body hx-ext=(self.hx_ext) {
                     nav class="navbar navbar-expand"
                     style="background-color: #452859"
                     data-bs-theme="dark" {
@@ -104,6 +110,7 @@ impl<R: Renderable> Default for Page<R> {
         Self {
             body: Default::default(),
             user: Default::default(),
+            hx_ext: Default::default(),
         }
     }
 }

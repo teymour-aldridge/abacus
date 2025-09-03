@@ -1,3 +1,4 @@
+use crate::tournaments::WEBSOCKET_SCHEME;
 use diesel::prelude::*;
 use hypertext::prelude::*;
 use rocket::{State, futures::SinkExt, get};
@@ -65,7 +66,7 @@ pub async fn manage_tournament_participants(
             }},
         }});
 
-        ws = new WebSocket(`ws://${{window.location.host}}/tournaments/${{{tid}}}/participants?channel`);
+        ws = new WebSocket(`{WEBSOCKET_SCHEME}${{window.location.host}}/tournaments/${{{tid}}}/participants?channel`);
 
         ws.onmessage = function(event) {{
             let data = JSON.parse(event.data);
@@ -163,11 +164,11 @@ pub async fn tournament_participant_updates(
                             spawn_blocking(get_serializable_data.clone())
                                 .await
                                 .unwrap();
-
                         let _ = stream
                             .send(rocket_ws::Message::Text(serialized_data))
                             .await;
                     }
+                    _ => unreachable!(),
                 }
             }
         })

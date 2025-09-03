@@ -5,8 +5,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     schema::{
-        tournament_institutions, tournament_participants, tournament_speakers,
-        tournament_team_speakers, tournament_teams,
+        tournament_debate_judges, tournament_institutions, tournament_judges,
+        tournament_participants, tournament_speakers, tournament_team_speakers,
+        tournament_teams,
     },
     tournaments::teams::Team,
 };
@@ -22,13 +23,25 @@ pub struct Speaker {
     participant_id: String,
 }
 
-#[derive(Queryable, Serialize, Deserialize, Clone)]
+#[derive(Queryable, QueryableByName, Serialize, Deserialize, Clone)]
+#[diesel(check_for_backend(Sqlite))]
+#[diesel(table_name = tournament_judges)]
 pub struct Judge {
-    id: String,
-    tournament_id: String,
-    name: String,
-    institution_id: String,
-    participant_id: String,
+    pub id: String,
+    pub tournament_id: String,
+    pub name: String,
+    pub institution_id: Option<String>,
+    pub participant_id: String,
+    pub number: i64,
+}
+
+#[derive(Queryable, QueryableByName, Serialize, Deserialize, Clone)]
+#[diesel(check_for_backend(Sqlite))]
+#[diesel(table_name = tournament_debate_judges)]
+pub struct DebateJudge {
+    pub debate_id: String,
+    pub judge_id: String,
+    pub status: String,
 }
 
 #[derive(Queryable, Serialize, Deserialize, Clone)]
@@ -100,11 +113,13 @@ impl TournamentParticipants {
                     // there are no speakers, but we might want to always create
                     // this and panic if it doesn't exist
                     let empty = HashSet::new();
-                    let speakers = self.team_speakers.get(&team.id).unwrap_or(&empty);
+                    let speakers =
+                        self.team_speakers.get(&team.id).unwrap_or(&empty);
                     speakers
                         .into_iter()
                         .map(|speaker| {
-                            let speaker = self.speakers.get(speaker).unwrap().clone();
+                            let speaker =
+                                self.speakers.get(speaker).unwrap().clone();
                             SSpeaker {
                                 id: speaker.id,
                                 name: speaker.name,

@@ -1,0 +1,15 @@
+use std::str::FromStr;
+use crate::tournaments::rounds::draws::manage::edit::Cmd;
+
+grammar;
+
+pub Cmd: Cmd = {
+    "chair" "j" <a:Num> => Cmd::Chair(a, None),
+    "chair" "j" <a:Num> "r" <b:Num> => Cmd::Chair(a, Some(b)),
+    "trainee" "j" <a:Num> => Cmd::Trainee(a, None),
+    "trainee" "j" <a:Num> "r" <b:Num> => Cmd::Trainee(a, Some(b)),
+    "panelist" "j" <a:Num> => Cmd::Panelist(a, None),
+    "panelist" "j" <a:Num> "r" <b:Num> => Cmd::Panelist(a, Some(b))
+}
+
+Num: u32 = <s:r"[0-9]+"> => u32::from_str(s).unwrap();

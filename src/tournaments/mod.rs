@@ -1,5 +1,11 @@
 use std::borrow::Borrow;
 
+#[cfg(not(test))]
+pub const WEBSOCKET_SCHEME: &str = "wss://";
+
+#[cfg(test)]
+pub const WEBSOCKET_SCHEME: &str = "ws://";
+
 use diesel::prelude::*;
 use rocket::{
     Request, State,

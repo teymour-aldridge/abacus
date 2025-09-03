@@ -14,15 +14,15 @@ use crate::{
         Tournament,
         rounds::{
             Round,
-            draws::{Draw, DrawRepr},
+            draws::{DebateRepr, Draw, DrawRepr, manage::DrawTableRenderer},
         },
         teams::Team,
     },
 };
 
-#[get("/tournaments/<tournament_id>/rounds/<round_id>/draw/<draw_id>")]
+#[get("/tournaments/<_tournament_id>/rounds/<round_id>/draw/<draw_id>")]
 pub async fn view_draw(
-    tournament_id: &str,
+    _tournament_id: &str,
     round_id: &str,
     draw_id: &str,
     user: User,
@@ -56,6 +56,19 @@ pub async fn view_draw(
         .map(|c| (c.id.clone(), c))
         .collect::<HashMap<_, _>>();
 
+    fn make_actions(_: &DebateRepr) -> impl Renderable {
+        maud! {
+            "TODO"
+        }
+    }
+
+    let renderer = DrawTableRenderer {
+        tournament: &tournament,
+        repr: &repr,
+        actions: make_actions,
+        teams: &teams,
+    };
+
     Some(
         Page::new()
             .tournament(tournament.clone())
@@ -64,44 +77,7 @@ pub async fn view_draw(
                 h1 {
                     "Draw for round " (round.name)
                 }
-                table class = "table" {
-                    thead {
-                        tr {
-                            th scope="col" {
-                                "#"
-                            }
-                            @for i in 0..tournament.teams_per_side {
-                                th scope="col" {
-                                    "Prop " (i)
-                                }
-                                th scope="col" {
-                                    "Opp " (i)
-                                }
-                            }
-                            // todo: adjudicators
-                            th scope="col" {
-                                "Manage"
-                            }
-                        }
-                    }
-                    tbody {
-                        @for (i, debate) in repr.debates.iter().enumerate() {
-                            th scope="row" {
-                                (i)
-                            }
-                            @for team in &debate.teams {
-                                td {
-                                    a href = (format!("/tournaments/{tournament_id}/teams/{}", &team.id)) {
-                                        (teams.get(&team.id).unwrap().name)
-                                    }
-                                }
-                            }
-                            td {
-                                "TODO"
-                            }
-                        }
-                    }
-                }
+                (renderer)
             })
             .render(),
     )

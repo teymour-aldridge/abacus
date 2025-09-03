@@ -55,6 +55,7 @@ diesel::table! {
         tournament_id -> Text,
         draw_id -> Text,
         room_id -> Nullable<Text>,
+        number -> BigInt,
     }
 }
 
@@ -121,6 +122,7 @@ diesel::table! {
         name -> Text,
         institution_id -> Nullable<Text>,
         participant_id -> Text,
+        number -> BigInt,
     }
 }
 

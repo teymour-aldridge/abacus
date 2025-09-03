@@ -100,7 +100,8 @@ create table if not exists tournament_teams (
     id text primary key not null,
     tournament_id text not null references tournaments (id),
     name text not null,
-    institution_id text references tournament_institutions(id)
+    institution_id text references tournament_institutions(id),
+    number integer not null
 );
 
 create table if not exists tournament_speakers (
@@ -121,7 +122,9 @@ create table if not exists tournament_judges (
     tournament_id text not null references tournaments (id),
     name text not null,
     institution_id text references tournament_institutions (id),
-    participant_id text not null references tournament_participants(id)
+    participant_id text not null references tournament_participants(id),
+    number integer not null check (number >= 0),
+    unique (tournament_id, number)
 );
 
 create table if not exists tournament_judge_team_clash (
@@ -238,7 +241,10 @@ create table if not exists tournament_debates (
     id text primary key not null,
     tournament_id text not null references tournaments (id),
     draw_id text not null references tournament_draws(id),
-    room_id text references tournament_rooms(id)
+    room_id text references tournament_rooms(id),
+    -- unique ID (starting from zero) assigned to each debate
+    number integer not null check (number >= 0),
+    unique (tournament_id, number)
 );
 
 create table if not exists tournament_debate_teams (

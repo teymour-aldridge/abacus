@@ -6,15 +6,15 @@ use crate::{
         tournament_rounds, tournament_teams,
     },
     tournaments::standings::compute::metrics::{
-        Metric, completed_preliminary_rounds,
+        Metric, MetricValue, completed_preliminary_rounds,
     },
 };
 
 /// Counts the number of times that a team achieved a specific result (e.g.
 /// #firsts, #seconds, ...)
-pub struct NTimesSpecificResultComputer(i64);
+pub struct NTimesSpecificResultComputer(pub u8);
 
-impl Metric<i64> for NTimesSpecificResultComputer {
+impl Metric<MetricValue> for NTimesSpecificResultComputer {
     fn compute(
         &self,
         tid: &str,
@@ -22,7 +22,7 @@ impl Metric<i64> for NTimesSpecificResultComputer {
                  impl diesel::Connection<Backend = diesel::sqlite::Sqlite>
                  + diesel::connection::LoadConnection
              ),
-    ) -> std::collections::HashMap<String, i64> {
+    ) -> std::collections::HashMap<String, MetricValue> {
         tournament_teams::table
             .filter(tournament_teams::tournament_id.eq(tid))
             .inner_join(completed_preliminary_rounds())
@@ -56,7 +56,7 @@ impl Metric<i64> for NTimesSpecificResultComputer {
                         ),
                 ),
             )
-            .filter(tournament_debate_team_results::points.eq(self.0))
+            .filter(tournament_debate_team_results::points.eq(self.0 as i64))
             .group_by(tournament_teams::id)
             .select((
                 tournament_teams::id,
@@ -65,6 +65,9 @@ impl Metric<i64> for NTimesSpecificResultComputer {
             .load::<(String, i64)>(conn)
             .unwrap()
             .into_iter()
+            .map(|(team, value)| {
+                (team, MetricValue::NTimesResult(self.0, value))
+            })
             .collect()
     }
 }

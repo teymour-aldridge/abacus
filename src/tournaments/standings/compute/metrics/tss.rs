@@ -6,14 +6,14 @@ use crate::{
         tournament_teams,
     },
     tournaments::standings::compute::metrics::{
-        Metric, completed_preliminary_rounds,
+        Metric, MetricValue, completed_preliminary_rounds,
     },
 };
 use diesel::{dsl, prelude::*};
 
 pub struct TotalTeamSpeakerScoreComputer;
 
-impl Metric<f32> for TotalTeamSpeakerScoreComputer {
+impl Metric<MetricValue> for TotalTeamSpeakerScoreComputer {
     fn compute(
         &self,
         tid: &str,
@@ -21,7 +21,7 @@ impl Metric<f32> for TotalTeamSpeakerScoreComputer {
                  impl diesel::Connection<Backend = diesel::sqlite::Sqlite>
                  + diesel::connection::LoadConnection
              ),
-    ) -> std::collections::HashMap<String, f32> {
+    ) -> std::collections::HashMap<String, MetricValue> {
         tournament_teams::table
             .filter(tournament_teams::tournament_id.eq(tid))
             .inner_join(completed_preliminary_rounds())
@@ -69,6 +69,15 @@ impl Metric<f32> for TotalTeamSpeakerScoreComputer {
             .load::<(String, f32)>(conn)
             .unwrap()
             .into_iter()
+            .map(|(a, b)| {
+                (
+                    a,
+                    MetricValue::Tss(
+                        rust_decimal::Decimal::from_f32_retain(b)
+                            .expect(&format!("unrepresentable float: {b}")),
+                    ),
+                )
+            })
             .collect()
     }
 }

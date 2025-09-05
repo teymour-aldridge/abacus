@@ -5,12 +5,12 @@ use crate::schema::{
     tournament_debates, tournament_draws, tournament_rounds, tournament_teams,
 };
 use crate::tournaments::standings::compute::metrics::{
-    Metric, completed_preliminary_rounds,
+    Metric, MetricValue, completed_preliminary_rounds,
 };
 
 pub struct TeamPointsComputer;
 
-impl Metric<i64> for TeamPointsComputer {
+impl Metric<MetricValue> for TeamPointsComputer {
     fn compute(
         &self,
         tid: &str,
@@ -18,7 +18,7 @@ impl Metric<i64> for TeamPointsComputer {
                  impl diesel::Connection<Backend = diesel::sqlite::Sqlite>
                  + diesel::connection::LoadConnection
              ),
-    ) -> std::collections::HashMap<String, i64> {
+    ) -> std::collections::HashMap<String, MetricValue> {
         let (team, other_team) = diesel::alias!(
             tournament_teams as team,
             tournament_teams as other_team
@@ -112,6 +112,7 @@ impl Metric<i64> for TeamPointsComputer {
         .load::<(String, i64)>(conn)
         .unwrap()
         .into_iter()
+        .map(|(a, b)| (a, MetricValue::Points(b)))
         .collect()
     }
 }

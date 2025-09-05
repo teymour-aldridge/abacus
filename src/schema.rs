@@ -40,6 +40,26 @@ diesel::table! {
 }
 
 diesel::table! {
+    tournament_debate_speaker_results (id) {
+        id -> Text,
+        debate_id -> Text,
+        speaker_id -> Text,
+        team_id -> Text,
+        position -> BigInt,
+        score -> Float,
+    }
+}
+
+diesel::table! {
+    tournament_debate_team_results (id) {
+        id -> Text,
+        debate_id -> Text,
+        team_id -> Text,
+        points -> BigInt,
+    }
+}
+
+diesel::table! {
     tournament_debate_teams (id) {
         id -> Text,
         debate_id -> Text,
@@ -244,6 +264,7 @@ diesel::table! {
         tournament_id -> Text,
         name -> Text,
         institution_id -> Nullable<Text>,
+        number -> BigInt,
     }
 }
 
@@ -289,6 +310,11 @@ diesel::joinable!(tournament_ballots -> users (editor_id));
 diesel::joinable!(tournament_break_categories -> tournaments (tournament_id));
 diesel::joinable!(tournament_debate_judges -> tournament_debates (debate_id));
 diesel::joinable!(tournament_debate_judges -> tournament_judges (judge_id));
+diesel::joinable!(tournament_debate_speaker_results -> tournament_debates (debate_id));
+diesel::joinable!(tournament_debate_speaker_results -> tournament_speakers (speaker_id));
+diesel::joinable!(tournament_debate_speaker_results -> tournament_teams (team_id));
+diesel::joinable!(tournament_debate_team_results -> tournament_debates (debate_id));
+diesel::joinable!(tournament_debate_team_results -> tournament_teams (team_id));
 diesel::joinable!(tournament_debate_teams -> tournament_debates (debate_id));
 diesel::joinable!(tournament_debate_teams -> tournament_teams (team_id));
 diesel::joinable!(tournament_debates -> tournament_draws (draw_id));
@@ -335,6 +361,8 @@ diesel::allow_tables_to_appear_in_same_query!(
     tournament_ballots,
     tournament_break_categories,
     tournament_debate_judges,
+    tournament_debate_speaker_results,
+    tournament_debate_team_results,
     tournament_debate_teams,
     tournament_debates,
     tournament_draws,

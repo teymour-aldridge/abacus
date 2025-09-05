@@ -263,6 +263,22 @@ create table if not exists tournament_debate_judges (
     primary key (debate_id, judge_id)
 );
 
+create table if not exists tournament_debate_team_results (
+    id text primary key not null,
+    debate_id text not null references tournament_debates (id),
+    team_id text not null references tournament_teams (id),
+    points integer not null
+);
+
+create table if not exists tournament_debate_speaker_results (
+    id text primary key not null,
+    debate_id text not null references tournament_debates (id),
+    speaker_id text not null references tournament_speakers (id),
+    team_id text not null references tournament_teams (id),
+    position integer not null,
+    score float not null
+);
+
 -- an individual ballot from an adjudicator
 create table if not exists tournament_ballots (
     id text primary key not null,
@@ -281,9 +297,6 @@ create table if not exists tournament_ballots (
 
     unique (debate_id, version, judge_id)
 );
-
--- Team scores are required. Speaker scores are only required in some (most)
--- formats.
 
 create table if not exists tournament_speaker_score_entries (
     id text primary key not null,

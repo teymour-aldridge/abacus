@@ -28,6 +28,7 @@ pub mod participants;
 pub mod public;
 pub mod rounds;
 pub mod snapshots;
+pub mod standings;
 pub mod teams;
 
 #[derive(Queryable, Clone, Debug)]

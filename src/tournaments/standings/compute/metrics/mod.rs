@@ -23,3 +23,10 @@ pub fn completed_preliminary_rounds() -> _ {
         .eq("P")
         .and(tournament_rounds::completed.eq(true)))
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Ord, Eq)]
+pub enum MetricValue {
+    Points(i64),
+    NTimesResult(u8, i64),
+    Tss(rust_decimal::Decimal),
+}

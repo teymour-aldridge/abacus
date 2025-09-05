@@ -16,6 +16,21 @@ pub enum TeamMetric {
     AverageTotalSpeakerScore,
 }
 
+impl std::fmt::Display for TeamMetric {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            TeamMetric::Wins => "#points",
+            TeamMetric::Ballots => "#ballots",
+            TeamMetric::DrawStrengthByWins => "draw strength by wins",
+            TeamMetric::NTimesAchieved(points) => {
+                return write!(f, "#times achieved {points} points");
+            }
+            TeamMetric::TotalSpeakerScore => "total speaker score",
+            TeamMetric::AverageTotalSpeakerScore => "avg total speaker score",
+        })
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 pub enum SpeakerMetric {
     StdDev,

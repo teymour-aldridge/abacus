@@ -275,6 +275,8 @@ diesel::table! {
         abbrv -> Text,
         slug -> Text,
         created_at -> Timestamp,
+        team_tab_public -> Bool,
+        speaker_tab_public -> Bool,
         teams_per_side -> BigInt,
         substantive_speakers -> BigInt,
         reply_speakers -> Bool,

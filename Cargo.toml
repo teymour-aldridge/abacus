@@ -8,6 +8,7 @@ argon2 = "0.5.3"
 chrono = { version = "0.4.41", features = ["serde"] }
 diesel = { version = "2.2.12", features = ["chrono", "r2d2", "sqlite"] }
 diesel_migrations = { version = "2.2.0", features = ["sqlite"] }
+good_lp = { version = "1.14.0", features = ["highs"], default-features = false }
 hypertext = { version = "0.12.1", features = ["htmx", "rocket"] }
 itertools = "0.14.0"
 lalrpop-util = { version = "0.22.2", features = ["lexer", "unicode"] }

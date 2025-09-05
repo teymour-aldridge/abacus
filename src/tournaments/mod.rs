@@ -38,6 +38,8 @@ pub struct Tournament {
     pub abbrv: String,
     pub slug: String,
     pub created_at: chrono::NaiveDateTime,
+    pub team_tab_public: bool,
+    pub speaker_tab_public: bool,
     pub teams_per_side: i64,
     pub substantive_speakers: i64,
     pub reply_speakers: bool,

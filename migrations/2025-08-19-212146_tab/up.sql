@@ -16,6 +16,11 @@ create table if not exists tournaments (
 
     -- Configuration
 
+    -- whether to publish the team tab
+    team_tab_public boolean not null default 'f',
+    -- whether to publish the speaker tab
+    speaker_tab_public boolean not null default 'f',
+
     -- 1 for Australs/WSDC, 2 for BP
     teams_per_side integer not null,
     -- Speakers/team in each debate (2 for BP, 3 for Australs)

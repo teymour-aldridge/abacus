@@ -30,3 +30,13 @@ pub enum MetricValue {
     NTimesResult(u8, i64),
     Tss(rust_decimal::Decimal),
 }
+
+impl std::fmt::Display for MetricValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MetricValue::Points(n) => write!(f, "{n}"),
+            MetricValue::NTimesResult(_, times) => write!(f, "{times}"),
+            MetricValue::Tss(decimal) => write!(f, "{decimal}"),
+        }
+    }
+}

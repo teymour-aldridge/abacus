@@ -16,7 +16,8 @@ use crate::tournaments::teams::Team;
 pub mod metrics;
 
 pub struct TournamentTeamStandings {
-    pub metrics: HashMap<String, Vec<MetricValue>>,
+    pub metrics: Vec<TeamMetric>,
+    pub metrics_of_team: HashMap<String, Vec<MetricValue>>,
     pub sorted: Vec<Team>,
 }
 
@@ -35,13 +36,13 @@ impl TournamentTeamStandings {
 
         let mut metrics_of_team = HashMap::new();
 
-        for metric in metrics {
+        for metric in &metrics {
             let val2merge = match metric {
                 TeamMetric::Wins => {
                     TeamPointsComputer::compute(&TeamPointsComputer, tid, conn)
                 }
                 TeamMetric::NTimesAchieved(t) => {
-                    NTimesSpecificResultComputer(t).compute(tid, conn)
+                    NTimesSpecificResultComputer(*t).compute(tid, conn)
                 }
                 TeamMetric::TotalSpeakerScore => {
                     TotalTeamSpeakerScoreComputer::compute(
@@ -71,7 +72,8 @@ impl TournamentTeamStandings {
         teams.sort_by_cached_key(|team| metrics_of_team.get(&team.id));
 
         Self {
-            metrics: metrics_of_team,
+            metrics,
+            metrics_of_team,
             sorted: teams,
         }
     }

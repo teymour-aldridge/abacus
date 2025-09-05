@@ -7,4 +7,5 @@ pub struct Team {
     pub tournament_id: String,
     pub name: String,
     pub institution_id: Option<String>,
+    pub number: i64,
 }

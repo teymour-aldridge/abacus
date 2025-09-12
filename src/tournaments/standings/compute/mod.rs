@@ -8,6 +8,7 @@ use crate::tournaments::Tournament;
 use crate::tournaments::config::TeamMetric;
 use crate::tournaments::standings::compute::metrics::Metric;
 use crate::tournaments::standings::compute::metrics::MetricValue;
+use crate::tournaments::standings::compute::metrics::ds_wins::DsWinsComputer;
 use crate::tournaments::standings::compute::metrics::n_times_specific_result::NTimesSpecificResultComputer;
 use crate::tournaments::standings::compute::metrics::points::TeamPointsComputer;
 use crate::tournaments::standings::compute::metrics::tss::TotalTeamSpeakerScoreComputer;
@@ -52,7 +53,17 @@ impl TournamentTeamStandings {
                         conn,
                     )
                 }
-                TeamMetric::DrawStrengthByWins => todo!(),
+                TeamMetric::DrawStrengthByWins => {
+                    // todo: can re-use the points allocation
+                    // (unnecessary to compute twice)
+                    let points = TeamPointsComputer::compute(
+                        &TeamPointsComputer,
+                        tid,
+                        conn,
+                    );
+
+                    DsWinsComputer(points).compute(tid, conn)
+                }
                 TeamMetric::AverageTotalSpeakerScore => todo!(),
                 TeamMetric::Ballots => todo!(),
             };

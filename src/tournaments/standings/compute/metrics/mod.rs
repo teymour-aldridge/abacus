@@ -5,6 +5,7 @@ use diesel::{connection::LoadConnection, sqlite::Sqlite};
 
 use crate::schema::tournament_rounds;
 
+pub mod ds_wins;
 pub mod n_times_specific_result;
 pub mod points;
 pub mod tss;
@@ -29,6 +30,7 @@ pub enum MetricValue {
     Points(i64),
     NTimesResult(u8, i64),
     Tss(rust_decimal::Decimal),
+    DsWins(i64),
 }
 
 impl std::fmt::Display for MetricValue {
@@ -37,6 +39,7 @@ impl std::fmt::Display for MetricValue {
             MetricValue::Points(n) => write!(f, "{n}"),
             MetricValue::NTimesResult(_, times) => write!(f, "{times}"),
             MetricValue::Tss(decimal) => write!(f, "{decimal}"),
+            MetricValue::DsWins(wins) => write!(f, "{wins}"),
         }
     }
 }

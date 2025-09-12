@@ -50,6 +50,8 @@ pub struct Tournament {
     pub elim_ballots_require_speaks: bool,
     pub institution_penalty: Option<i64>,
     pub history_penalty: Option<i64>,
+    pub pullup_metrics: String,
+    pub repeat_pullup_penalty: i64,
     pub team_standings_metrics: String,
     pub speaker_standings_metrics: String,
     pub exclude_from_speaker_standings_after: Option<i64>,

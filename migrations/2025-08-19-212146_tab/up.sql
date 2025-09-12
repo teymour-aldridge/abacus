@@ -42,6 +42,10 @@ create table if not exists tournaments (
     -- DRAW RULES
     institution_penalty integer,
     history_penalty integer,
+    pullup_metrics text not null
+        check(json_valid(pullup_metrics) = 1
+            and json_type(pullup_metrics) = 'array'),
+    repeat_pullup_penalty integer not null check (repeat_pullup_penalty >= 0),
 
     -- STANDINGS
     -- metrics, e.g. ["wins", "ballots", "atss"]

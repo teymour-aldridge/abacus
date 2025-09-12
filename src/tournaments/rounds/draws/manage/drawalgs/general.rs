@@ -8,6 +8,7 @@ use itertools::Itertools;
 use rand::Rng;
 
 use crate::tournaments::{
+    config::PullupMetric,
     rounds::draws::manage::drawalgs::{DrawInput, MakeDrawError},
     standings::compute::{TournamentTeamStandings, history::TeamHistory},
     teams::Team,
@@ -254,6 +255,11 @@ pub fn make_draw(
     };
 
     let power_pairing_objective = {
+        let pullup_metrics = serde_json::from_str::<Vec<PullupMetric>>(
+            &input.tournament.pullup_metrics,
+        )
+        .expect("invalid pullup metric list");
+
         // todo: option to customise this (e.g. for pull-ups)
 
         let mut obj = Expression::default();
@@ -262,7 +268,59 @@ pub fn make_draw(
                 standings.points_of_team(&team.id).unwrap() as usize;
 
             for score in std::cmp::max(team_score, min_score)..=max_score {
-                obj += ((score - team_score) as f64
+                let penalty = {
+                    let mut penalty = 0.0;
+
+                    for metric in &pullup_metrics {
+                        // todo: need to rank based on relative importance of
+                        // the metrics (work out upper/lower bounds and add
+                        // multipliers accordingly)
+                        match metric {
+                            PullupMetric::LowestRank => {
+                                penalty += standings
+                                    .sorted
+                                    .iter()
+                                    .enumerate()
+                                    .find_map(|(idx, cmp)| {
+                                        if cmp.id == team.id {
+                                            Some(idx)
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .unwrap()
+                                    as f64
+                            }
+                            PullupMetric::HighestRank => {
+                                penalty += (-1.0)
+                                    * standings
+                                        .sorted
+                                        .iter()
+                                        .enumerate()
+                                        .find_map(|(idx, cmp)| {
+                                            if cmp.id == team.id {
+                                                Some(idx)
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                        .unwrap()
+                                        as f64
+                            }
+                            PullupMetric::Random => (),
+                            PullupMetric::FewerPreviousPullups => todo!(),
+                            PullupMetric::LowestDsRank => todo!(),
+                            PullupMetric::LowestDsSpeaks => todo!(),
+                        }
+                    }
+
+                    penalty
+                };
+
+                obj += (penalty +
+                    // we always want teams to be pulled up as few brackets as
+                    // possible (!)
+                    ((score - team_score) as f64)
                     // add small pertubation to ensure that pull ups are random
                     // (this should break ties where we could pull up multiple
                     //  teams)

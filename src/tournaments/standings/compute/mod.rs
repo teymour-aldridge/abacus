@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use diesel::prelude::*;
-use diesel::{Connection, connection::LoadConnection, sqlite::Sqlite};
+use diesel::{connection::LoadConnection, sqlite::Sqlite};
 
 use crate::schema::{tournament_teams, tournaments};
 use crate::tournaments::Tournament;
@@ -25,7 +25,7 @@ pub struct TournamentTeamStandings {
 impl TournamentTeamStandings {
     pub fn fetch(
         tid: &str,
-        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+        conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Self {
         let tournament = tournaments::table
             .filter(tournaments::id.eq(tid))

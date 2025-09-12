@@ -42,7 +42,7 @@ pub struct DrawRepr {
 impl DrawRepr {
     pub fn of_id(
         draw: &str,
-        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+        conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Self {
         let draw = tournament_draws::table
             .find(draw)
@@ -53,7 +53,7 @@ impl DrawRepr {
 
     pub fn of_draw(
         draw: Draw,
-        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+        conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Self {
         let id = draw.id.clone();
         DrawRepr {
@@ -83,7 +83,7 @@ pub struct DebateRepr {
 impl DebateRepr {
     pub fn fetch(
         id: &str,
-        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+        conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Self {
         let debate = tournament_debates::table
             .filter(tournament_debates::id.eq(&id))
@@ -110,7 +110,7 @@ impl DebateRepr {
     /// Retrieve all the ballots that have been submitted for this debate.
     pub fn ballots(
         &self,
-        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+        conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Vec<BallotRepr> {
         tournament_ballots::table
             .filter(tournament_ballots::debate_id.eq(&self.debate.id))

@@ -24,7 +24,7 @@ impl Round {
     /// Retrieves the current rounds.
     pub fn current_rounds(
         tid: &str,
-        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+        conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Vec<Self> {
         let ret = tournament_rounds::table
             .filter(
@@ -55,7 +55,7 @@ pub struct TournamentRounds {
 impl TournamentRounds {
     pub fn fetch(
         tid: &str,
-        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+        conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Result<TournamentRounds, diesel::result::Error> {
         let rounds = tournament_rounds::table
             .filter(tournament_rounds::tournament_id.eq(tid))

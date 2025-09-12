@@ -14,7 +14,7 @@ pub struct TeamHistory(pub HashMap<String, Vec<usize>>);
 impl TeamHistory {
     pub fn fetch(
         tid: &str,
-        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+        conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Self {
         let tournament = tournaments::table
             .filter(tournaments::id.eq(tid))

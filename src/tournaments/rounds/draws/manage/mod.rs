@@ -66,7 +66,7 @@ where
                             }
                         }
                         td {
-                            @let rendered = (self.actions)(&debate);
+                            @let rendered = (self.actions)(debate);
                             (rendered)
                         }
                     }

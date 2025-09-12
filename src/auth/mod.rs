@@ -76,7 +76,7 @@ impl<'r> FromRequest<'r> for User {
         };
 
         let login: LoginSession =
-            match serde_json::from_str::<LoginSession>(&login_cookie.value()) {
+            match serde_json::from_str::<LoginSession>(login_cookie.value()) {
                 Ok(t) if chrono::Utc::now().naive_utc() < t.expiry => t,
                 Err(_) | Ok(_) => {
                     // TODO: log the error so that these can be easily resolved
@@ -142,7 +142,7 @@ impl<'r> FromRequest<'r> for UserNoTx {
         };
 
         let login: LoginSession =
-            match serde_json::from_str::<LoginSession>(&login_cookie.value()) {
+            match serde_json::from_str::<LoginSession>(login_cookie.value()) {
                 Ok(t) if chrono::Utc::now().naive_utc() < t.expiry => t,
                 Err(_) | Ok(_) => {
                     // TODO: log the error so that these can be easily resolved
@@ -175,15 +175,11 @@ impl<'r> FromRequest<'r> for UserNoTx {
             };
 
             match user {
-                Some(user) => {
-                    return rocket::request::Outcome::Success(UserNoTx(user));
-                }
-                None => {
-                    return rocket::request::Outcome::Error((
-                        Status::Unauthorized,
-                        AuthError::Unauthorized,
-                    ));
-                }
+                Some(user) => rocket::request::Outcome::Success(UserNoTx(user)),
+                None => rocket::request::Outcome::Error((
+                    Status::Unauthorized,
+                    AuthError::Unauthorized,
+                )),
             }
         })
         .await
@@ -191,7 +187,7 @@ impl<'r> FromRequest<'r> for UserNoTx {
     }
 }
 
-pub fn set_login_cookie<'r>(id: String, jar: &CookieJar) {
+pub fn set_login_cookie(id: String, jar: &CookieJar) {
     jar.add_private({
         Cookie::new(
             LOGIN_COOKIE,

@@ -6,10 +6,10 @@ pub fn is_ascii_no_spaces<'v>(username: &str) -> form::Result<'v, ()> {
     match username.chars().all(|c| c.is_ascii() && !c.is_whitespace()) {
         true => Ok(()),
         false => {
-            return Err(rocket::form::Error::validation(
+            Err(rocket::form::Error::validation(
                 "should be an ascii string without spaces",
             )
-            .into());
+            .into())
         }
     }
 }
@@ -23,7 +23,7 @@ pub fn is_valid_email<'v>(string: &str) -> form::Result<'v, ()> {
     match RE.is_match(string) {
         true => Ok(()),
         false => {
-            return Err(rocket::form::Error::validation("invalid email").into());
+            Err(rocket::form::Error::validation("invalid email").into())
         }
     }
 }
@@ -35,7 +35,7 @@ pub fn is_valid_slug<'v>(string: &str) -> form::Result<'v, ()> {
 
     match cmp {
         true => Ok(()),
-        false => return Err(rocket::form::Error::validation("invalid slug").into()),
+        false => Err(rocket::form::Error::validation("invalid slug").into()),
     }
 }
 

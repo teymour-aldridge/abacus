@@ -158,9 +158,9 @@ pub async fn do_create_team(
 
         take_snapshot(&tid, &mut* conn);
 
-        return GenerallyUsefulResponse::Success(Redirect::to(format!(
+        GenerallyUsefulResponse::Success(Redirect::to(format!(
             "/tournaments/{}/participants",
             tournament.id
-        )));
+        )))
     }).await.unwrap()
 }

@@ -146,9 +146,9 @@ pub async fn do_edit_round(
 
         take_snapshot(&tid, &mut *conn);
 
-        return GenerallyUsefulResponse::Success(Redirect::to(format!(
+        GenerallyUsefulResponse::Success(Redirect::to(format!(
             "/tournaments/{tid}/rounds"
-        )));
+        )))
     })
     .await
     .unwrap()

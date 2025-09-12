@@ -93,9 +93,7 @@ pub fn make_draw(
         for score in min_score..=max_score {
             let b_rs = problem
                 .add(variable().name(format!("b_{room}_{score}")).binary());
-            variable_map
-                .room_brackets
-                .insert((room, score), b_rs);
+            variable_map.room_brackets.insert((room, score), b_rs);
         }
     }
 

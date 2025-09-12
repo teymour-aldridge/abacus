@@ -287,6 +287,8 @@ diesel::table! {
         elim_ballots_require_speaks -> Bool,
         institution_penalty -> Nullable<BigInt>,
         history_penalty -> Nullable<BigInt>,
+        pullup_metrics -> Text,
+        repeat_pullup_penalty -> BigInt,
         team_standings_metrics -> Text,
         speaker_standings_metrics -> Text,
         exclude_from_speaker_standings_after -> Nullable<BigInt>,

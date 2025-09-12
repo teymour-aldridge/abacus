@@ -16,6 +16,7 @@ use crate::{
     tournaments::{Tournament, config::TeamMetric, rounds::Round, teams::Team},
 };
 
+pub mod general;
 pub mod random;
 
 /// The error messages will be shown on the application page, and therefore

@@ -13,6 +13,7 @@ use crate::tournaments::standings::compute::metrics::points::TeamPointsComputer;
 use crate::tournaments::standings::compute::metrics::tss::TotalTeamSpeakerScoreComputer;
 use crate::tournaments::teams::Team;
 
+pub mod history;
 pub mod metrics;
 
 pub struct TournamentTeamStandings {
@@ -76,5 +77,14 @@ impl TournamentTeamStandings {
             metrics_of_team,
             sorted: teams,
         }
+    }
+
+    pub fn points_of_team(&self, team: &String) -> Option<i64> {
+        self.metrics_of_team.get(team).and_then(|t| t.iter().find_map(|metric| {
+            match metric {
+                crate::tournaments::standings::compute::metrics::MetricValue::Points(p) => Some(*p),
+                _ => None,
+            }
+        }))
     }
 }

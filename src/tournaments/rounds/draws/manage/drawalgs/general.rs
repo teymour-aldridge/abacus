@@ -85,7 +85,7 @@ pub fn make_draw(
             );
             variable_map
                 .team_brackets
-                .insert((team.id.clone(), score as usize), y_ts);
+                .insert((team.id.clone(), score), y_ts);
         }
     }
 
@@ -95,7 +95,7 @@ pub fn make_draw(
                 .add(variable().name(format!("b_{room}_{score}")).binary());
             variable_map
                 .room_brackets
-                .insert((room, score as usize), b_rs);
+                .insert((room, score), b_rs);
         }
     }
 
@@ -104,7 +104,7 @@ pub fn make_draw(
         variable_map.bracket_size.insert(bracket, z_b);
     }
 
-    let _every_time_assigned_exactly_once = {
+    {
         for team in &input.teams {
             let sum = {
                 let mut expr = Expression::default();
@@ -126,7 +126,7 @@ pub fn make_draw(
         }
     };
 
-    let _one_team_per_position = {
+    {
         for p in 0..teams_per_room {
             for room in 0..rooms {
                 let mut expr = Expression::default();
@@ -143,7 +143,7 @@ pub fn make_draw(
         }
     };
 
-    let _one_bracket_per_team = {
+    {
         for team in &input.teams {
             let mut sum = Expression::default();
 
@@ -158,51 +158,49 @@ pub fn make_draw(
         }
     };
 
-    let _no_pull_downs = {
+    {
         for team in &input.teams {
             for bracket in min_score
                 ..(standings.points_of_team(&team.id).unwrap() as usize)
             {
                 constraints.push(good_lp::constraint::eq(
-                    variable_map
+                    *variable_map
                         .team_brackets
                         .get(&(team.id.clone(), bracket))
-                        .unwrap()
-                        .clone(),
+                        .unwrap(),
                     0,
                 ));
             }
         }
     };
 
-    let _bracket_size_constraints = {
+    {
         for score in min_score..=max_score {
             let mut sum = Expression::default();
             for room in 0..rooms {
                 sum += variable_map.room_brackets.get(&(room, score)).unwrap();
             }
             constraints.push(good_lp::constraint::eq(
-                variable_map.bracket_size.get(&score).unwrap().clone(),
+                *variable_map.bracket_size.get(&score).unwrap(),
                 sum,
             ));
 
             let mut sum = Expression::default();
             for team in &input.teams {
-                sum += variable_map
+                sum += *variable_map
                     .team_brackets
                     .get(&(team.id.clone(), score))
-                    .unwrap()
-                    .clone();
+                    .unwrap();
             }
             constraints.push(good_lp::constraint::eq(
-                variable_map.bracket_size.get(&score).unwrap().clone()
+                *variable_map.bracket_size.get(&score).unwrap()
                     * (teams_per_room as f64),
                 sum,
             ));
         }
     };
 
-    let _room_team_count = {
+    {
         for room in 0..rooms {
             let mut teams_assigned_to_this_room = Expression::default();
             for team in &input.teams {
@@ -220,7 +218,7 @@ pub fn make_draw(
         }
     };
 
-    let _team_brackets_match_room_brackets = {
+    {
         for team in &input.teams {
             for room in 0..rooms {
                 for score in min_score..=max_score {
@@ -229,17 +227,15 @@ pub fn make_draw(
                             .name(format!("slack_{}_{room}_{score}", team.id)),
                     );
 
-                    let y_ts = variable_map
+                    let y_ts = *variable_map
                         .team_brackets
                         .get(&(team.id.clone(), score))
-                        .unwrap()
-                        .clone();
+                        .unwrap();
 
-                    let b_rs = variable_map
+                    let b_rs = *variable_map
                         .room_brackets
                         .get(&(room, score))
-                        .unwrap()
-                        .clone();
+                        .unwrap();
 
                     constraints.push(constraint!(slack <= 1 - (y_ts - b_rs)));
                     constraints.push(constraint!(slack <= 1 + (y_ts - b_rs)));
@@ -247,11 +243,10 @@ pub fn make_draw(
                     constraints.push(constraint!(slack >= 1 - (y_ts + b_rs)));
 
                     for position in 0..teams_per_room {
-                        let x_irp = variable_map
+                        let x_irp = *variable_map
                             .team_allocs
                             .get(&(team.id.clone(), room, position))
-                            .unwrap()
-                            .clone();
+                            .unwrap();
 
                         constraints.push(constraint!(x_irp <= slack));
                     }
@@ -276,11 +271,10 @@ pub fn make_draw(
                     + rand::rng().sample(
                         rand::distr::Uniform::new(0.0f64, 0.1f64).unwrap(),
                     ))
-                    * variable_map
+                    * *variable_map
                         .team_brackets
                         .get(&(team.id.clone(), score))
-                        .unwrap()
-                        .clone();
+                        .unwrap();
             }
         }
 
@@ -301,11 +295,10 @@ pub fn make_draw(
                         + rand::rng().sample(
                             rand::distr::Uniform::new(0.0f64, 0.1f64).unwrap(),
                         ))
-                        * variable_map
+                        * *variable_map
                             .team_allocs
                             .get(&(team.id.clone(), room, position))
-                            .unwrap()
-                            .clone();
+                            .unwrap();
                 }
             }
         }

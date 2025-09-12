@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
-use diesel::{Connection, connection::LoadConnection, sqlite::Sqlite};
+use diesel::{connection::LoadConnection, sqlite::Sqlite};
 use rand::SeedableRng;
 use uuid::Uuid;
 
@@ -47,7 +47,7 @@ pub fn do_draw(
     draw_generator: Box<
         dyn Fn(DrawInput) -> Result<Vec<(Vec<Team>, Vec<Team>)>, MakeDrawError>,
     >,
-    conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+    conn: &mut impl LoadConnection<Backend = Sqlite>,
     override_prior_ticket: bool,
 ) -> Result<String, MakeDrawError> {
     let ticket_id = conn
@@ -79,7 +79,7 @@ pub fn do_draw(
                     ))
                     .execute(conn)
                     .unwrap();
-                return Ok(Ok(id));
+                Ok(Ok(id))
             } else if previous_ticket_seq.is_some() && !override_prior_ticket {
                 return Ok(Err(MakeDrawError::AlreadyInProgress));
             } else {

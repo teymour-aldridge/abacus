@@ -92,9 +92,7 @@ pub struct NestedDataItem {
 
 impl TournamentParticipants {
     fn for_tabulator(self) -> Vec<NestedDataItem> {
-        self.teams
-            .into_iter()
-            .map(|(_id, team)| NestedDataItem {
+        self.teams.into_values().map(|team| NestedDataItem {
                 team: STeam {
                     id: team.id.clone(),
                     name: team.name,
@@ -116,7 +114,7 @@ impl TournamentParticipants {
                     let speakers =
                         self.team_speakers.get(&team.id).unwrap_or(&empty);
                     speakers
-                        .into_iter()
+                        .iter()
                         .map(|speaker| {
                             let speaker =
                                 self.speakers.get(speaker).unwrap().clone();
@@ -140,7 +138,7 @@ impl TournamentParticipants {
 
     pub fn load(
         tid: &str,
-        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+        conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> TournamentParticipants {
         let teams: HashMap<String, Team> = tournament_teams::table
             .filter(tournament_teams::tournament_id.eq(&tid))

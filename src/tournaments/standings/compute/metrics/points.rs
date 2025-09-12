@@ -14,10 +14,7 @@ impl Metric<MetricValue> for TeamPointsComputer {
     fn compute(
         &self,
         tid: &str,
-        conn: &mut (
-                 impl diesel::Connection<Backend = diesel::sqlite::Sqlite>
-                 + diesel::connection::LoadConnection
-             ),
+        conn: &mut impl diesel::connection::LoadConnection<Backend = diesel::sqlite::Sqlite>,
     ) -> std::collections::HashMap<String, MetricValue> {
         let (team, other_team) = diesel::alias!(
             tournament_teams as team,

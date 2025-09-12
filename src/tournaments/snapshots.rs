@@ -49,7 +49,7 @@ pub struct SnapshotData {}
 // todo: can simplify this using the schema table
 pub fn take_snapshot(
     tid: &str,
-    conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+    conn: &mut impl LoadConnection<Backend = Sqlite>,
 ) -> String {
     let latest = tournament_snapshots::table
         .order_by(tournament_snapshots::created_at.desc())

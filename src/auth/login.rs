@@ -79,9 +79,8 @@ pub async fn do_login(
         };
 
     let parsed_hash = PasswordHash::new(&user1.password_hash).unwrap();
-    if !Argon2::default()
-        .verify_password(form.password.as_bytes(), &parsed_hash)
-        .is_ok()
+    if Argon2::default()
+        .verify_password(form.password.as_bytes(), &parsed_hash).is_err()
     {
         // todo: password rate limiting
         return GenerallyUsefulResponse::BadRequest(
@@ -100,7 +99,7 @@ pub async fn do_login(
 
     GenerallyUsefulResponse::Success({
         let redirect_to = if let Some(url) =
-            next.map(|url| url.parse::<Url>().ok()).flatten()
+            next.and_then(|url| url.parse::<Url>().ok())
         {
             url.path().to_string()
         } else {

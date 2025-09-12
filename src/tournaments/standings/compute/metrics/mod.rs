@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use diesel::prelude::*;
-use diesel::{Connection, connection::LoadConnection, sqlite::Sqlite};
+use diesel::{connection::LoadConnection, sqlite::Sqlite};
 
 use crate::schema::tournament_rounds;
 
@@ -13,7 +13,7 @@ pub trait Metric<V> {
     fn compute(
         &self,
         tid: &str,
-        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+        conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> HashMap<String, V>;
 }
 

@@ -163,7 +163,7 @@ pub async fn draw_updates(
     let pool1 = pool.clone();
     let (_round, draw) = match spawn_blocking(move || {
         let mut conn = pool1.get().unwrap();
-        match tournament_draws::table
+        tournament_draws::table
             .filter(
                 tournament_draws::tournament_id
                     .eq(&tournament_id)
@@ -173,11 +173,7 @@ pub async fn draw_updates(
             .filter(tournament_rounds::id.eq(&round_id))
             .first::<(Draw, Round)>(&mut conn)
             .optional()
-            .unwrap()
-        {
-            Some(t) => Some(t),
-            None => return None,
-        }
+            .unwrap().map(|t| t)
     })
     .await
     .unwrap()
@@ -270,7 +266,7 @@ pub async fn submit_cmd_tab_dir<'r>(
     let apply_move = apply_move(judge_no, debate_no, role, &draw, &mut *conn);
     match apply_move {
         Ok(()) => {
-            return FallibleResponse::Ok({
+            FallibleResponse::Ok({
                 let repr = DrawRepr::of_draw(draw, &mut *conn);
                 let teams = tournament_teams::table
                     .filter(tournament_teams::tournament_id.eq(&tournament.id))
@@ -286,17 +282,17 @@ pub async fn submit_cmd_tab_dir<'r>(
                     teams: &teams,
                 };
                 table.render()
-            });
+            })
         }
         Err(e) => {
-            return FallibleResponse::BadReq(
+            FallibleResponse::BadReq(
                 ErrorAlert {
                     msg: format!("Error evaluating command: {e}"),
                 }
                 .render(),
-            );
+            )
         }
-    };
+    }
 }
 
 fn apply_move(
@@ -304,7 +300,7 @@ fn apply_move(
     debate_no: Option<u32>,
     role: Role,
     draw: &Draw,
-    conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+    conn: &mut impl LoadConnection<Backend = Sqlite>,
 ) -> Result<(), String> {
     let existing_alloc =
         match tournament_judges::table

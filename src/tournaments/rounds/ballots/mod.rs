@@ -1,6 +1,6 @@
 use chrono::NaiveDateTime;
 use diesel::{
-    Connection, Queryable, connection::LoadConnection, prelude::*,
+    Queryable, connection::LoadConnection, prelude::*,
     sqlite::Sqlite,
 };
 use itertools::Itertools;
@@ -19,7 +19,7 @@ impl BallotRepr {
 
     pub fn fetch(
         ballot_id: &str,
-        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+        conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Self {
         let ballot = tournament_ballots::table
             .filter(tournament_ballots::id.eq(ballot_id))
@@ -48,8 +48,7 @@ impl BallotRepr {
         self.scores
             .iter()
             .filter(|s| s.team_id == team_id)
-            .sorted_by_key(|s| s.speaker_position)
-            .map(Clone::clone)
+            .sorted_by_key(|s| s.speaker_position).cloned()
             .collect()
     }
 }

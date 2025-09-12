@@ -140,7 +140,6 @@ pub async fn do_create_tournament(
     assert_eq!(n, 1);
 
     GenerallyUsefulResponse::Success(Redirect::to(format!(
-        "/tournaments/{}",
-        tid
+        "/tournaments/{tid}"
     )))
 }

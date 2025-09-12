@@ -92,7 +92,7 @@ pub async fn do_register(
         Some(user) => {
             let is_email_problem = user.email == form.email;
 
-            return GenerallyUsefulResponse::BadRequest(
+            GenerallyUsefulResponse::BadRequest(
                 Page::new()
                     .body(maud! {
                         ErrorAlert msg=(match is_email_problem {
@@ -102,7 +102,7 @@ pub async fn do_register(
                         ". Please return to the previous page and try again.");
                     })
                     .render(),
-            );
+            )
         }
         None => {
             let salt = SaltString::generate(&mut OsRng);

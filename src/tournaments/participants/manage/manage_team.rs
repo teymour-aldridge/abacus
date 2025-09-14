@@ -7,7 +7,7 @@ use crate::{
     auth::User,
     permission::IsTabDirector,
     schema::{tournament_institutions, tournament_teams},
-    state::{Conn, LockedConn},
+    state::{Conn, ThreadSafeConn},
     template::Page,
     tournaments::{
         Tournament,
@@ -20,12 +20,12 @@ use crate::{
 
 #[get("/tournaments/<tournament_id>/teams/<team_id>")]
 pub async fn manage_team_page(
-    user: User,
+    user: User<true>,
     tournament_id: &str,
     team_id: &str,
     tournament: Tournament,
-    mut conn: LockedConn<'_>,
-    _tab: IsTabDirector,
+    mut conn: Conn<true>,
+    _tab: IsTabDirector<true>,
 ) -> Option<Rendered<String>> {
     let team = match tournament_teams::table
         .filter(
@@ -73,12 +73,12 @@ pub async fn manage_team_page(
 
 #[get("/tournaments/<tournament_id>/teams/<team_id>/edit")]
 pub async fn edit_team_details_page(
-    user: User,
+    user: User<true>,
     tournament_id: &str,
     team_id: &str,
     tournament: Tournament,
-    mut conn: LockedConn<'_>,
-    _tab: IsTabDirector,
+    mut conn: Conn<true>,
+    _tab: IsTabDirector<true>,
 ) -> Option<Rendered<String>> {
     let team = match tournament_teams::table
         .filter(
@@ -150,18 +150,18 @@ pub async fn edit_team_details_page(
 
 #[get("/tournaments/<tournament_id>/teams/<team_id>/edit", data = "<form>")]
 pub async fn do_edit_team_details(
-    user: User,
+    user: User<true>,
     tournament_id: &str,
     team_id: &str,
     tournament: Tournament,
-    conn: Conn,
-    _tab: IsTabDirector,
+    conn: ThreadSafeConn<true>,
+    _tab: IsTabDirector<true>,
     form: Form<CreateTeamForm>,
 ) -> GenerallyUsefulResponse {
     let tournament_id = tournament_id.to_string();
     let team_id = team_id.to_string();
     spawn_blocking(move || {
-        let mut conn = conn.get_sync();
+        let mut conn = conn.inner.try_lock().unwrap();
 
         let team = match tournament_teams::table
             .filter(

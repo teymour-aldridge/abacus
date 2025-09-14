@@ -9,13 +9,16 @@ use rocket::{FromForm, form::Form, get, post, response::Redirect};
 use serde::Serialize;
 use uuid::Uuid;
 
+use crate::state::Conn;
 use crate::util_resp::GenerallyUsefulResponse;
 use crate::validation::*;
 use crate::widgets::alert::ErrorAlert;
-use crate::{auth::User, schema::users, state::LockedConn, template::Page};
+use crate::{auth::User, schema::users, template::Page};
 
 #[get("/register")]
-pub async fn register_page(user: Option<User>) -> GenerallyUsefulResponse {
+pub async fn register_page(
+    user: Option<User<true>>,
+) -> GenerallyUsefulResponse {
     if user.is_some() {
         // todo: flash message
         return GenerallyUsefulResponse::BadRequest(
@@ -25,6 +28,7 @@ pub async fn register_page(user: Option<User>) -> GenerallyUsefulResponse {
 
     GenerallyUsefulResponse::BadRequest(
         Page::new()
+            .user_opt(user)
             .body(maud! {
                 h1 {"Register"}
                 form method="post" class="mt-4" {
@@ -67,8 +71,8 @@ pub struct RegisterForm<'v> {
 #[post("/register", data = "<form>")]
 // todo: spawn_blocking for function?
 pub async fn do_register(
-    user: Option<User>,
-    mut conn: LockedConn<'_>,
+    user: Option<User<true>>,
+    mut conn: Conn<true>,
     form: Form<RegisterForm<'_>>,
 ) -> GenerallyUsefulResponse {
     if user.is_some() {
@@ -84,7 +88,7 @@ pub async fn do_register(
                 .eq(&form.username)
                 .or(users::email.eq(&form.email)),
         )
-        .first::<User>(&mut *conn)
+        .first::<User<true>>(&mut *conn)
         .optional()
         .unwrap();
 
@@ -93,7 +97,7 @@ pub async fn do_register(
             let is_email_problem = user.email == form.email;
 
             GenerallyUsefulResponse::BadRequest(
-                Page::new()
+                Page::<_, true>::new()
                     .body(maud! {
                         ErrorAlert msg=(match is_email_problem {
                             true => "That email is already taken",

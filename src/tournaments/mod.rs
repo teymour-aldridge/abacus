@@ -90,16 +90,17 @@ impl<'r> FromRequest<'r> for Tournament {
             }
         };
 
-        let conn = try_outcome!(
-            request.guard::<Conn>().await.map_error(|(t, _)| (t, ()))
+        let mut conn = try_outcome!(
+            request
+                .guard::<Conn<true>>()
+                .await
+                .map_error(|(t, _)| (t, ()))
         );
 
         let tournament = spawn_blocking(move || {
-            let mut locked = conn.get_sync();
-
             tournaments::table
                 .filter(tournaments::id.eq(tid))
-                .first::<Tournament>(&mut *locked)
+                .first::<Tournament>(&mut *conn)
                 .optional()
                 .expect("failed to execute query")
         })

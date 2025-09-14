@@ -1,17 +1,16 @@
 use chrono::{Days, NaiveDateTime, Utc};
 use diesel::prelude::*;
 use rocket::{
-    Request, State,
+    Request,
     http::{Cookie, CookieJar, Status},
     outcome::try_outcome,
     request::{self, FromRequest},
 };
 use serde::{Deserialize, Serialize};
-use tokio::task::spawn_blocking;
 
 use crate::{
     schema::{self},
-    state::{Conn, DbPool},
+    state::ThreadSafeConn,
 };
 
 pub mod login;
@@ -20,7 +19,7 @@ pub mod register;
 pub const LOGIN_COOKIE: &str = "jeremy_bearimy";
 
 #[derive(Debug, Queryable, Serialize, Deserialize, Clone)]
-pub struct User {
+pub struct User<const TX: bool> {
     pub id: String,
     pub email: String,
     pub username: String,
@@ -28,7 +27,7 @@ pub struct User {
     pub created_at: NaiveDateTime,
 }
 
-impl User {
+impl<const TX: bool> User<TX> {
     pub fn validate_username(username: &str) -> bool {
         (username.chars().count() > 3)
             && username.chars().all(|c| c.is_ascii() && c.is_alphabetic())
@@ -53,7 +52,7 @@ pub struct LoginSession {
 }
 
 #[rocket::async_trait]
-impl<'r> FromRequest<'r> for User {
+impl<'r, const TX: bool> FromRequest<'r> for User<TX> {
     type Error = AuthError;
 
     async fn from_request(
@@ -61,12 +60,12 @@ impl<'r> FromRequest<'r> for User {
     ) -> request::Outcome<Self, AuthError> {
         let conn = try_outcome!(
             request
-                .guard::<Conn>()
+                .guard::<ThreadSafeConn<TX>>()
                 .await
                 .map_error(|(t, _)| (t, AuthError::NoDatabase))
         );
 
-        let mut conn = conn.get().await;
+        let mut conn = conn.inner.try_lock().unwrap();
 
         let login_cookie = match request.cookies().get_private(LOGIN_COOKIE) {
             Some(cookie) => cookie,
@@ -90,7 +89,7 @@ impl<'r> FromRequest<'r> for User {
                 }
             };
 
-        let user: Option<User> = match schema::users::table
+        let user: Option<User<TX>> = match schema::users::table
             .filter(schema::users::id.eq(login.id))
             .first(&mut *conn)
             .optional()
@@ -114,76 +113,6 @@ impl<'r> FromRequest<'r> for User {
                 ));
             }
         }
-    }
-}
-
-pub struct UserNoTx(pub User);
-
-#[rocket::async_trait]
-impl<'r> FromRequest<'r> for UserNoTx {
-    type Error = AuthError;
-
-    async fn from_request(
-        request: &'r Request<'_>,
-    ) -> request::Outcome<Self, AuthError> {
-        let pool = try_outcome!(
-            request
-                .guard::<&State<DbPool>>()
-                .await
-                .map_error(|(t, _)| (t, AuthError::NoDatabase))
-        );
-        let pool: DbPool = pool.inner().clone();
-
-        let login_cookie = match request.cookies().get_private(LOGIN_COOKIE) {
-            Some(cookie) => cookie,
-            None => {
-                return rocket::request::Outcome::Forward(Status::Unauthorized);
-            }
-        };
-
-        let login: LoginSession =
-            match serde_json::from_str::<LoginSession>(login_cookie.value()) {
-                Ok(t) if chrono::Utc::now().naive_utc() < t.expiry => t,
-                Err(_) | Ok(_) => {
-                    // TODO: log the error so that these can be easily resolved
-
-                    // we need to remove cookie if incorrectly formatted, as they
-                    // will otherwise persist and prevent the user from logging in
-                    request.cookies().remove_private(LOGIN_COOKIE);
-                    return rocket::request::Outcome::Forward(
-                        Status::Unauthorized,
-                    );
-                }
-            };
-
-        spawn_blocking(move || {
-            let mut conn = pool.get().unwrap();
-
-            let user: Option<User> = match schema::users::table
-                .filter(schema::users::id.eq(login.id))
-                .first(&mut conn)
-                .optional()
-            {
-                Ok(Some(user)) => Some(user),
-                Ok(None) => None,
-                Err(_) => {
-                    return rocket::request::Outcome::Error((
-                        Status::InternalServerError,
-                        AuthError::NoDatabase,
-                    ));
-                }
-            };
-
-            match user {
-                Some(user) => rocket::request::Outcome::Success(UserNoTx(user)),
-                None => rocket::request::Outcome::Error((
-                    Status::Unauthorized,
-                    AuthError::Unauthorized,
-                )),
-            }
-        })
-        .await
-        .unwrap()
     }
 }
 

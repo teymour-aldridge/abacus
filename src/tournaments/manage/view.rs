@@ -12,8 +12,8 @@ use crate::{
 pub async fn admin_view_tournament(
     _tid: &str,
     tournament: Tournament,
-    _tab: IsTabDirector,
-    user: User,
+    _tab: IsTabDirector<true>,
+    user: User<true>,
 ) -> Rendered<String> {
     Page::new()
         .user(user)

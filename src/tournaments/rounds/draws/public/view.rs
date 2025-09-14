@@ -7,7 +7,7 @@ use rocket::get;
 use crate::{
     auth::User,
     schema::{tournament_draws, tournament_teams},
-    state::LockedConn,
+    state::Conn,
     template::Page,
     tournaments::{
         Tournament,
@@ -20,8 +20,8 @@ use crate::{
 pub async fn view_active_draw_page(
     tournament_id: &str,
     tournament: Tournament,
-    user: Option<User>,
-    mut conn: LockedConn<'_>,
+    user: Option<User<true>>,
+    mut conn: Conn<true>,
 ) -> Option<Rendered<String>> {
     let rounds = Round::current_rounds(tournament_id, &mut *conn);
 

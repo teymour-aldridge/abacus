@@ -7,7 +7,7 @@ use crate::{auth::User, template::Page, tournaments::Tournament};
 pub async fn public_tournament_page(
     _tournament_id: &str,
     tournament: Tournament,
-    user: Option<User>,
+    user: Option<User<true>>,
 ) -> Rendered<String> {
     Page::new()
         .tournament(tournament.clone())

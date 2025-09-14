@@ -1,13 +1,11 @@
 use diesel::prelude::*;
 use hypertext::prelude::*;
 use rocket::{form::Form, get, response::Redirect};
-use tokio::task::spawn_blocking;
 
 use crate::{
     auth::User,
-    permission::IsTabDirector,
     schema::{tournament_institutions, tournament_teams},
-    state::{Conn, ThreadSafeConn},
+    state::Conn,
     template::Page,
     tournaments::{
         Tournament,
@@ -15,7 +13,9 @@ use crate::{
         snapshots::take_snapshot,
         teams::Team,
     },
-    util_resp::GenerallyUsefulResponse,
+    util_resp::{
+        StandardResponse, bad_request, err_not_found, see_other_ok, success,
+    },
 };
 
 #[get("/tournaments/<tournament_id>/teams/<team_id>")]
@@ -23,10 +23,11 @@ pub async fn manage_team_page(
     user: User<true>,
     tournament_id: &str,
     team_id: &str,
-    tournament: Tournament,
     mut conn: Conn<true>,
-    _tab: IsTabDirector<true>,
-) -> Option<Rendered<String>> {
+) -> StandardResponse {
+    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
+    tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
+
     let team = match tournament_teams::table
         .filter(
             tournament_teams::tournament_id
@@ -38,10 +39,10 @@ pub async fn manage_team_page(
         .unwrap()
     {
         Some(team) => team,
-        None => return None,
+        None => return err_not_found(),
     };
 
-    Some(
+    success(
         Page::new()
             .user(user)
             .tournament(tournament.clone())
@@ -76,10 +77,11 @@ pub async fn edit_team_details_page(
     user: User<true>,
     tournament_id: &str,
     team_id: &str,
-    tournament: Tournament,
     mut conn: Conn<true>,
-    _tab: IsTabDirector<true>,
-) -> Option<Rendered<String>> {
+) -> StandardResponse {
+    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
+    tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
+
     let team = match tournament_teams::table
         .filter(
             tournament_teams::tournament_id
@@ -91,16 +93,15 @@ pub async fn edit_team_details_page(
         .unwrap()
     {
         Some(team) => team,
-        None => return None,
+        None => return err_not_found(),
     };
 
-    // todo: this could be a guard
     let institutions = tournament_institutions::table
         .filter(tournament_institutions::tournament_id.eq(&tournament.id))
         .load::<Institution>(&mut *conn)
         .unwrap();
 
-    Some(
+    success(
         Page::new()
             .user(user)
             .tournament(tournament)
@@ -153,91 +154,84 @@ pub async fn do_edit_team_details(
     user: User<true>,
     tournament_id: &str,
     team_id: &str,
-    tournament: Tournament,
-    conn: ThreadSafeConn<true>,
-    _tab: IsTabDirector<true>,
+    mut conn: Conn<true>,
     form: Form<CreateTeamForm>,
-) -> GenerallyUsefulResponse {
-    let tournament_id = tournament_id.to_string();
-    let team_id = team_id.to_string();
-    spawn_blocking(move || {
-        let mut conn = conn.inner.try_lock().unwrap();
+) -> StandardResponse {
+    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
+    tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
 
-        let team = match tournament_teams::table
-            .filter(
-                tournament_teams::tournament_id
-                    .eq(tournament_id)
-                    .and(tournament_teams::id.eq(team_id)),
-            )
-            .first::<Team>(&mut *conn)
-            .optional()
-            .unwrap()
-        {
-            Some(team) => team,
-            None => {
-                return GenerallyUsefulResponse::BadRequest(
-                    Page::new()
-                        .tournament(tournament)
-                        .user(user)
-                        .body(maud! {
-                            p {
-                                "Error: no such team."
-                            }
-                        })
-                        .render(),
-                );
-            }
-        };
+    let team = match tournament_teams::table
+        .filter(
+            tournament_teams::tournament_id
+                .eq(tournament_id)
+                .and(tournament_teams::id.eq(team_id)),
+        )
+        .first::<Team>(&mut *conn)
+        .optional()
+        .unwrap()
+    {
+        Some(team) => team,
+        None => {
+            return bad_request(
+                Page::new()
+                    .tournament(tournament)
+                    .user(user)
+                    .body(maud! {
+                        p {
+                            "Error: no such team."
+                        }
+                    })
+                    .render(),
+            );
+        }
+    };
 
-        let id = match form.institution_id.as_str() {
-            "-----" => None,
-            t => Some(t),
-        };
+    let id = match form.institution_id.as_str() {
+        "-----" => None,
+        t => Some(t),
+    };
 
-        let inst = match id {
-            Some(inst) => {
-                match tournament_institutions::table
-                    .filter(tournament_institutions::id.eq(inst))
-                    .first::<Institution>(&mut *conn)
-                    .optional()
-                    .unwrap()
-                {
-                    Some(inst) => Some(inst),
-                    None => {
-                        return GenerallyUsefulResponse::BadRequest(
-                            Page::new()
-                                .user(user)
-                                .tournament(tournament)
-                                .body(maud! {
-                                    p {
-                                        "Error: that institution does not exist."
-                                    }
-                                })
-                                .render(),
-                        );
-                    }
+    let inst = match id {
+        Some(inst) => {
+            match tournament_institutions::table
+                .filter(tournament_institutions::id.eq(inst))
+                .first::<Institution>(&mut *conn)
+                .optional()
+                .unwrap()
+            {
+                Some(inst) => Some(inst),
+                None => {
+                    return bad_request(
+                        Page::new()
+                            .user(user)
+                            .tournament(tournament)
+                            .body(maud! {
+                                p {
+                                    "Error: that institution does not exist."
+                                }
+                            })
+                            .render(),
+                    );
                 }
             }
-            None => None,
-        };
+        }
+        None => None,
+    };
 
-        diesel::update(
-            tournament_teams::table.filter(tournament_teams::id.eq(&team.id)),
-        )
-        .set((
-            tournament_teams::name.eq(&form.name),
-            tournament_teams::institution_id.eq(inst.map(|t| t.id)),
-        ))
-        .execute(&mut *conn)
-        .unwrap();
+    diesel::update(
+        tournament_teams::table.filter(tournament_teams::id.eq(&team.id)),
+    )
+    .set((
+        tournament_teams::name.eq(&form.name),
+        tournament_teams::institution_id.eq(inst.map(|t| t.id)),
+    ))
+    .execute(&mut *conn)
+    .unwrap();
 
-        take_snapshot(&tournament.id, &mut *conn);
+    take_snapshot(&tournament.id, &mut *conn);
 
-        GenerallyUsefulResponse::SeeOther(Redirect::to(format!(
-            "/tournaments/{}/teams/{}",
-            tournament.id, team.id
-        )))
-    })
-    .await
-    .unwrap()
+    see_other_ok(Redirect::to(format!(
+        "/tournaments/{}/teams/{}",
+        tournament.id, team.id
+    )))
 }

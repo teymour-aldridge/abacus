@@ -4,22 +4,23 @@ use rocket::get;
 
 use crate::{
     auth::User,
-    permission::IsTabDirector,
     schema::tournament_rounds,
     state::Conn,
     template::Page,
     tournaments::{Tournament, rounds::Round},
+    util_resp::{StandardResponse, err_not_found, success},
 };
 
 #[get("/tournaments/<tid>/rounds/<rid>")]
 pub async fn view_tournament_round_page(
     tid: &str,
     rid: &str,
-    tournament: Tournament,
     mut conn: Conn<true>,
     user: User<true>,
-    _dir: IsTabDirector<true>,
-) -> Option<Rendered<String>> {
+) -> StandardResponse {
+    let tournament = Tournament::fetch(&tid, &mut *conn)?;
+    tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
+
     let round = match tournament_rounds::table
         .filter(
             tournament_rounds::tournament_id
@@ -31,10 +32,10 @@ pub async fn view_tournament_round_page(
         .unwrap()
     {
         Some(t) => t,
-        None => return None,
+        None => return err_not_found(),
     };
 
-    Some(
+    success(
         Page::new()
             // todo: can remove this clone
             .tournament(tournament.clone())

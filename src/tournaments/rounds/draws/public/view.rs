@@ -14,15 +14,17 @@ use crate::{
         rounds::{Round, draws::DrawRepr},
         teams::Team,
     },
+    util_resp::{StandardResponse, success},
 };
 
 #[get("/tournaments/<tournament_id>/draw")]
 pub async fn view_active_draw_page(
     tournament_id: &str,
-    tournament: Tournament,
     user: Option<User<true>>,
     mut conn: Conn<true>,
-) -> Option<Rendered<String>> {
+) -> StandardResponse {
+    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
+
     let rounds = Round::current_rounds(tournament_id, &mut *conn);
 
     let draws = tournament_draws::table
@@ -47,7 +49,7 @@ pub async fn view_active_draw_page(
 
     // todo: send websocket msg and subscribe when new draw released (page can
     // then subscribe and trigger a reload)
-    Some(
+    success(
         Page::new()
             .user_opt(user)
             .tournament(tournament.clone())

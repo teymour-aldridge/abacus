@@ -2,20 +2,25 @@ use hypertext::prelude::*;
 use rocket::get;
 
 use crate::{
-    auth::User, permission::IsTabDirector, template::Page,
+    auth::User,
+    state::Conn,
+    template::Page,
     tournaments::Tournament,
+    util_resp::{StandardResponse, success},
 };
 
-#[get("/tournaments/<_tid>", rank = 1)]
+#[get("/tournaments/<tid>", rank = 1)]
 /// Returns the tournament view for an administrator. We use lower-ranking
 /// routes to handle other cases.
 pub async fn admin_view_tournament(
-    _tid: &str,
-    tournament: Tournament,
-    _tab: IsTabDirector<true>,
+    tid: &str,
     user: User<true>,
-) -> Rendered<String> {
-    Page::new()
+    mut conn: Conn<true>,
+) -> StandardResponse {
+    let tournament = Tournament::fetch(tid, &mut *conn)?;
+    tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
+
+    success(Page::new()
         .user(user)
         .tournament(tournament.clone())
         .body(maud! {
@@ -31,5 +36,5 @@ pub async fn admin_view_tournament(
                 }
             }
         })
-        .render()
+        .render())
 }

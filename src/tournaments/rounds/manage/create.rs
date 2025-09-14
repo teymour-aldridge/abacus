@@ -13,12 +13,11 @@ use uuid::Uuid;
 
 use crate::{
     auth::User,
-    permission::IsTabDirector,
     schema::{tournament_break_categories, tournament_rounds},
     state::Conn,
     template::Page,
     tournaments::{Tournament, categories::BreakCategory},
-    util_resp::GenerallyUsefulResponse,
+    util_resp::{StandardResponse, err_not_found, see_other_ok, success},
 };
 
 #[get("/tournaments/<tid>/rounds/create")]
@@ -26,16 +25,17 @@ pub async fn create_new_round(
     tid: &str,
     mut conn: Conn<true>,
     user: User<true>,
-    tournament: Tournament,
-    _tab: IsTabDirector<true>,
-) -> Rendered<String> {
+) -> StandardResponse {
+    let tournament = Tournament::fetch(tid, &mut *conn)?;
+    tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
+
     let cats = tournament_break_categories::table
         .filter(tournament_break_categories::tournament_id.eq(&tournament.id))
         .order_by(tournament_break_categories::priority.asc())
         .load::<BreakCategory>(&mut *conn)
         .unwrap();
 
-    Page::new()
+    success(Page::new()
         .tournament(tournament)
         .user(user)
         .body(maud! {
@@ -56,18 +56,19 @@ pub async fn create_new_round(
                 }
             }
         })
-        .render()
+        .render())
 }
 
-#[get("/tournaments/<_tid>/rounds/<category_id>/create")]
+#[get("/tournaments/<tid>/rounds/<category_id>/create")]
 pub async fn create_new_round_of_specific_category_page(
-    _tid: &str,
+    tid: &str,
     category_id: &str,
     mut conn: Conn<true>,
     user: User<true>,
-    tournament: Tournament,
-    _tab: IsTabDirector<true>,
-) -> Option<Rendered<String>> {
+) -> StandardResponse {
+    let tournament = Tournament::fetch(&tid, &mut *conn)?;
+    tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
+
     let () = {
         if category_id == "in_round" {
         } else {
@@ -81,12 +82,12 @@ pub async fn create_new_round_of_specific_category_page(
             .get_result::<bool>(&mut *conn)
             .unwrap();
             if !cat_exists {
-                return None;
+                return err_not_found();
             }
         }
     };
 
-    Some(
+    success(
         Page::new()
             .tournament(tournament)
             .user(user)
@@ -134,15 +135,17 @@ pub struct CreateNewRoundForm {
     seq: u32,
 }
 
-#[post("/tournaments/<_tid>/rounds/<category_id>/create", data = "<form>")]
+#[post("/tournaments/<tid>/rounds/<category_id>/create", data = "<form>")]
 pub async fn do_create_new_round_of_specific_category(
-    _tid: &str,
+    tid: &str,
     category_id: &str,
     mut conn: Conn<true>,
-    tournament: Tournament,
-    _tab: IsTabDirector<true>,
     form: Form<CreateNewRoundForm>,
-) -> GenerallyUsefulResponse {
+    user: User<true>,
+) -> StandardResponse {
+    let tournament = Tournament::fetch(&tid, &mut *conn)?;
+    tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
+
     let break_cat = if category_id == "in_round" {
         diesel::update(
             tournament_rounds::table.filter(
@@ -166,7 +169,7 @@ pub async fn do_create_new_round_of_specific_category(
             .unwrap()
         {
             Some(t) => t,
-            None => return GenerallyUsefulResponse::NotFound(()),
+            None => return err_not_found(),
         };
         Some(cat)
     };
@@ -183,7 +186,7 @@ pub async fn do_create_new_round_of_specific_category(
         .execute(&mut *conn)
         .unwrap();
 
-    GenerallyUsefulResponse::SeeOther(Redirect::to(format!(
+    see_other_ok(Redirect::to(format!(
         "/tournament/{}/rounds",
         tournament.id
     )))

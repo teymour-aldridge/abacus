@@ -11,14 +11,12 @@ use crate::template::Page;
 
 use crate::auth::User;
 use crate::tournaments::config::{SpeakerMetric, TeamMetric};
-use crate::util_resp::GenerallyUsefulResponse;
+use crate::util_resp::{StandardResponse, SuccessResponse};
 use crate::validation::is_valid_slug;
 
 #[get("/tournaments/create")]
-pub async fn create_tournament_page(
-    user: User<true>,
-) -> GenerallyUsefulResponse {
-    GenerallyUsefulResponse::BadRequest(
+pub async fn create_tournament_page(user: User<true>) -> SuccessResponse {
+    SuccessResponse::Success(
         Page::new()
             .user(user)
             .body(maud! {
@@ -91,7 +89,7 @@ pub async fn do_create_tournament(
     form: Form<CreateTournamentForm<'_>>,
     user: User<true>,
     mut conn: Conn<true>,
-) -> GenerallyUsefulResponse {
+) -> StandardResponse {
     let tid = Uuid::now_v7().to_string();
 
     let n = diesel::insert_into(tournaments::table)
@@ -142,7 +140,7 @@ pub async fn do_create_tournament(
         .unwrap();
     assert_eq!(n, 1);
 
-    GenerallyUsefulResponse::SeeOther(Redirect::to(format!(
+    Ok(SuccessResponse::SeeOther(Redirect::to(format!(
         "/tournaments/{tid}"
-    )))
+    ))))
 }

@@ -5,12 +5,11 @@ use tokio::task::spawn_blocking;
 
 use crate::{
     auth::User,
-    permission::IsTabDirector,
     schema::{tournament_draws, tournament_rounds},
     state::{Conn, DbPool},
     template::Page,
     tournaments::{
-        Tournament, TournamentNoTx,
+        Tournament,
         rounds::{
             Round,
             draws::{
@@ -19,35 +18,32 @@ use crate::{
             },
         },
     },
-    util_resp::GenerallyUsefulResponse,
+    util_resp::{
+        StandardResponse, bad_request, err_not_found, see_other_ok, success,
+    },
     widgets::alert::ErrorAlert,
 };
 
-#[get("/tournaments/<_tournament_id>/rounds/<round_id>/draw/create")]
+#[get("/tournaments/<tournament_id>/rounds/<round_id>/draw/create")]
 pub async fn generate_draw_page(
-    _tournament_id: &str,
+    tournament_id: &str,
     round_id: &str,
     user: User<true>,
-    // todo: also implement a guard for `Round`
-    tournament: Tournament,
     mut conn: Conn<true>,
-    _dir: IsTabDirector<true>,
-) -> Option<Rendered<String>> {
+) -> StandardResponse {
+    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
+    tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
+
     let round = match tournament_rounds::table
         .filter(tournament_rounds::id.eq(&round_id))
+        .filter(tournament_rounds::tournament_id.eq(&tournament.id))
         .first::<Round>(&mut *conn)
         .optional()
         .unwrap()
     {
         Some(r) => r,
-        None => return None,
+        None => return err_not_found(),
     };
-
-    // todo: this can be put in a guard
-    // todo: proper error message
-    if round.tournament_id != tournament.id {
-        return None;
-    }
 
     let draw = tournament_draws::table
         .filter(tournament_draws::round_id.eq(&round.id))
@@ -55,7 +51,7 @@ pub async fn generate_draw_page(
         .optional()
         .unwrap();
 
-    Some(
+    success(
         Page::new()
             .tournament(tournament)
             .user(user)
@@ -80,15 +76,15 @@ pub async fn generate_draw_page(
 pub async fn do_generate_draw(
     tournament_id: &str,
     round_id: &str,
-    tournament: TournamentNoTx,
     pool: &State<DbPool>,
-    _dir: IsTabDirector<false>,
-) -> GenerallyUsefulResponse {
+) -> StandardResponse {
     let pool: DbPool = pool.inner().clone();
     let round_id = round_id.to_string();
     let tournament_id = tournament_id.to_string();
     spawn_blocking(move || {
         let mut conn = pool.get().unwrap();
+
+        let tournament = Tournament::fetch(&tournament_id, &mut conn)?;
 
         let round = match tournament_rounds::table
             .filter(tournament_rounds::id.eq(&round_id))
@@ -98,12 +94,12 @@ pub async fn do_generate_draw(
         {
             Some(t) => t,
             None => {
-                return GenerallyUsefulResponse::NotFound(());
+                return err_not_found();
             }
         };
 
         let draw_result = do_draw(
-            tournament.0,
+            tournament,
             round,
             Box::new(drawalgs::random::gen_random),
             &mut conn,
@@ -111,31 +107,34 @@ pub async fn do_generate_draw(
         );
 
         match draw_result {
-            Ok(draw_id) => GenerallyUsefulResponse::SeeOther(Redirect::to(format!(
+            Ok(draw_id) => see_other_ok(Redirect::to(format!(
                 "/tournaments/{tournament_id}/rounds/{round_id}/draw/{draw_id}",
             ))),
             Err(e) => {
                 let msg = match e {
                     MakeDrawError::InvalidConfiguration(str) => {
                         format!("Invalid configuration: {str}")
-                    },
+                    }
                     MakeDrawError::InvalidTeamCount(str) => {
                         format!("Wrong number of teams: {str}")
-                    },
+                    }
                     MakeDrawError::AlreadyInProgress => {
                         "Draw generation already in progress".to_string()
-                    },
+                    }
                     MakeDrawError::TicketExpired => {
                         "Draw generation was cancelled.".to_string()
-                    },
+                    }
                 };
 
-                GenerallyUsefulResponse::BadRequest(maud! {
-                    p {
-                        "We encountered the following error: " (msg)
+                bad_request(
+                    maud! {
+                        p {
+                            "We encountered the following error: " (msg)
+                        }
                     }
-                }.render())
-            },
+                    .render(),
+                )
+            }
         }
     })
     .await

@@ -4,35 +4,34 @@ use diesel::{
 };
 use hypertext::prelude::*;
 use rocket::{FromForm, form::Form, get, response::Redirect};
-use tokio::task::spawn_blocking;
 use uuid::Uuid;
 
 use crate::{
     auth::User,
-    permission::IsTabDirector,
     schema::{tournament_institutions, tournament_teams},
-    state::{Conn, ThreadSafeConn},
+    state::Conn,
     template::Page,
     tournaments::{
         Tournament, participants::Institution, snapshots::take_snapshot,
     },
-    util_resp::GenerallyUsefulResponse,
+    util_resp::{StandardResponse, bad_request, see_other_ok, success},
 };
 
-#[get("/tournaments/<_tid>/teams/create")]
+#[get("/tournaments/<tid>/teams/create")]
 pub async fn create_teams_page(
-    _tid: &str,
-    tournament: Tournament,
+    tid: &str,
     mut conn: Conn<true>,
     user: User<true>,
-    _tab: IsTabDirector<true>,
-) -> Rendered<String> {
+) -> StandardResponse {
+    let tournament = Tournament::fetch(tid, &mut *conn)?;
+    tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
+
     let institutions = tournament_institutions::table
         .filter(tournament_institutions::tournament_id.eq(&tournament.id))
         .load::<Institution>(&mut *conn)
         .unwrap();
 
-    Page::new()
+    success(Page::new()
         .user(user)
         .tournament(tournament)
         .body(maud! {
@@ -61,7 +60,7 @@ pub async fn create_teams_page(
               button type="submit" class="btn btn-primary" { "Create team" }
             }
         })
-        .render()
+        .render())
 }
 
 #[derive(FromForm)]
@@ -74,93 +73,89 @@ pub struct CreateTeamForm {
 #[get("/tournaments/<tid>/teams/create", data = "<form>")]
 pub async fn do_create_team(
     tid: &str,
-    tournament: Tournament,
-    conn: ThreadSafeConn<true>,
+    mut conn: Conn<true>,
     user: User<true>,
-    _tab: IsTabDirector<true>,
     form: Form<CreateTeamForm>,
-) -> GenerallyUsefulResponse {
-    let tid = tid.to_string();
-    spawn_blocking(move || {
-        let mut conn = conn.inner.try_lock().unwrap();
+) -> StandardResponse {
+    let tournament = Tournament::fetch(&tid, &mut *conn)?;
+    tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
 
-        let id = match form.institution_id.as_str() {
-            "-----" => None,
-            t => Some(t),
-        };
+    let id = match form.institution_id.as_str() {
+        "-----" => None,
+        t => Some(t),
+    };
 
-        let inst = match id {
-            Some(inst) => {
-                match tournament_institutions::table
-                    .filter(tournament_institutions::id.eq(inst))
-                    .first::<Institution>(&mut *conn)
-                    .optional()
-                    .unwrap()
-                {
-                    Some(inst) => Some(inst),
-                    None => {
-                        return GenerallyUsefulResponse::BadRequest(
-                            Page::new()
-                                .user(user)
-                                .tournament(tournament)
-                                .body(maud! {
-                                    p {
-                                        "Error: that institution does not exist."
-                                    }
-                                })
-                                .render(),
-                        );
-                    }
+    let inst = match id {
+        Some(inst) => {
+            match tournament_institutions::table
+                .filter(tournament_institutions::id.eq(inst))
+                .first::<Institution>(&mut *conn)
+                .optional()
+                .unwrap()
+            {
+                Some(inst) => Some(inst),
+                None => {
+                    return bad_request(
+                        Page::new()
+                            .user(user)
+                            .tournament(tournament)
+                            .body(maud! {
+                                p {
+                                    "Error: that institution does not exist."
+                                }
+                            })
+                            .render(),
+                    );
                 }
             }
-            None => None,
-        };
-
-        let exists = select(exists(
-            tournament_teams::table.filter(
-                tournament_teams::tournament_id
-                    .eq(&tid)
-                    .and(tournament_teams::name.eq(&form.name))
-                    .and(
-                        tournament_teams::institution_id
-                            .eq(inst.as_ref().map(|inst| inst.id.clone())),
-                    ),
-            ),
-        ))
-        .get_result::<bool>(&mut *conn)
-        .unwrap();
-
-        if exists {
-            return GenerallyUsefulResponse::BadRequest(
-                Page::new()
-                    .user(user)
-                    .tournament(tournament)
-                    .body(maud! {
-                        p {
-                            "Error: a team with that name already exists."
-                        }
-                    })
-                    .render(),
-            );
         }
+        None => None,
+    };
 
-        let n = diesel::insert_into(tournament_teams::table)
-            .values((
-                (tournament_teams::id.eq(Uuid::now_v7().to_string())),
-                tournament_teams::tournament_id.eq(&tid),
-                tournament_teams::name.eq(&form.name),
-                tournament_teams::institution_id
-                    .eq(inst.as_ref().map(|inst| inst.id.clone())),
-            ))
-            .execute(&mut *conn)
-            .unwrap();
-        assert_eq!(n, 1);
+    let exists = select(exists(
+        tournament_teams::table.filter(
+            tournament_teams::tournament_id
+                .eq(&tid)
+                .and(tournament_teams::name.eq(&form.name))
+                .and(
+                    tournament_teams::institution_id
+                        .eq(inst.as_ref().map(|inst| inst.id.clone())),
+                ),
+        ),
+    ))
+    .get_result::<bool>(&mut *conn)
+    .unwrap();
 
-        take_snapshot(&tid, &mut* conn);
+    if exists {
+        return bad_request(
+            Page::new()
+                .user(user)
+                .tournament(tournament)
+                .body(maud! {
+                    p {
+                        "Error: a team with that name already exists."
+                    }
+                })
+                .render(),
+        );
+    }
 
-        GenerallyUsefulResponse::SeeOther(Redirect::to(format!(
-            "/tournaments/{}/participants",
-            tournament.id
-        )))
-    }).await.unwrap()
+    let n = diesel::insert_into(tournament_teams::table)
+        .values((
+            (tournament_teams::id.eq(Uuid::now_v7().to_string())),
+            tournament_teams::tournament_id.eq(&tid),
+            tournament_teams::name.eq(&form.name),
+            tournament_teams::institution_id
+                .eq(inst.as_ref().map(|inst| inst.id.clone())),
+        ))
+        .execute(&mut *conn)
+        .unwrap();
+    assert_eq!(n, 1);
+
+    take_snapshot(&tid, &mut *conn);
+
+    see_other_ok(Redirect::to(format!(
+        "/tournaments/{}/participants",
+        tournament.id
+    )))
 }

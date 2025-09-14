@@ -11,14 +11,14 @@ use crate::{
     schema::users,
     state::Conn,
     template::Page,
-    util_resp::GenerallyUsefulResponse,
+    util_resp::{FailureResponse, StandardResponse, bad_request, see_other_ok},
     widgets::alert::ErrorAlert,
 };
 
 #[get("/login")]
-pub async fn login_page(user: Option<User<true>>) -> GenerallyUsefulResponse {
+pub async fn login_page(user: Option<User<true>>) -> StandardResponse {
     if user.is_some() {
-        return GenerallyUsefulResponse::BadRequest(
+        return Err(FailureResponse::BadRequest(
             Page::new()
                 .user_opt(user)
                 .body(maud! {
@@ -26,10 +26,10 @@ pub async fn login_page(user: Option<User<true>>) -> GenerallyUsefulResponse {
                         msg = "You are already logged in, so cannot log in!";
                 })
                 .render(),
-        );
+        ));
     }
 
-    GenerallyUsefulResponse::BadRequest(Page::new().user_opt(user).body(maud! {
+    bad_request(Page::new().user_opt(user).body(maud! {
         form method="post" {
             div class="form-group" {
                 label for="email" { "Email address" }
@@ -57,7 +57,7 @@ pub async fn do_login(
     mut conn: Conn<true>,
     form: Form<LoginForm>,
     jar: &CookieJar<'_>,
-) -> GenerallyUsefulResponse {
+) -> StandardResponse {
     let user1 =
         match users::table
             .filter(users::email.eq(&form.id).or(users::username.eq(&form.id)))
@@ -66,7 +66,7 @@ pub async fn do_login(
             .unwrap()
         {
             Some(user) => user,
-            None => return GenerallyUsefulResponse::BadRequest(
+            None => return Err(FailureResponse::BadRequest(
                 Page::new()
                     .user_opt(user)
                     .body(maud! {
@@ -75,7 +75,7 @@ pub async fn do_login(
                                     previous page and try again.";
                     })
                     .render(),
-            ),
+            )),
         };
 
     let parsed_hash = PasswordHash::new(&user1.password_hash).unwrap();
@@ -84,7 +84,7 @@ pub async fn do_login(
         .is_err()
     {
         // todo: password rate limiting
-        return GenerallyUsefulResponse::BadRequest(
+        return bad_request(
             Page::new()
                 .user_opt(user)
                 .body(maud! {
@@ -98,7 +98,7 @@ pub async fn do_login(
 
     set_login_cookie(user1.id, jar);
 
-    GenerallyUsefulResponse::SeeOther({
+    see_other_ok({
         let redirect_to =
             if let Some(url) = next.and_then(|url| url.parse::<Url>().ok()) {
                 url.path().to_string()

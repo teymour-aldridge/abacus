@@ -1,4 +1,8 @@
-use crate::tournaments::WEBSOCKET_SCHEME;
+use crate::{
+    state::Conn,
+    tournaments::WEBSOCKET_SCHEME,
+    util_resp::{StandardResponse, success},
+};
 use diesel::prelude::*;
 use hypertext::prelude::*;
 use rocket::{State, futures::SinkExt, get};
@@ -7,7 +11,6 @@ use tokio::{sync::broadcast::Receiver, task::spawn_blocking};
 use crate::{
     auth::User,
     msg::{Msg, MsgContents},
-    permission::IsTabDirector,
     schema::tournaments,
     state::DbPool,
     template::Page,
@@ -20,10 +23,11 @@ pub mod manage_team;
 #[get("/tournaments/<tid>/participants")]
 pub async fn manage_tournament_participants(
     tid: &str,
-    tournament: Tournament,
     user: User<true>,
-    _tab: IsTabDirector<true>,
-) -> Rendered<String> {
+    mut conn: Conn<true>,
+) -> StandardResponse {
+    let tournament = Tournament::fetch(tid, &mut *conn)?;
+
     let script = format!(
         r#"
         <script>
@@ -81,14 +85,16 @@ pub async fn manage_tournament_participants(
         "#,
     );
 
-    Page::new()
-        .user(user)
-        .tournament(tournament)
-        .body(maud! {
-            div #participants {}
-            (script)
-        })
-        .render()
+    success(
+        Page::new()
+            .user(user)
+            .tournament(tournament)
+            .body(maud! {
+                div #participants {}
+                (script)
+            })
+            .render(),
+    )
 }
 
 #[get("/tournaments/<tid>/participants?channel")]
@@ -98,7 +104,7 @@ pub async fn tournament_participant_updates(
     pool: &State<DbPool>,
     ws: rocket_ws::WebSocket,
     rx: &State<Receiver<Msg>>,
-    _tab: IsTabDirector<false>,
+    user: User<false>,
 ) -> Option<rocket_ws::Channel<'static>> {
     let pool: DbPool = pool.inner().clone();
 
@@ -106,11 +112,24 @@ pub async fn tournament_participant_updates(
     let pool1 = pool.clone();
     let tournament = spawn_blocking(move || {
         let mut conn = pool1.get().unwrap();
-        tournaments::table
+        let tournament = tournaments::table
             .filter(tournaments::id.eq(tid1))
             .first::<Tournament>(&mut conn)
             .optional()
-            .unwrap()
+            .unwrap();
+
+        if let Some(tournament) = tournament {
+            if tournament
+                .check_user_is_tab_dir(&user.id, &mut *conn)
+                .is_err()
+            {
+                return None;
+            } else {
+                return Some(tournament);
+            }
+        } else {
+            None
+        }
     })
     .await
     .unwrap();

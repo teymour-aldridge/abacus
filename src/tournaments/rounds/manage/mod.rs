@@ -7,7 +7,6 @@ use rocket::get;
 
 use crate::{
     auth::User,
-    permission::IsTabDirector,
     schema::tournament_break_categories,
     state::Conn,
     template::Page,
@@ -16,6 +15,7 @@ use crate::{
         categories::BreakCategory,
         rounds::{Round, TournamentRounds},
     },
+    util_resp::{StandardResponse, success},
 };
 
 pub mod create;
@@ -26,10 +26,11 @@ pub mod view;
 pub async fn manage_rounds_page(
     tid: &str,
     user: User<true>,
-    tournament: Tournament,
-    _tab: IsTabDirector<true>,
     mut conn: Conn<true>,
-) -> Rendered<String> {
+) -> StandardResponse {
+    let tournament = Tournament::fetch(&tid, &mut *conn)?;
+    tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
+
     let rounds = TournamentRounds::fetch(tid, &mut *conn)
         .expect("failed to retrieve rounds");
     let categories2rounds = rounds.categories();
@@ -46,7 +47,7 @@ pub async fn manage_rounds_page(
     let min_outround_seq = rounds.elim.iter().map(get_seq).min().unwrap();
     let max_outround_seq = rounds.elim.iter().map(get_seq).max().unwrap();
 
-    Page::new()
+    success(Page::new()
         .tournament(tournament)
         .user(user)
         .body(maud! {
@@ -87,5 +88,5 @@ pub async fn manage_rounds_page(
                 }
             }
         })
-        .render()
+        .render())
 }

@@ -10,7 +10,9 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use crate::state::Conn;
-use crate::util_resp::GenerallyUsefulResponse;
+use crate::util_resp::StandardResponse;
+use crate::util_resp::bad_request;
+use crate::util_resp::see_other_ok;
 use crate::validation::*;
 use crate::widgets::alert::ErrorAlert;
 use crate::{auth::User, schema::users, template::Page};
@@ -18,15 +20,13 @@ use crate::{auth::User, schema::users, template::Page};
 #[get("/register")]
 pub async fn register_page(
     user: Option<User<true>>,
-) -> GenerallyUsefulResponse {
+) -> StandardResponse {
     if user.is_some() {
         // todo: flash message
-        return GenerallyUsefulResponse::BadRequest(
-            maud! {p {"You are already logged in!"}}.render(),
-        );
+        return bad_request(maud! {p {"You are already logged in!"}}.render());
     }
 
-    GenerallyUsefulResponse::BadRequest(
+    bad_request(
         Page::new()
             .user_opt(user)
             .body(maud! {
@@ -74,12 +74,10 @@ pub async fn do_register(
     user: Option<User<true>>,
     mut conn: Conn<true>,
     form: Form<RegisterForm<'_>>,
-) -> GenerallyUsefulResponse {
+) -> StandardResponse {
     if user.is_some() {
         // todo: flash message
-        return GenerallyUsefulResponse::BadRequest(
-            maud! {p {"You are already logged in!"}}.render(),
-        );
+        return bad_request(maud! {p {"You are already logged in!"}}.render());
     }
 
     let existing = users::table
@@ -96,7 +94,7 @@ pub async fn do_register(
         Some(user) => {
             let is_email_problem = user.email == form.email;
 
-            GenerallyUsefulResponse::BadRequest(
+            bad_request(
                 Page::<_, true>::new()
                     .body(maud! {
                         ErrorAlert msg=(match is_email_problem {
@@ -129,7 +127,7 @@ pub async fn do_register(
                 .execute(&mut *conn)
                 .unwrap();
 
-            GenerallyUsefulResponse::SeeOther(Redirect::to("/user"))
+            see_other_ok(Redirect::to("/user"))
         }
     }
 }

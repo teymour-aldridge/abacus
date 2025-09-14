@@ -11,7 +11,6 @@ use tokio::{sync::broadcast::Receiver, task::spawn_blocking};
 use crate::{
     auth::User,
     msg::{Msg, MsgContents},
-    permission::IsTabDirector,
     schema::{
         tournament_debate_judges, tournament_debates, tournament_draws,
         tournament_judges, tournament_rounds, tournament_teams,
@@ -19,7 +18,7 @@ use crate::{
     state::{Conn, DbPool},
     template::Page,
     tournaments::{
-        Tournament, TournamentNoTx, WEBSOCKET_SCHEME,
+        Tournament, WEBSOCKET_SCHEME,
         participants::{DebateJudge, Judge},
         rounds::{
             Round,
@@ -29,6 +28,7 @@ use crate::{
         },
         teams::Team,
     },
+    util_resp::{StandardResponse, bad_request, err_not_found, success},
     widgets::alert::ErrorAlert,
 };
 
@@ -39,12 +39,13 @@ pub async fn edit_draw_page_tab_dir(
     tournament_id: &str,
     round_id: &str,
     draw_id: &str,
-    tournament: Tournament,
-    _dir: IsTabDirector<true>,
     user: User<true>,
     mut conn: Conn<true>,
     table_only: bool,
-) -> Option<Rendered<String>> {
+) -> StandardResponse {
+    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
+    tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
+
     let (draw, round) = match tournament_draws::table
         .filter(
             tournament_draws::tournament_id
@@ -58,7 +59,7 @@ pub async fn edit_draw_page_tab_dir(
         .unwrap()
     {
         Some(t) => t,
-        None => return None,
+        None => return err_not_found(),
     };
 
     let repr = DrawRepr::of_draw(draw, &mut *conn);
@@ -79,9 +80,9 @@ pub async fn edit_draw_page_tab_dir(
     };
 
     if table_only {
-        Some(table.render())
+        success(table.render())
     } else {
-        Some(
+        success(
             Page::new()
                 .tournament(tournament.clone())
                 .user(user)
@@ -144,11 +145,10 @@ pub async fn draw_updates(
     tournament_id: &str,
     round_id: &str,
     draw_id: &str,
-    _dir: IsTabDirector<false>,
-    tournament: TournamentNoTx,
     pool: &State<DbPool>,
     rx: &State<Receiver<Msg>>,
     ws: rocket_ws::WebSocket,
+    user: User<false>,
 ) -> Option<rocket_ws::Channel<'static>> {
     let pool: DbPool = pool.inner().clone();
 
@@ -157,9 +157,13 @@ pub async fn draw_updates(
     let tournament_id = tournament_id.to_string();
 
     let pool1 = pool.clone();
-    let (_round, draw) = match spawn_blocking(move || {
+    let (tournament, _round, draw) = match spawn_blocking(move || {
         let mut conn = pool1.get().unwrap();
-        tournament_draws::table
+
+        let tournament = Tournament::fetch(&tournament_id, &mut conn).ok()?;
+        tournament.check_user_is_tab_dir(&user.id, &mut conn).ok()?;
+
+        let x = tournament_draws::table
             .filter(
                 tournament_draws::tournament_id
                     .eq(&tournament_id)
@@ -170,7 +174,9 @@ pub async fn draw_updates(
             .first::<(Draw, Round)>(&mut conn)
             .optional()
             .unwrap()
-            .map(|t| t)
+            .map(|t| t);
+
+        x.map(|(a, b)| (tournament, a, b))
     })
     .await
     .unwrap()
@@ -186,7 +192,7 @@ pub async fn draw_updates(
             loop {
                 let msg = rx.recv().await.unwrap();
 
-                if msg.tournament.id == tournament.0.id
+                if msg.tournament.id == tournament.id
                     && let MsgContents::DrawUpdated(draw_id) = msg.inner
                     && draw_id == draw.id
                 {
@@ -221,11 +227,13 @@ pub async fn submit_cmd_tab_dir<'r>(
     tournament_id: &str,
     round_id: &str,
     draw_id: &str,
-    tournament: Tournament,
-    _dir: IsTabDirector<true>,
     mut conn: Conn<true>,
     form: Form<EditDrawForm>,
-) -> FallibleResponse {
+    user: User<true>,
+) -> StandardResponse {
+    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
+    tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
+
     let (draw, _round) = match tournament_draws::table
         .filter(
             tournament_draws::tournament_id
@@ -239,13 +247,13 @@ pub async fn submit_cmd_tab_dir<'r>(
         .unwrap()
     {
         Some(t) => t,
-        None => return FallibleResponse::NotFound(()),
+        None => return err_not_found(),
     };
 
     let cmd = match Cmd::parse(&form.cmd) {
         Ok(cmd) => cmd,
         Err(e) => {
-            return FallibleResponse::BadReq(
+            return bad_request(
                 ErrorAlert {
                     msg: format!("Invalid command provided: {e}"),
                 }
@@ -262,7 +270,7 @@ pub async fn submit_cmd_tab_dir<'r>(
 
     let apply_move = apply_move(judge_no, debate_no, role, &draw, &mut *conn);
     match apply_move {
-        Ok(()) => FallibleResponse::Ok({
+        Ok(()) => success({
             let repr = DrawRepr::of_draw(draw, &mut *conn);
             let teams = tournament_teams::table
                 .filter(tournament_teams::tournament_id.eq(&tournament.id))
@@ -279,7 +287,7 @@ pub async fn submit_cmd_tab_dir<'r>(
             };
             table.render()
         }),
-        Err(e) => FallibleResponse::BadReq(
+        Err(e) => bad_request(
             ErrorAlert {
                 msg: format!("Error evaluating command: {e}"),
             }

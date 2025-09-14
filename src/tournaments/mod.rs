@@ -1,23 +1,14 @@
-use std::borrow::Borrow;
-
 #[cfg(not(test))]
 pub const WEBSOCKET_SCHEME: &str = "wss://";
 
 #[cfg(test)]
 pub const WEBSOCKET_SCHEME: &str = "ws://";
 
-use diesel::prelude::*;
-use rocket::{
-    Request, State,
-    http::Status,
-    outcome::try_outcome,
-    request::{self, FromRequest, Outcome},
-};
-use tokio::task::spawn_blocking;
+use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
 
 use crate::{
-    schema::tournaments,
-    state::{Conn, DbPool},
+    schema::{tournament_members, tournaments},
+    util_resp::FailureResponse,
 };
 
 pub mod categories;
@@ -57,126 +48,65 @@ pub struct Tournament {
     pub exclude_from_speaker_standings_after: Option<i64>,
 }
 
-#[rocket::async_trait]
-impl<'r> FromRequest<'r> for Tournament {
-    type Error = ();
-
-    async fn from_request(
-        request: &'r Request<'_>,
-    ) -> request::Outcome<Self, ()> {
-        let route = if let Some(route) = request.route() {
-            route
-        } else {
-            unreachable!(
-                "this route should only be used for requests to tournament views"
-            );
-        };
-
-        let route = route.name.as_ref().expect("all routes should be named!");
-
-        let tid: String = match route.borrow() {
-            "admin_view_tournament"
-            | "manage_team_page"
-            | "manage_tournament_participants"
-            | "create_teams_page"
-            | "do_create_team" => request
-                .routed_segment(1)
-                .expect("failed to retrieve tournament id")
-                .to_string(),
-            _ => {
-                unreachable!(
-                    "this route should only be used for requests to tournament views"
-                );
-            }
-        };
-
-        let mut conn = try_outcome!(
-            request
-                .guard::<Conn<true>>()
-                .await
-                .map_error(|(t, _)| (t, ()))
-        );
-
-        let tournament = spawn_blocking(move || {
-            tournaments::table
-                .filter(tournaments::id.eq(tid))
-                .first::<Tournament>(&mut *conn)
-                .optional()
-                .expect("failed to execute query")
-        })
-        .await
-        .unwrap();
-
-        request.local_cache(|| tournament.clone());
-
-        match tournament {
-            Some(t) => Outcome::Success(t),
-            None => Outcome::Error((Status::NotFound, ())),
-        }
-    }
+pub enum UserRole {
+    Tab,
+    Equity,
+    CAP,
 }
 
-pub struct TournamentNoTx(pub Tournament);
+impl Tournament {
+    pub fn fetch(
+        id: &str,
+        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+    ) -> Result<Tournament, FailureResponse> {
+        tournaments::table
+            .filter(tournaments::id.eq(id))
+            .first::<Tournament>(conn)
+            .map_err(|err| match err {
+                diesel::result::Error::NotFound => {
+                    FailureResponse::NotFound(())
+                }
+                _ => FailureResponse::ServerError(()),
+            })
+    }
 
-#[rocket::async_trait]
-impl<'r> FromRequest<'r> for TournamentNoTx {
-    type Error = ();
-
-    async fn from_request(
-        request: &'r Request<'_>,
-    ) -> request::Outcome<Self, ()> {
-        let route = if let Some(route) = request.route() {
-            route
-        } else {
-            unreachable!(
-                "this route should only be used for requests to tournament views"
-            );
-        };
-
-        let route = route.name.as_ref().expect("all routes should be named!");
-
-        let tid: String = match route.borrow() {
-            "admin_view_tournament"
-            | "manage_team_page"
-            | "manage_tournament_participants"
-            | "create_teams_page"
-            | "do_create_team" => request
-                .routed_segment(1)
-                .expect("failed to retrieve tournament id")
-                .to_string(),
-            _ => {
-                unreachable!(
-                    "this route should only be used for requests to tournament views"
-                );
-            }
-        };
-
-        let pool: DbPool = try_outcome!(
-            request
-                .guard::<&State<DbPool>>()
-                .await
-                .map_error(|(t, _)| (t, ()))
-        )
-        .inner()
-        .clone();
-
-        let tournament = spawn_blocking(move || {
-            let mut conn = pool.get().unwrap();
-
-            tournaments::table
-                .filter(tournaments::id.eq(tid))
-                .first::<Tournament>(&mut conn)
-                .optional()
-                .expect("failed to execute query")
-        })
-        .await
-        .unwrap();
-
-        request.local_cache(|| tournament.clone());
-
-        match tournament {
-            Some(t) => Outcome::Success(TournamentNoTx(t)),
-            None => Outcome::Error((Status::NotFound, ())),
+    pub fn check_user_is_tab_dir(
+        &self,
+        user_id: &str,
+        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+    ) -> Result<(), FailureResponse> {
+        match self.get_user_role(user_id, conn) {
+            Some(UserRole::Tab) => Ok(()),
+            _ => Err(FailureResponse::Unauthorized(())),
         }
+    }
+
+    /// Gets the most significant user role
+    pub fn get_user_role(
+        &self,
+        user_id: &str,
+        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+    ) -> Option<UserRole> {
+        let (is_ca, is_equity, is_tab) = tournament_members::table
+            .filter(tournament_members::user_id.eq(user_id))
+            .select((
+                tournament_members::is_ca,
+                tournament_members::is_equity,
+                tournament_members::is_superuser,
+            ))
+            .first::<(bool, bool, bool)>(conn)
+            .optional()
+            .unwrap()
+            .unwrap_or((false, false, false));
+
+        Some(if is_tab {
+            UserRole::Tab
+        } else if is_ca {
+            UserRole::CAP
+        } else if is_equity {
+            UserRole::Equity
+        } else {
+            return None;
+        })
     }
 }

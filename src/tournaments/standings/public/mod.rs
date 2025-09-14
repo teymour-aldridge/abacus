@@ -6,29 +6,24 @@ use crate::{
     state::Conn,
     template::Page,
     tournaments::{Tournament, standings::compute::TournamentTeamStandings},
-    widgets::alert::ErrorAlert,
+    util_resp::{StandardResponse, success, unauthorized},
 };
 
 #[get("/tournaments/<tournament_id>/tab/team")]
 pub async fn public_team_tab_page(
     tournament_id: &str,
-    tournament: Tournament,
     mut conn: Conn<true>,
     user: Option<User<true>>,
-) -> Result<Rendered<String>, Rendered<String>> {
+) -> StandardResponse {
+    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
+
     if !tournament.team_tab_public {
-        return Err(Page::new()
-            .tournament(tournament)
-            .user_opt(user)
-            .body(ErrorAlert {
-                msg: "The team tab is not public.",
-            })
-            .render());
+        return unauthorized();
     }
 
     let standings = TournamentTeamStandings::fetch(tournament_id, &mut *conn);
 
-    Ok(Page::new()
+    success(Page::new()
         .tournament(tournament)
         .user_opt(user)
         .body(maud! {

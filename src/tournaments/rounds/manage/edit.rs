@@ -4,23 +4,25 @@ use rocket::{FromForm, form::Form, get, post, response::Redirect};
 
 use crate::{
     auth::User,
-    permission::IsTabDirector,
     schema::tournament_rounds,
     state::Conn,
     template::Page,
     tournaments::{Tournament, rounds::Round, snapshots::take_snapshot},
-    util_resp::GenerallyUsefulResponse,
+    util_resp::{
+        FailureResponse, StandardResponse, SuccessResponse, err_not_found,
+    },
 };
 
 #[get("/tournaments/<tid>/rounds/<rid>/edit")]
 pub async fn edit_round_page(
     tid: &str,
     rid: &str,
-    tournament: Tournament,
     user: User<true>,
-    _tab: IsTabDirector<true>,
     mut conn: Conn<true>,
-) -> Option<Rendered<String>> {
+) -> StandardResponse {
+    let tournament = Tournament::fetch(tid, &mut *conn)?;
+    tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
+
     let round = match tournament_rounds::table
         .filter(tournament_rounds::tournament_id.eq(tid))
         .filter(tournament_rounds::id.eq(rid))
@@ -29,10 +31,10 @@ pub async fn edit_round_page(
         .unwrap()
     {
         Some(round) => round,
-        None => return None,
+        None => return Err(FailureResponse::NotFound(())),
     };
 
-    Some(
+    Ok(SuccessResponse::Success(
         Page::new()
             .tournament(tournament)
             .user(user)
@@ -72,7 +74,7 @@ pub async fn edit_round_page(
                 }
             })
             .render(),
-    )
+    ))
 }
 
 #[derive(FromForm)]
@@ -87,14 +89,12 @@ pub struct EditRoundForm {
 pub async fn do_edit_round(
     tid: &str,
     rid: &str,
-    _tab: IsTabDirector<true>,
     user: User<true>,
-    tournament: Tournament,
     form: Form<EditRoundForm>,
     mut conn: Conn<true>,
-) -> GenerallyUsefulResponse {
-    let tid = tid.to_string();
-    let rid = rid.to_string();
+) -> StandardResponse {
+    let tournament = Tournament::fetch(&tid, &mut *conn)?;
+    tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
 
     let round = match tournament_rounds::table
         .filter(tournament_rounds::id.eq(&tid))
@@ -104,7 +104,7 @@ pub async fn do_edit_round(
         .unwrap()
     {
         Some(round) => round,
-        None => return GenerallyUsefulResponse::NotFound(()),
+        None => return err_not_found(),
     };
 
     let max = tournament_rounds::table
@@ -115,7 +115,7 @@ pub async fn do_edit_round(
         .unwrap_or(1i64);
 
     if max + 1 < (form.seq as i64) {
-        return GenerallyUsefulResponse::BadRequest(
+        return Err(FailureResponse::BadRequest(
             Page::new()
                 .user(user)
                 .tournament(tournament)
@@ -128,7 +128,7 @@ pub async fn do_edit_round(
                     }
                 })
                 .render(),
-        );
+        ));
     }
 
     let n = diesel::update(
@@ -144,7 +144,7 @@ pub async fn do_edit_round(
 
     take_snapshot(&tid, &mut *conn);
 
-    GenerallyUsefulResponse::SeeOther(Redirect::to(format!(
+    Ok(SuccessResponse::SeeOther(Redirect::to(format!(
         "/tournaments/{tid}/rounds"
-    )))
+    ))))
 }

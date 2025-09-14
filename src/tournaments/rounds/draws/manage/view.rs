@@ -6,7 +6,6 @@ use rocket::get;
 
 use crate::{
     auth::User,
-    permission::IsTabDirector,
     schema::{tournament_draws, tournament_rounds, tournament_teams},
     state::Conn,
     template::Page,
@@ -18,18 +17,20 @@ use crate::{
         },
         teams::Team,
     },
+    util_resp::{StandardResponse, err_not_found, success},
 };
 
-#[get("/tournaments/<_tournament_id>/rounds/<round_id>/draw/<draw_id>")]
+#[get("/tournaments/<tournament_id>/rounds/<round_id>/draw/<draw_id>")]
 pub async fn view_draw(
-    _tournament_id: &str,
+    tournament_id: &str,
     round_id: &str,
     draw_id: &str,
     user: User<true>,
-    _dir: IsTabDirector<true>,
     mut conn: Conn<true>,
-    tournament: Tournament,
-) -> Option<Rendered<String>> {
+) -> StandardResponse {
+    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
+    tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
+
     let (draw, round) = match tournament_draws::table
         .filter(
             tournament_draws::round_id
@@ -42,7 +43,7 @@ pub async fn view_draw(
         .unwrap()
     {
         Some(draw) => draw,
-        None => return None,
+        None => return err_not_found(),
     };
 
     // todo: run on background thread (?)
@@ -69,7 +70,7 @@ pub async fn view_draw(
         teams: &teams,
     };
 
-    Some(
+    success(
         Page::new()
             .tournament(tournament.clone())
             .user(user)

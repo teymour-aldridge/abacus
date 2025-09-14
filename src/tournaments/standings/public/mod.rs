@@ -15,7 +15,7 @@ pub async fn public_team_tab_page(
     mut conn: Conn<true>,
     user: Option<User<true>>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
+    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
 
     if !tournament.team_tab_public {
         return unauthorized();

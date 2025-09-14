@@ -23,11 +23,13 @@ pub struct VariableMap {
     pub bracket_size: HashMap<usize, Variable>,
 }
 
+pub type TeamsOfRoom = (Vec<Team>, Vec<Team>);
+
 pub fn make_draw(
     input: DrawInput,
     standings: &TournamentTeamStandings,
     TeamHistory(history): &TeamHistory,
-) -> Result<Vec<(Vec<Team>, Vec<Team>)>, MakeDrawError> {
+) -> Result<Vec<TeamsOfRoom>, MakeDrawError> {
     if input.teams.is_empty() {
         return Err(MakeDrawError::InvalidTeamCount(
             "There are no teams!".to_string(),
@@ -292,20 +294,19 @@ pub fn make_draw(
                                     as f64
                             }
                             PullupMetric::HighestRank => {
-                                penalty += (-1.0)
-                                    * standings
-                                        .sorted
-                                        .iter()
-                                        .enumerate()
-                                        .find_map(|(idx, cmp)| {
-                                            if cmp.id == team.id {
-                                                Some(idx)
-                                            } else {
-                                                None
-                                            }
-                                        })
-                                        .unwrap()
-                                        as f64
+                                penalty += -(standings
+                                    .sorted
+                                    .iter()
+                                    .enumerate()
+                                    .find_map(|(idx, cmp)| {
+                                        if cmp.id == team.id {
+                                            Some(idx)
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .unwrap()
+                                    as f64)
                             }
                             PullupMetric::Random => (),
                             PullupMetric::FewerPreviousPullups => todo!(),

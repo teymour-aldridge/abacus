@@ -173,8 +173,7 @@ pub async fn draw_updates(
             .filter(tournament_rounds::id.eq(&round_id))
             .first::<(Draw, Round)>(&mut conn)
             .optional()
-            .unwrap()
-            .map(|t| t);
+            .unwrap();
 
         x.map(|(a, b)| (tournament, a, b))
     })
@@ -223,7 +222,7 @@ pub enum FallibleResponse {
     "/touraments/<tournament_id>/rounds/<round_id>/draws/<draw_id>/edit",
     data = "<form>"
 )]
-pub async fn submit_cmd_tab_dir<'r>(
+pub async fn submit_cmd_tab_dir(
     tournament_id: &str,
     round_id: &str,
     draw_id: &str,
@@ -392,7 +391,7 @@ impl std::fmt::Display for Role {
 }
 
 impl Role {
-    pub fn from_str(item: &str) -> Role {
+    pub fn of_str(item: &str) -> Role {
         match item {
             "C" => Role::Chair,
             "P" => Role::Panelist,

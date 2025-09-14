@@ -28,7 +28,7 @@ pub async fn manage_rounds_page(
     user: User<true>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(&tid, &mut *conn)?;
+    let tournament = Tournament::fetch(tid, &mut *conn)?;
     tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
 
     let rounds = TournamentRounds::fetch(tid, &mut *conn)

@@ -57,7 +57,7 @@ pub enum UserRole {
 impl Tournament {
     pub fn fetch(
         id: &str,
-        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+        conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Result<Tournament, FailureResponse> {
         tournaments::table
             .filter(tournaments::id.eq(id))
@@ -73,7 +73,7 @@ impl Tournament {
     pub fn check_user_is_tab_dir(
         &self,
         user_id: &str,
-        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+        conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Result<(), FailureResponse> {
         match self.get_user_role(user_id, conn) {
             Some(UserRole::Tab) => Ok(()),
@@ -85,7 +85,7 @@ impl Tournament {
     pub fn get_user_role(
         &self,
         user_id: &str,
-        conn: &mut (impl Connection<Backend = Sqlite> + LoadConnection),
+        conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Option<UserRole> {
         let (is_ca, is_equity, is_tab) = tournament_members::table
             .filter(tournament_members::user_id.eq(user_id))

@@ -15,7 +15,7 @@ pub async fn public_tournament_page(
     user: Option<User<true>>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
+    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
 
     success(
         Page::new()

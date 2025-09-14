@@ -25,7 +25,7 @@ pub async fn manage_team_page(
     team_id: &str,
     mut conn: Conn<true>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
+    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
     tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
 
     let team = match tournament_teams::table

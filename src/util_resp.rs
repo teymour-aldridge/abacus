@@ -2,7 +2,7 @@ use hypertext::Rendered;
 use rocket::{Responder, response::Redirect};
 
 pub fn see_other_ok(r: Redirect) -> StandardResponse {
-    Ok(SuccessResponse::SeeOther(r))
+    Ok(SuccessResponse::SeeOther(Box::new(r)))
 }
 
 pub fn err_not_found() -> StandardResponse {
@@ -26,7 +26,7 @@ pub type StandardResponse = Result<SuccessResponse, FailureResponse>;
 #[derive(Responder)]
 pub enum SuccessResponse {
     Success(Rendered<String>),
-    SeeOther(Redirect),
+    SeeOther(Box<Redirect>),
 }
 
 #[derive(Responder)]

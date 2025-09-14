@@ -11,7 +11,7 @@ use crate::template::Page;
 
 use crate::auth::User;
 use crate::tournaments::config::{SpeakerMetric, TeamMetric};
-use crate::util_resp::{StandardResponse, SuccessResponse};
+use crate::util_resp::{StandardResponse, SuccessResponse, see_other_ok};
 use crate::validation::is_valid_slug;
 
 #[get("/tournaments/create")]
@@ -140,7 +140,5 @@ pub async fn do_create_tournament(
         .unwrap();
     assert_eq!(n, 1);
 
-    Ok(SuccessResponse::SeeOther(Redirect::to(format!(
-        "/tournaments/{tid}"
-    ))))
+    see_other_ok(Redirect::to(format!("/tournaments/{tid}")))
 }

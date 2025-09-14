@@ -1,17 +1,5 @@
 use std::{collections::HashMap, fmt::Write};
 
-use crate::{
-    msg::{Msg, MsgContents},
-    permission::IsTabDirectorNoTx,
-    schema::{tournament_debate_judges, tournament_debates, tournament_judges},
-    state::DbPool,
-    tournaments::{
-        TournamentNoTx, WEBSOCKET_SCHEME,
-        participants::{DebateJudge, Judge},
-        rounds::draws::Debate,
-    },
-    widgets::alert::ErrorAlert,
-};
 use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
 use hypertext::prelude::*;
 use lalrpop_util::lalrpop_mod;
@@ -22,18 +10,26 @@ use tokio::{sync::broadcast::Receiver, task::spawn_blocking};
 
 use crate::{
     auth::User,
+    msg::{Msg, MsgContents},
     permission::IsTabDirector,
-    schema::{tournament_draws, tournament_rounds, tournament_teams},
-    state::LockedConn,
+    schema::{
+        tournament_debate_judges, tournament_debates, tournament_draws,
+        tournament_judges, tournament_rounds, tournament_teams,
+    },
+    state::{Conn, DbPool},
     template::Page,
     tournaments::{
-        Tournament,
+        Tournament, TournamentNoTx, WEBSOCKET_SCHEME,
+        participants::{DebateJudge, Judge},
         rounds::{
             Round,
-            draws::{DebateRepr, Draw, DrawRepr, manage::DrawTableRenderer},
+            draws::{
+                Debate, DebateRepr, Draw, DrawRepr, manage::DrawTableRenderer,
+            },
         },
         teams::Team,
     },
+    widgets::alert::ErrorAlert,
 };
 
 #[get(
@@ -44,9 +40,9 @@ pub async fn edit_draw_page_tab_dir(
     round_id: &str,
     draw_id: &str,
     tournament: Tournament,
-    _dir: IsTabDirector,
-    user: User,
-    mut conn: LockedConn<'_>,
+    _dir: IsTabDirector<true>,
+    user: User<true>,
+    mut conn: Conn<true>,
     table_only: bool,
 ) -> Option<Rendered<String>> {
     let (draw, round) = match tournament_draws::table
@@ -148,7 +144,7 @@ pub async fn draw_updates(
     tournament_id: &str,
     round_id: &str,
     draw_id: &str,
-    _dir: IsTabDirectorNoTx,
+    _dir: IsTabDirector<false>,
     tournament: TournamentNoTx,
     pool: &State<DbPool>,
     rx: &State<Receiver<Msg>>,
@@ -173,7 +169,8 @@ pub async fn draw_updates(
             .filter(tournament_rounds::id.eq(&round_id))
             .first::<(Draw, Round)>(&mut conn)
             .optional()
-            .unwrap().map(|t| t)
+            .unwrap()
+            .map(|t| t)
     })
     .await
     .unwrap()
@@ -225,8 +222,8 @@ pub async fn submit_cmd_tab_dir<'r>(
     round_id: &str,
     draw_id: &str,
     tournament: Tournament,
-    _dir: IsTabDirector,
-    mut conn: LockedConn<'r>,
+    _dir: IsTabDirector<true>,
+    mut conn: Conn<true>,
     form: Form<EditDrawForm>,
 ) -> FallibleResponse {
     let (draw, _round) = match tournament_draws::table
@@ -265,33 +262,29 @@ pub async fn submit_cmd_tab_dir<'r>(
 
     let apply_move = apply_move(judge_no, debate_no, role, &draw, &mut *conn);
     match apply_move {
-        Ok(()) => {
-            FallibleResponse::Ok({
-                let repr = DrawRepr::of_draw(draw, &mut *conn);
-                let teams = tournament_teams::table
-                    .filter(tournament_teams::tournament_id.eq(&tournament.id))
-                    .load::<Team>(&mut *conn)
-                    .unwrap()
-                    .into_iter()
-                    .map(|t| (t.id.clone(), t))
-                    .collect::<HashMap<_, _>>();
-                let table = DrawTableRenderer {
-                    tournament: &tournament,
-                    repr: &repr,
-                    actions: |_: &DebateRepr| maud! {"None"},
-                    teams: &teams,
-                };
-                table.render()
-            })
-        }
-        Err(e) => {
-            FallibleResponse::BadReq(
-                ErrorAlert {
-                    msg: format!("Error evaluating command: {e}"),
-                }
-                .render(),
-            )
-        }
+        Ok(()) => FallibleResponse::Ok({
+            let repr = DrawRepr::of_draw(draw, &mut *conn);
+            let teams = tournament_teams::table
+                .filter(tournament_teams::tournament_id.eq(&tournament.id))
+                .load::<Team>(&mut *conn)
+                .unwrap()
+                .into_iter()
+                .map(|t| (t.id.clone(), t))
+                .collect::<HashMap<_, _>>();
+            let table = DrawTableRenderer {
+                tournament: &tournament,
+                repr: &repr,
+                actions: |_: &DebateRepr| maud! {"None"},
+                teams: &teams,
+            };
+            table.render()
+        }),
+        Err(e) => FallibleResponse::BadReq(
+            ErrorAlert {
+                msg: format!("Error evaluating command: {e}"),
+            }
+            .render(),
+        ),
     }
 }
 

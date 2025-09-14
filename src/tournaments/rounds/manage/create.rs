@@ -15,7 +15,7 @@ use crate::{
     auth::User,
     permission::IsTabDirector,
     schema::{tournament_break_categories, tournament_rounds},
-    state::LockedConn,
+    state::Conn,
     template::Page,
     tournaments::{Tournament, categories::BreakCategory},
     util_resp::GenerallyUsefulResponse,
@@ -24,10 +24,10 @@ use crate::{
 #[get("/tournaments/<tid>/rounds/create")]
 pub async fn create_new_round(
     tid: &str,
-    mut conn: LockedConn<'_>,
-    user: User,
+    mut conn: Conn<true>,
+    user: User<true>,
     tournament: Tournament,
-    _tab: IsTabDirector,
+    _tab: IsTabDirector<true>,
 ) -> Rendered<String> {
     let cats = tournament_break_categories::table
         .filter(tournament_break_categories::tournament_id.eq(&tournament.id))
@@ -63,10 +63,10 @@ pub async fn create_new_round(
 pub async fn create_new_round_of_specific_category_page(
     _tid: &str,
     category_id: &str,
-    mut conn: LockedConn<'_>,
-    user: User,
+    mut conn: Conn<true>,
+    user: User<true>,
     tournament: Tournament,
-    _tab: IsTabDirector,
+    _tab: IsTabDirector<true>,
 ) -> Option<Rendered<String>> {
     let () = {
         if category_id == "in_round" {
@@ -138,9 +138,9 @@ pub struct CreateNewRoundForm {
 pub async fn do_create_new_round_of_specific_category(
     _tid: &str,
     category_id: &str,
-    mut conn: LockedConn<'_>,
+    mut conn: Conn<true>,
     tournament: Tournament,
-    _tab: IsTabDirector,
+    _tab: IsTabDirector<true>,
     form: Form<CreateNewRoundForm>,
 ) -> GenerallyUsefulResponse {
     let break_cat = if category_id == "in_round" {

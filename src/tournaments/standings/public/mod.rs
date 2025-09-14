@@ -2,7 +2,8 @@ use hypertext::prelude::*;
 use rocket::get;
 
 use crate::{
-    state::LockedConn,
+    auth::User,
+    state::Conn,
     template::Page,
     tournaments::{Tournament, standings::compute::TournamentTeamStandings},
     widgets::alert::ErrorAlert,
@@ -12,8 +13,8 @@ use crate::{
 pub async fn public_team_tab_page(
     tournament_id: &str,
     tournament: Tournament,
-    mut conn: LockedConn<'_>,
-    user: Option<crate::auth::User>,
+    mut conn: Conn<true>,
+    user: Option<User<true>>,
 ) -> Result<Rendered<String>, Rendered<String>> {
     if !tournament.team_tab_public {
         return Err(Page::new()

@@ -9,7 +9,7 @@ use crate::{
     auth::User,
     permission::IsTabDirector,
     schema::tournament_break_categories,
-    state::LockedConn,
+    state::Conn,
     template::Page,
     tournaments::{
         Tournament,
@@ -25,10 +25,10 @@ pub mod view;
 #[get("/tournaments/<tid>/rounds")]
 pub async fn manage_rounds_page(
     tid: &str,
-    user: User,
+    user: User<true>,
     tournament: Tournament,
-    _tab: IsTabDirector,
-    mut conn: LockedConn<'_>,
+    _tab: IsTabDirector<true>,
+    mut conn: Conn<true>,
 ) -> Rendered<String> {
     let rounds = TournamentRounds::fetch(tid, &mut *conn)
         .expect("failed to retrieve rounds");

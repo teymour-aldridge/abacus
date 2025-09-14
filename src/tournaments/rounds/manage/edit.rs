@@ -1,13 +1,12 @@
 use diesel::prelude::*;
 use hypertext::prelude::*;
 use rocket::{FromForm, form::Form, get, post, response::Redirect};
-use tokio::task::spawn_blocking;
 
 use crate::{
     auth::User,
     permission::IsTabDirector,
     schema::tournament_rounds,
-    state::{Conn, LockedConn},
+    state::Conn,
     template::Page,
     tournaments::{Tournament, rounds::Round, snapshots::take_snapshot},
     util_resp::GenerallyUsefulResponse,
@@ -18,9 +17,9 @@ pub async fn edit_round_page(
     tid: &str,
     rid: &str,
     tournament: Tournament,
-    user: User,
-    _tab: IsTabDirector,
-    mut conn: LockedConn<'_>,
+    user: User<true>,
+    _tab: IsTabDirector<true>,
+    mut conn: Conn<true>,
 ) -> Option<Rendered<String>> {
     let round = match tournament_rounds::table
         .filter(tournament_rounds::tournament_id.eq(tid))
@@ -88,68 +87,64 @@ pub struct EditRoundForm {
 pub async fn do_edit_round(
     tid: &str,
     rid: &str,
-    _tab: IsTabDirector,
-    user: User,
+    _tab: IsTabDirector<true>,
+    user: User<true>,
     tournament: Tournament,
     form: Form<EditRoundForm>,
-    conn: Conn,
+    mut conn: Conn<true>,
 ) -> GenerallyUsefulResponse {
     let tid = tid.to_string();
     let rid = rid.to_string();
-    spawn_blocking(move || {
-        let mut conn = conn.get_sync();
-        let round = match tournament_rounds::table
-            .filter(tournament_rounds::id.eq(&tid))
-            .filter(tournament_rounds::id.eq(&rid))
-            .first::<Round>(&mut *conn)
-            .optional()
-            .unwrap()
-        {
-            Some(round) => round,
-            None => return GenerallyUsefulResponse::NotFound(()),
-        };
 
-        let max = tournament_rounds::table
-            .filter(tournament_rounds::tournament_id.eq(&tid))
-            .select(diesel::dsl::max(tournament_rounds::seq))
-            .get_result::<Option<i64>>(&mut *conn)
-            .unwrap()
-            .unwrap_or(1i64);
+    let round = match tournament_rounds::table
+        .filter(tournament_rounds::id.eq(&tid))
+        .filter(tournament_rounds::id.eq(&rid))
+        .first::<Round>(&mut *conn)
+        .optional()
+        .unwrap()
+    {
+        Some(round) => round,
+        None => return GenerallyUsefulResponse::NotFound(()),
+    };
 
-        if max + 1 < (form.seq as i64) {
-            return GenerallyUsefulResponse::BadRequest(
-                Page::new()
-                    .user(user)
-                    .tournament(tournament)
-                    .body(maud! {
-                        p {
-                            "Error: round index is too large. It must be at most
-                             one more than the current largest index, which is "
-                             (max)
-                            "."
-                        }
-                    })
-                    .render(),
-            );
-        }
+    let max = tournament_rounds::table
+        .filter(tournament_rounds::tournament_id.eq(&tid))
+        .select(diesel::dsl::max(tournament_rounds::seq))
+        .get_result::<Option<i64>>(&mut *conn)
+        .unwrap()
+        .unwrap_or(1i64);
 
-        let n = diesel::update(
-            tournament_rounds::table.filter(tournament_rounds::id.eq(round.id)),
-        )
-        .set((
-            tournament_rounds::name.eq(&form.name),
-            tournament_rounds::seq.eq(&(form.seq as i64)),
-        ))
-        .execute(&mut *conn)
-        .unwrap();
-        assert_eq!(n, 1);
+    if max + 1 < (form.seq as i64) {
+        return GenerallyUsefulResponse::BadRequest(
+            Page::new()
+                .user(user)
+                .tournament(tournament)
+                .body(maud! {
+                    p {
+                        "Error: round index is too large. It must be at most
+                         one more than the current largest index, which is "
+                         (max)
+                        "."
+                    }
+                })
+                .render(),
+        );
+    }
 
-        take_snapshot(&tid, &mut *conn);
+    let n = diesel::update(
+        tournament_rounds::table.filter(tournament_rounds::id.eq(round.id)),
+    )
+    .set((
+        tournament_rounds::name.eq(&form.name),
+        tournament_rounds::seq.eq(&(form.seq as i64)),
+    ))
+    .execute(&mut *conn)
+    .unwrap();
+    assert_eq!(n, 1);
 
-        GenerallyUsefulResponse::Success(Redirect::to(format!(
-            "/tournaments/{tid}/rounds"
-        )))
-    })
-    .await
-    .unwrap()
+    take_snapshot(&tid, &mut *conn);
+
+    GenerallyUsefulResponse::Success(Redirect::to(format!(
+        "/tournaments/{tid}/rounds"
+    )))
 }

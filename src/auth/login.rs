@@ -9,14 +9,14 @@ use url::Url;
 use crate::{
     auth::{User, set_login_cookie},
     schema::users,
-    state::LockedConn,
+    state::Conn,
     template::Page,
     util_resp::GenerallyUsefulResponse,
     widgets::alert::ErrorAlert,
 };
 
 #[get("/login")]
-pub async fn login_page(user: Option<User>) -> GenerallyUsefulResponse {
+pub async fn login_page(user: Option<User<true>>) -> GenerallyUsefulResponse {
     if user.is_some() {
         return GenerallyUsefulResponse::BadRequest(
             Page::new()
@@ -52,16 +52,16 @@ pub struct LoginForm {
 
 #[post("/login?<next>", data = "<form>")]
 pub async fn do_login(
-    user: Option<User>,
+    user: Option<User<true>>,
     next: Option<&str>,
-    mut conn: LockedConn<'_>,
+    mut conn: Conn<true>,
     form: Form<LoginForm>,
     jar: &CookieJar<'_>,
 ) -> GenerallyUsefulResponse {
     let user1 =
         match users::table
             .filter(users::email.eq(&form.id).or(users::username.eq(&form.id)))
-            .first::<User>(&mut *conn)
+            .first::<User<true>>(&mut *conn)
             .optional()
             .unwrap()
         {
@@ -80,7 +80,8 @@ pub async fn do_login(
 
     let parsed_hash = PasswordHash::new(&user1.password_hash).unwrap();
     if Argon2::default()
-        .verify_password(form.password.as_bytes(), &parsed_hash).is_err()
+        .verify_password(form.password.as_bytes(), &parsed_hash)
+        .is_err()
     {
         // todo: password rate limiting
         return GenerallyUsefulResponse::BadRequest(
@@ -98,13 +99,12 @@ pub async fn do_login(
     set_login_cookie(user1.id, jar);
 
     GenerallyUsefulResponse::Success({
-        let redirect_to = if let Some(url) =
-            next.and_then(|url| url.parse::<Url>().ok())
-        {
-            url.path().to_string()
-        } else {
-            "/".to_string()
-        };
+        let redirect_to =
+            if let Some(url) = next.and_then(|url| url.parse::<Url>().ok()) {
+                url.path().to_string()
+            } else {
+                "/".to_string()
+            };
 
         Redirect::to(redirect_to)
     })

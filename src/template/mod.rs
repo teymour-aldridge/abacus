@@ -9,13 +9,13 @@ use crate::{auth::User, tournaments::Tournament};
 
 pub mod form;
 
-pub struct Page<R: Renderable> {
+pub struct Page<R: Renderable, const TX: bool> {
     body: Option<R>,
-    user: Option<User>,
+    user: Option<User<TX>>,
     hx_ext: Option<String>,
 }
 
-impl<R: Renderable> Page<R> {
+impl<R: Renderable, const TX: bool> Page<R, TX> {
     pub fn new() -> Self {
         Default::default()
     }
@@ -30,12 +30,12 @@ impl<R: Renderable> Page<R> {
         self
     }
 
-    pub fn user(mut self, user: User) -> Self {
+    pub fn user(mut self, user: User<TX>) -> Self {
         self.user = Some(user);
         self
     }
 
-    pub fn user_opt(mut self, user: Option<User>) -> Self {
+    pub fn user_opt(mut self, user: Option<User<TX>>) -> Self {
         self.user = user;
         self
     }
@@ -46,7 +46,7 @@ impl<R: Renderable> Page<R> {
     }
 }
 
-impl<R: Renderable> Renderable for Page<R> {
+impl<R: Renderable, const TX: bool> Renderable for Page<R, TX> {
     fn render_to(
         &self,
         buffer: &mut hypertext::Buffer<hypertext::context::Node>,
@@ -105,7 +105,7 @@ impl<R: Renderable> Renderable for Page<R> {
     }
 }
 
-impl<R: Renderable> Default for Page<R> {
+impl<R: Renderable, const TX: bool> Default for Page<R, TX> {
     fn default() -> Self {
         Self {
             body: Default::default(),

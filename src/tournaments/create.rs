@@ -6,15 +6,18 @@ use rocket::{FromForm, get, post, response::Redirect};
 use uuid::Uuid;
 
 use crate::schema::{tournament_members, tournaments};
+use crate::state::Conn;
 use crate::template::Page;
 
+use crate::auth::User;
 use crate::tournaments::config::{SpeakerMetric, TeamMetric};
 use crate::util_resp::GenerallyUsefulResponse;
 use crate::validation::is_valid_slug;
-use crate::{auth::User, state::LockedConn};
 
 #[get("/tournaments/create")]
-pub async fn create_tournament_page(user: User) -> GenerallyUsefulResponse {
+pub async fn create_tournament_page(
+    user: User<true>,
+) -> GenerallyUsefulResponse {
     GenerallyUsefulResponse::BadRequest(
         Page::new()
             .user(user)
@@ -86,8 +89,8 @@ pub struct CreateTournamentForm<'v> {
 /// The user will be added as a super user.
 pub async fn do_create_tournament(
     form: Form<CreateTournamentForm<'_>>,
-    user: User,
-    mut conn: LockedConn<'_>,
+    user: User<true>,
+    mut conn: Conn<true>,
 ) -> GenerallyUsefulResponse {
     let tid = Uuid::now_v7().to_string();
 

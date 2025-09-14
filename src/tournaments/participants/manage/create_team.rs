@@ -11,7 +11,7 @@ use crate::{
     auth::User,
     permission::IsTabDirector,
     schema::{tournament_institutions, tournament_teams},
-    state::{Conn, LockedConn},
+    state::{Conn, ThreadSafeConn},
     template::Page,
     tournaments::{
         Tournament, participants::Institution, snapshots::take_snapshot,
@@ -23,9 +23,9 @@ use crate::{
 pub async fn create_teams_page(
     _tid: &str,
     tournament: Tournament,
-    mut conn: LockedConn<'_>,
-    user: User,
-    _tab: IsTabDirector,
+    mut conn: Conn<true>,
+    user: User<true>,
+    _tab: IsTabDirector<true>,
 ) -> Rendered<String> {
     let institutions = tournament_institutions::table
         .filter(tournament_institutions::tournament_id.eq(&tournament.id))
@@ -75,14 +75,14 @@ pub struct CreateTeamForm {
 pub async fn do_create_team(
     tid: &str,
     tournament: Tournament,
-    conn: Conn,
-    user: User,
-    _tab: IsTabDirector,
+    conn: ThreadSafeConn<true>,
+    user: User<true>,
+    _tab: IsTabDirector<true>,
     form: Form<CreateTeamForm>,
 ) -> GenerallyUsefulResponse {
     let tid = tid.to_string();
     spawn_blocking(move || {
-        let mut conn = conn.get_sync();
+        let mut conn = conn.inner.try_lock().unwrap();
 
         let id = match form.institution_id.as_str() {
             "-----" => None,

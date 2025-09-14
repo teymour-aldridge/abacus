@@ -8,7 +8,7 @@ use crate::{
     auth::User,
     permission::IsTabDirector,
     schema::{tournament_draws, tournament_rounds, tournament_teams},
-    state::LockedConn,
+    state::Conn,
     template::Page,
     tournaments::{
         Tournament,
@@ -25,9 +25,9 @@ pub async fn view_draw(
     _tournament_id: &str,
     round_id: &str,
     draw_id: &str,
-    user: User,
-    _dir: IsTabDirector,
-    mut conn: LockedConn<'_>,
+    user: User<true>,
+    _dir: IsTabDirector<true>,
+    mut conn: Conn<true>,
     tournament: Tournament,
 ) -> Option<Rendered<String>> {
     let (draw, round) = match tournament_draws::table

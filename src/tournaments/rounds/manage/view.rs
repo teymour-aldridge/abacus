@@ -6,7 +6,7 @@ use crate::{
     auth::User,
     permission::IsTabDirector,
     schema::tournament_rounds,
-    state::LockedConn,
+    state::Conn,
     template::Page,
     tournaments::{Tournament, rounds::Round},
 };
@@ -16,9 +16,9 @@ pub async fn view_tournament_round_page(
     tid: &str,
     rid: &str,
     tournament: Tournament,
-    mut conn: LockedConn<'_>,
-    user: User,
-    _dir: IsTabDirector,
+    mut conn: Conn<true>,
+    user: User<true>,
+    _dir: IsTabDirector<true>,
 ) -> Option<Rendered<String>> {
     let round = match tournament_rounds::table
         .filter(

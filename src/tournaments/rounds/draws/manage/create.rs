@@ -5,9 +5,9 @@ use tokio::task::spawn_blocking;
 
 use crate::{
     auth::User,
-    permission::{IsTabDirector, IsTabDirectorNoTx},
+    permission::IsTabDirector,
     schema::{tournament_draws, tournament_rounds},
-    state::{DbPool, LockedConn},
+    state::{Conn, DbPool},
     template::Page,
     tournaments::{
         Tournament, TournamentNoTx,
@@ -27,11 +27,11 @@ use crate::{
 pub async fn generate_draw_page(
     _tournament_id: &str,
     round_id: &str,
-    user: User,
+    user: User<true>,
     // todo: also implement a guard for `Round`
     tournament: Tournament,
-    mut conn: LockedConn<'_>,
-    _dir: IsTabDirector,
+    mut conn: Conn<true>,
+    _dir: IsTabDirector<true>,
 ) -> Option<Rendered<String>> {
     let round = match tournament_rounds::table
         .filter(tournament_rounds::id.eq(&round_id))
@@ -82,7 +82,7 @@ pub async fn do_generate_draw(
     round_id: &str,
     tournament: TournamentNoTx,
     pool: &State<DbPool>,
-    _dir: IsTabDirectorNoTx,
+    _dir: IsTabDirector<false>,
 ) -> GenerallyUsefulResponse {
     let pool: DbPool = pool.inner().clone();
     let round_id = round_id.to_string();

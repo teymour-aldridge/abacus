@@ -7,7 +7,7 @@ use tokio::{sync::broadcast::Receiver, task::spawn_blocking};
 use crate::{
     auth::User,
     msg::{Msg, MsgContents},
-    permission::{IsTabDirector, IsTabDirectorNoTx},
+    permission::IsTabDirector,
     schema::tournaments,
     state::DbPool,
     template::Page,
@@ -21,8 +21,8 @@ pub mod manage_team;
 pub async fn manage_tournament_participants(
     tid: &str,
     tournament: Tournament,
-    user: User,
-    _tab: IsTabDirector,
+    user: User<true>,
+    _tab: IsTabDirector<true>,
 ) -> Rendered<String> {
     let script = format!(
         r#"
@@ -94,10 +94,11 @@ pub async fn manage_tournament_participants(
 #[get("/tournaments/<tid>/participants?channel")]
 pub async fn tournament_participant_updates(
     tid: &str,
+    // todo: can replace with ThreadSafeConn where TX = false
     pool: &State<DbPool>,
     ws: rocket_ws::WebSocket,
     rx: &State<Receiver<Msg>>,
-    _tab: IsTabDirectorNoTx,
+    _tab: IsTabDirector<false>,
 ) -> Option<rocket_ws::Channel<'static>> {
     let pool: DbPool = pool.inner().clone();
 

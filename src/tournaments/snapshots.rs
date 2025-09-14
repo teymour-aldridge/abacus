@@ -20,33 +20,6 @@ pub struct Snapshot {
 /// This struct can be deserialized
 pub struct SnapshotData {}
 
-/// Creates a new snapshot.
-///
-/// I would expect this function to be sufficiently slow that it should be run
-/// on a worker thread (so as to not block the async executor).
-///
-/// This implementation is naive -- it would probably make more sense to store
-/// this as something like
-///
-/// ```ignore
-/// pub struct Changeset(Vec<Change>);
-///
-/// pub struct Change {
-///     obj_id: String,
-///     table_name: String,
-///     before: State,
-///     after: State
-/// }
-///
-/// pub struct State {
-///     /// Does not exit
-///     Dne,
-///     Object(serde_json::Value)
-/// }
-/// ```
-///
-/// Callers would then need to specify the exact change.
-// todo: can simplify this using the schema table
 pub fn take_snapshot(
     tid: &str,
     conn: &mut impl LoadConnection<Backend = Sqlite>,

@@ -129,7 +129,7 @@ pub async fn do_register(
                 .execute(&mut *conn)
                 .unwrap();
 
-            GenerallyUsefulResponse::Success(Redirect::to("/user"))
+            GenerallyUsefulResponse::SeeOther(Redirect::to("/user"))
         }
     }
 }

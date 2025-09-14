@@ -233,7 +233,7 @@ pub async fn do_edit_team_details(
 
         take_snapshot(&tournament.id, &mut *conn);
 
-        GenerallyUsefulResponse::Success(Redirect::to(format!(
+        GenerallyUsefulResponse::SeeOther(Redirect::to(format!(
             "/tournaments/{}/teams/{}",
             tournament.id, team.id
         )))

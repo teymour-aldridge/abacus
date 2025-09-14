@@ -111,7 +111,7 @@ pub async fn do_generate_draw(
         );
 
         match draw_result {
-            Ok(draw_id) => GenerallyUsefulResponse::Success(Redirect::to(format!(
+            Ok(draw_id) => GenerallyUsefulResponse::SeeOther(Redirect::to(format!(
                 "/tournaments/{tournament_id}/rounds/{round_id}/draw/{draw_id}",
             ))),
             Err(e) => {

@@ -98,7 +98,7 @@ pub async fn do_login(
 
     set_login_cookie(user1.id, jar);
 
-    GenerallyUsefulResponse::Success({
+    GenerallyUsefulResponse::SeeOther({
         let redirect_to =
             if let Some(url) = next.and_then(|url| url.parse::<Url>().ok()) {
                 url.path().to_string()

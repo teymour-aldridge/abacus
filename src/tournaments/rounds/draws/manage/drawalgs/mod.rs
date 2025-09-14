@@ -10,6 +10,7 @@ use crate::schema::{
     tournament_debate_teams, tournament_debates, tournament_draws,
     tournament_round_tickets, tournament_team_availability,
 };
+use crate::tournaments::rounds::draws::manage::drawalgs::general::TeamsOfRoom;
 use crate::tournaments::snapshots::take_snapshot;
 use crate::{
     schema::tournament_teams,
@@ -45,7 +46,7 @@ pub fn do_draw(
     tournament: Tournament,
     round: Round,
     draw_generator: Box<
-        dyn Fn(DrawInput) -> Result<Vec<(Vec<Team>, Vec<Team>)>, MakeDrawError>,
+        dyn Fn(DrawInput) -> Result<Vec<TeamsOfRoom>, MakeDrawError>,
     >,
     conn: &mut impl LoadConnection<Backend = Sqlite>,
     override_prior_ticket: bool,

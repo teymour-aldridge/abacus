@@ -77,7 +77,7 @@ pub async fn do_create_team(
     user: User<true>,
     form: Form<CreateTeamForm>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(&tid, &mut *conn)?;
+    let tournament = Tournament::fetch(tid, &mut *conn)?;
     tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
 
     let id = match form.institution_id.as_str() {
@@ -152,7 +152,7 @@ pub async fn do_create_team(
         .unwrap();
     assert_eq!(n, 1);
 
-    take_snapshot(&tid, &mut *conn);
+    take_snapshot(tid, &mut *conn);
 
     see_other_ok(Redirect::to(format!(
         "/tournaments/{}/participants",

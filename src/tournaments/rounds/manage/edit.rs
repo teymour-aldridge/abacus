@@ -10,6 +10,7 @@ use crate::{
     tournaments::{Tournament, rounds::Round, snapshots::take_snapshot},
     util_resp::{
         FailureResponse, StandardResponse, SuccessResponse, err_not_found,
+        see_other_ok,
     },
 };
 
@@ -93,7 +94,7 @@ pub async fn do_edit_round(
     form: Form<EditRoundForm>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(&tid, &mut *conn)?;
+    let tournament = Tournament::fetch(tid, &mut *conn)?;
     tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
 
     let round = match tournament_rounds::table
@@ -142,9 +143,7 @@ pub async fn do_edit_round(
     .unwrap();
     assert_eq!(n, 1);
 
-    take_snapshot(&tid, &mut *conn);
+    take_snapshot(tid, &mut *conn);
 
-    Ok(SuccessResponse::SeeOther(Redirect::to(format!(
-        "/tournaments/{tid}/rounds"
-    ))))
+    see_other_ok(Redirect::to(format!("/tournaments/{tid}/rounds")))
 }

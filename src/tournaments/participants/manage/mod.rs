@@ -123,9 +123,9 @@ pub async fn tournament_participant_updates(
                 .check_user_is_tab_dir(&user.id, &mut *conn)
                 .is_err()
             {
-                return None;
+                None
             } else {
-                return Some(tournament);
+                Some(tournament)
             }
         } else {
             None

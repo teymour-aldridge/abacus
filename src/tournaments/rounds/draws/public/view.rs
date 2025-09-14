@@ -23,7 +23,7 @@ pub async fn view_active_draw_page(
     user: Option<User<true>>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
+    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
 
     let rounds = Round::current_rounds(tournament_id, &mut *conn);
 

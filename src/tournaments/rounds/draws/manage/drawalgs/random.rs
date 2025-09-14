@@ -2,9 +2,8 @@
 
 use rand::seq::IteratorRandom;
 
-use crate::tournaments::{
-    rounds::draws::manage::drawalgs::{DrawInput, MakeDrawError},
-    teams::Team,
+use crate::tournaments::rounds::draws::manage::drawalgs::{
+    DrawInput, MakeDrawError, general::TeamsOfRoom,
 };
 
 /// Generates a random draw.
@@ -16,7 +15,7 @@ pub fn gen_random(
         mut teams,
         mut rng,
     }: DrawInput,
-) -> Result<Vec<(Vec<Team>, Vec<Team>)>, MakeDrawError> {
+) -> Result<Vec<TeamsOfRoom>, MakeDrawError> {
     let denominator = (tournament.teams_per_side * 2) as usize;
 
     if teams.len() % (denominator) != 0 {

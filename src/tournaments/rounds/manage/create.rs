@@ -183,7 +183,7 @@ pub async fn do_create_new_round_of_specific_category(
         .execute(&mut *conn)
         .unwrap();
 
-    GenerallyUsefulResponse::Success(Redirect::to(format!(
+    GenerallyUsefulResponse::SeeOther(Redirect::to(format!(
         "/tournament/{}/rounds",
         tournament.id
     )))

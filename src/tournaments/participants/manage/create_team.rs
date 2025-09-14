@@ -158,7 +158,7 @@ pub async fn do_create_team(
 
         take_snapshot(&tid, &mut* conn);
 
-        GenerallyUsefulResponse::Success(Redirect::to(format!(
+        GenerallyUsefulResponse::SeeOther(Redirect::to(format!(
             "/tournaments/{}/participants",
             tournament.id
         )))

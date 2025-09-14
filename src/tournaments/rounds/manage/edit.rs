@@ -22,7 +22,7 @@ pub async fn edit_round_page(
     mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(tid, &mut *conn)?;
-    tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
+    tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
     let round = match tournament_rounds::table
         .filter(tournament_rounds::tournament_id.eq(tid))
@@ -95,7 +95,7 @@ pub async fn do_edit_round(
     mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(tid, &mut *conn)?;
-    tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
+    tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
     let round = match tournament_rounds::table
         .filter(tournament_rounds::id.eq(&tid))

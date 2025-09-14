@@ -27,7 +27,7 @@ pub async fn create_new_round(
     user: User<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(tid, &mut *conn)?;
-    tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
+    tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
     let cats = tournament_break_categories::table
         .filter(tournament_break_categories::tournament_id.eq(&tournament.id))
@@ -67,7 +67,7 @@ pub async fn create_new_round_of_specific_category_page(
     user: User<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(tid, &mut *conn)?;
-    tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
+    tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
     let () = {
         if category_id == "in_round" {
@@ -144,7 +144,7 @@ pub async fn do_create_new_round_of_specific_category(
     user: User<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(tid, &mut *conn)?;
-    tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
+    tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
     let break_cat = if category_id == "in_round" {
         diesel::update(

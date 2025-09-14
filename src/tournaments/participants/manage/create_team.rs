@@ -24,7 +24,11 @@ pub async fn create_teams_page(
     user: User<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(tid, &mut *conn)?;
-    tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
+    tournament.check_user_has_permission(
+        &user.id,
+        crate::permission::Permission::ManageParticipants,
+        &mut *conn,
+    )?;
 
     let institutions = tournament_institutions::table
         .filter(tournament_institutions::tournament_id.eq(&tournament.id))
@@ -78,7 +82,11 @@ pub async fn do_create_team(
     form: Form<CreateTeamForm>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(tid, &mut *conn)?;
-    tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
+    tournament.check_user_has_permission(
+        &user.id,
+        crate::permission::Permission::ManageParticipants,
+        &mut *conn,
+    )?;
 
     let id = match form.institution_id.as_str() {
         "-----" => None,

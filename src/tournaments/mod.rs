@@ -7,8 +7,12 @@ pub const WEBSOCKET_SCHEME: &str = "ws://";
 use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
 
 use crate::{
-    schema::{tournament_members, tournaments},
-    util_resp::FailureResponse,
+    permission::Permission,
+    schema::{
+        tournament_group_members, tournament_group_permissions,
+        tournament_groups, tournament_members, tournaments,
+    },
+    util_resp::{FailureResponse, unauthorized},
 };
 
 pub mod categories;
@@ -70,43 +74,74 @@ impl Tournament {
             })
     }
 
-    pub fn check_user_is_tab_dir(
+    pub fn check_user_is_superuser(
         &self,
         user_id: &str,
         conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Result<(), FailureResponse> {
-        match self.get_user_role(user_id, conn) {
-            Some(UserRole::Tab) => Ok(()),
-            _ => Err(FailureResponse::Unauthorized(())),
+        match diesel::select(diesel::dsl::exists(
+            tournament_members::table.filter(
+                tournament_members::user_id
+                    .eq(user_id)
+                    .and(tournament_members::tournament_id.eq(&self.id))
+                    .and(tournament_members::is_superuser.eq(true)),
+            ),
+        ))
+        .get_result::<bool>(conn)
+        .unwrap()
+        {
+            true => Ok(()),
+            false => unauthorized().map(|_| ()),
         }
     }
 
-    /// Gets the most significant user role
-    pub fn get_user_role(
+    pub fn check_user_has_permission(
         &self,
         user_id: &str,
+        permission: Permission,
         conn: &mut impl LoadConnection<Backend = Sqlite>,
-    ) -> Option<UserRole> {
-        let (is_ca, is_equity, is_tab) = tournament_members::table
-            .filter(tournament_members::user_id.eq(user_id))
-            .select((
-                tournament_members::is_ca,
-                tournament_members::is_equity,
-                tournament_members::is_superuser,
-            ))
-            .first::<(bool, bool, bool)>(conn)
-            .optional()
-            .unwrap()
-            .unwrap_or((false, false, false));
-
-        Some(if is_tab {
-            UserRole::Tab
-        } else if is_ca {
-            UserRole::CAP
-        } else if is_equity {
-            UserRole::Equity
-        } else {
-            return None;
-        })
+    ) -> Result<(), FailureResponse> {
+        match diesel::dsl::select(diesel::dsl::exists(
+            tournament_members::table
+                .filter(tournament_members::user_id.eq(user_id))
+                .filter(tournament_members::tournament_id.eq(&self.id))
+                .inner_join(
+                    tournament_groups::table.on(diesel::dsl::exists(
+                        tournament_group_members::table.filter(
+                            tournament_group_members::group_id
+                                .eq(tournament_groups::id)
+                                .and(
+                                    tournament_group_members::member_id
+                                        .eq(tournament_members::id),
+                                ),
+                        ),
+                    )),
+                )
+                .inner_join(
+                    tournament_group_permissions::table
+                        .on(tournament_group_permissions::group_id
+                            .eq(tournament_groups::id)),
+                )
+                .filter(
+                    tournament_group_permissions::permission
+                        .eq(serde_json::to_string(&permission).unwrap()),
+                )
+                .select(true.into_sql::<diesel::sql_types::Bool>())
+                .union(
+                    tournament_members::table
+                        .filter(
+                            tournament_members::user_id
+                                .eq(user_id)
+                                .and(tournament_members::is_superuser.eq(true)),
+                        )
+                        .select(true.into_sql::<diesel::sql_types::Bool>()),
+                ),
+        ))
+        .get_result::<bool>(conn)
+        .unwrap()
+        {
+            true => Ok(()),
+            false => unauthorized().map(|_| ()),
+        }
     }
 }

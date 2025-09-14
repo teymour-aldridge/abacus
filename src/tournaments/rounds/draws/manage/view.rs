@@ -29,7 +29,7 @@ pub async fn view_draw(
     mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
-    tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
+    tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
     let (draw, round) = match tournament_draws::table
         .filter(

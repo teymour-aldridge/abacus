@@ -79,16 +79,32 @@ create table if not exists tournament_action_logs (
     message text
 );
 
--- Question: should this change with the state of the application? Perhaps not?
 create table if not exists tournament_members (
     id text primary key not null,
     user_id text not null references users (id),
     tournament_id text not null references tournaments (id),
-    -- assigns all the permissions
-    is_superuser boolean not null,
-    -- assigns CA permissions (TODO: full permission system)
-    is_ca boolean not null,
-    is_equity boolean not null
+    is_superuser boolean not null default 0
+);
+
+create table if not exists tournament_groups (
+    id text primary key not null,
+    tournament_id text not null references tournaments (id),
+    name text not null
+);
+
+create table if not exists tournament_group_permissions (
+    id text primary key not null,
+    tournament_id text not null references tournaments (id),
+    group_id text not null references tournament_groups (id),
+    permission text not null unique,
+    unique (group_id, permission)
+);
+
+create table if not exists tournament_group_members (
+    id text primary key not null,
+    member_id text not null references tournament_members (id),
+    group_id text not null references tournament_groups (id),
+    unique (member_id, group_id)
 );
 
 create table if not exists tournament_participants (

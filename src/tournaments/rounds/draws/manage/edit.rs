@@ -44,7 +44,7 @@ pub async fn edit_draw_page_tab_dir(
     table_only: bool,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
-    tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
+    tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
     let (draw, round) = match tournament_draws::table
         .filter(
@@ -161,7 +161,9 @@ pub async fn draw_updates(
         let mut conn = pool1.get().unwrap();
 
         let tournament = Tournament::fetch(&tournament_id, &mut conn).ok()?;
-        tournament.check_user_is_tab_dir(&user.id, &mut conn).ok()?;
+        tournament
+            .check_user_is_superuser(&user.id, &mut conn)
+            .ok()?;
 
         let x = tournament_draws::table
             .filter(
@@ -231,7 +233,7 @@ pub async fn submit_cmd_tab_dir(
     user: User<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
-    tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
+    tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
     let (draw, _round) = match tournament_draws::table
         .filter(

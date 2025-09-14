@@ -120,7 +120,11 @@ pub async fn tournament_participant_updates(
 
         if let Some(tournament) = tournament {
             if tournament
-                .check_user_is_tab_dir(&user.id, &mut *conn)
+                .check_user_has_permission(
+                    &user.id,
+                    crate::permission::Permission::ManageParticipants,
+                    &mut *conn,
+                )
                 .is_err()
             {
                 None

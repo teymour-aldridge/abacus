@@ -26,7 +26,11 @@ pub async fn manage_team_page(
     mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
-    tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
+    tournament.check_user_has_permission(
+        &user.id,
+        crate::permission::Permission::ManageParticipants,
+        &mut *conn,
+    )?;
 
     let team = match tournament_teams::table
         .filter(
@@ -80,7 +84,11 @@ pub async fn edit_team_details_page(
     mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
-    tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
+    tournament.check_user_has_permission(
+        &user.id,
+        crate::permission::Permission::ManageParticipants,
+        &mut *conn,
+    )?;
 
     let team = match tournament_teams::table
         .filter(
@@ -158,7 +166,11 @@ pub async fn do_edit_team_details(
     form: Form<CreateTeamForm>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
-    tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
+    tournament.check_user_has_permission(
+        &user.id,
+        crate::permission::Permission::ManageParticipants,
+        &mut *conn,
+    )?;
 
     let team = match tournament_teams::table
         .filter(

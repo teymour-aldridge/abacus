@@ -90,6 +90,31 @@ diesel::table! {
 }
 
 diesel::table! {
+    tournament_group_members (id) {
+        id -> Text,
+        member_id -> Text,
+        group_id -> Text,
+    }
+}
+
+diesel::table! {
+    tournament_group_permissions (id) {
+        id -> Text,
+        tournament_id -> Text,
+        group_id -> Text,
+        permission -> Text,
+    }
+}
+
+diesel::table! {
+    tournament_groups (id) {
+        id -> Text,
+        tournament_id -> Text,
+        name -> Text,
+    }
+}
+
+diesel::table! {
     tournament_institutions (id) {
         id -> Text,
         tournament_id -> Text,
@@ -152,8 +177,6 @@ diesel::table! {
         user_id -> Text,
         tournament_id -> Text,
         is_superuser -> Bool,
-        is_ca -> Bool,
-        is_equity -> Bool,
     }
 }
 
@@ -326,6 +349,11 @@ diesel::joinable!(tournament_debates -> tournament_rooms (room_id));
 diesel::joinable!(tournament_debates -> tournaments (tournament_id));
 diesel::joinable!(tournament_draws -> tournament_rounds (round_id));
 diesel::joinable!(tournament_draws -> tournaments (tournament_id));
+diesel::joinable!(tournament_group_members -> tournament_groups (group_id));
+diesel::joinable!(tournament_group_members -> tournament_members (member_id));
+diesel::joinable!(tournament_group_permissions -> tournament_groups (group_id));
+diesel::joinable!(tournament_group_permissions -> tournaments (tournament_id));
+diesel::joinable!(tournament_groups -> tournaments (tournament_id));
 diesel::joinable!(tournament_institutions -> tournaments (tournament_id));
 diesel::joinable!(tournament_judge_availability -> tournament_judges (judge_id));
 diesel::joinable!(tournament_judge_availability -> tournament_rounds (round_id));
@@ -370,6 +398,9 @@ diesel::allow_tables_to_appear_in_same_query!(
     tournament_debate_teams,
     tournament_debates,
     tournament_draws,
+    tournament_group_members,
+    tournament_group_permissions,
+    tournament_groups,
     tournament_institutions,
     tournament_judge_availability,
     tournament_judge_judge_clash,

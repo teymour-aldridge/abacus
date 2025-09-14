@@ -18,7 +18,7 @@ pub async fn admin_view_tournament(
     mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(tid, &mut *conn)?;
-    tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
+    tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
     success(Page::new()
         .user(user)

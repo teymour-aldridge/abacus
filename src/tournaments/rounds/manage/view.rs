@@ -19,7 +19,7 @@ pub async fn view_tournament_round_page(
     user: User<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(tid, &mut *conn)?;
-    tournament.check_user_is_tab_dir(&user.id, &mut *conn)?;
+    tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
     let round = match tournament_rounds::table
         .filter(

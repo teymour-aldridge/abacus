@@ -58,7 +58,7 @@ where
                         th scope="row" {
                             (i)
                         }
-                        @for team in &debate.teams {
+                        @for team in &debate.teams_of_debate {
                             td {
                                 a href = (format!("/tournaments/{}/teams/{}", &self.tournament.id, team.id)) {
                                     (self.teams.get(&team.id).unwrap().name)

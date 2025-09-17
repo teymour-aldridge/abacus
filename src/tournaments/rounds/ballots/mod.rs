@@ -1,11 +1,13 @@
 use chrono::NaiveDateTime;
 use diesel::{
-    Queryable, connection::LoadConnection, prelude::*,
-    sqlite::Sqlite,
+    Queryable, connection::LoadConnection, prelude::*, sqlite::Sqlite,
 };
 use itertools::Itertools;
 
 use crate::schema::{tournament_ballots, tournament_speaker_score_entries};
+
+pub mod manage;
+pub mod public;
 
 pub struct BallotRepr {
     ballot: Ballot,
@@ -48,7 +50,8 @@ impl BallotRepr {
         self.scores
             .iter()
             .filter(|s| s.team_id == team_id)
-            .sorted_by_key(|s| s.speaker_position).cloned()
+            .sorted_by_key(|s| s.speaker_position)
+            .cloned()
             .collect()
     }
 }

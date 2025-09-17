@@ -20,6 +20,7 @@ pub mod config;
 pub mod create;
 pub mod manage;
 pub mod participants;
+pub mod privateurls;
 pub mod public;
 pub mod rounds;
 pub mod snapshots;

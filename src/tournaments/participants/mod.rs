@@ -14,13 +14,13 @@ use crate::{
 
 pub mod manage;
 
-#[derive(Queryable, Serialize, Deserialize, Clone)]
+#[derive(Queryable, Serialize, Deserialize, Clone, Debug, Hash)]
 pub struct Speaker {
-    id: String,
-    tournament_id: String,
-    name: String,
-    email: String,
-    participant_id: String,
+    pub id: String,
+    pub tournament_id: String,
+    pub name: String,
+    pub email: String,
+    pub participant_id: String,
 }
 
 #[derive(Queryable, QueryableByName, Serialize, Deserialize, Clone)]
@@ -92,7 +92,9 @@ pub struct NestedDataItem {
 
 impl TournamentParticipants {
     fn for_tabulator(self) -> Vec<NestedDataItem> {
-        self.teams.into_values().map(|team| NestedDataItem {
+        self.teams
+            .into_values()
+            .map(|team| NestedDataItem {
                 team: STeam {
                     id: team.id.clone(),
                     name: team.name,

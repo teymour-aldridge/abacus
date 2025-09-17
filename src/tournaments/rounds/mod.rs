@@ -3,7 +3,10 @@ use std::collections::HashMap;
 use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
 use serde::{Deserialize, Serialize};
 
-use crate::schema::tournament_rounds;
+use crate::{
+    schema::{tournament_round_motions, tournament_rounds},
+    util_resp::{FailureResponse, err_not_found},
+};
 
 pub mod ballots;
 pub mod draws;
@@ -21,6 +24,21 @@ pub struct Round {
 }
 
 impl Round {
+    pub fn fetch(
+        round_id: &str,
+        conn: &mut impl LoadConnection<Backend = Sqlite>,
+    ) -> Result<Self, FailureResponse> {
+        tournament_rounds::table
+            .filter(tournament_rounds::id.eq(round_id))
+            .first::<Round>(conn)
+            .optional()
+            .unwrap()
+            .map(Ok)
+            .unwrap_or(err_not_found().map(|_| {
+                unreachable!("err_not_found always returns an `Err` variant")
+            }))
+    }
+
     /// Retrieves the current rounds.
     pub fn current_rounds(
         tid: &str,
@@ -98,4 +116,14 @@ impl TournamentRounds {
         }
         ret
     }
+}
+
+#[derive(Queryable, QueryableByName)]
+#[diesel(table_name = tournament_round_motions)]
+pub struct Motion {
+    pub id: String,
+    pub tournament_id: String,
+    pub round_id: String,
+    pub infoslide: Option<String>,
+    pub motion: String,
 }

@@ -99,7 +99,7 @@ pub async fn view_active_draw_page(
                                     th scope="row" {
                                         (i)
                                     }
-                                    @for team in &debate.teams {
+                                    @for team in &debate.teams_of_debate {
                                         td {
                                             a href = (format!("/tournaments/{tournament_id}/teams/{}", &team.id)) {
                                                 (teams.get(&team.id).unwrap().name)

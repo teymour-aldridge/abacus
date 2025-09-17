@@ -1,12 +1,20 @@
+use std::collections::HashMap;
+
 use crate::schema::tournament_ballots;
 use crate::schema::tournament_debate_teams;
 use crate::schema::tournament_debates;
 use crate::schema::tournament_draws;
+use crate::schema::tournament_speakers;
+use crate::schema::tournament_team_speakers;
+use crate::schema::tournament_teams;
+use crate::tournaments::participants::Speaker;
 use crate::tournaments::rounds::ballots::BallotRepr;
+use crate::tournaments::teams::Team;
 
 use chrono::NaiveDateTime;
 use diesel::connection::LoadConnection;
 use diesel::prelude::*;
+use diesel::sql_types::BigInt;
 use diesel::sqlite::Sqlite;
 use diesel::{QueryableByName, prelude::Queryable};
 use serde::{Deserialize, Serialize};
@@ -77,7 +85,11 @@ impl DrawRepr {
 #[derive(Clone, Debug)]
 pub struct DebateRepr {
     pub debate: Debate,
-    pub teams: Vec<DebateTeam>,
+    pub teams_of_debate: Vec<DebateTeam>,
+    // todo: teams and speakers should be placed in a separate struct (we can
+    // also load the private URLs as part of this struct)
+    pub teams: HashMap<String, Team>,
+    pub speakers_of_team: HashMap<String, Vec<Speaker>>,
 }
 
 impl DebateRepr {
@@ -90,7 +102,7 @@ impl DebateRepr {
             .first::<Debate>(conn)
             .unwrap();
 
-        let teams = tournament_debate_teams::table
+        let debate_teams: Vec<DebateTeam> = tournament_debate_teams::table
             .filter(tournament_debate_teams::debate_id.eq(&debate.id))
             // e.g.
             // OG (seq=0, side=0)
@@ -98,13 +110,66 @@ impl DebateRepr {
             // CG (seq=1, side=0)
             // CO (seq=1, side=1)
             .order_by((
-                tournament_debate_teams::seq.asc(),
-                tournament_debate_teams::side.asc(),
+                tournament_debate_teams::debate_id,
+                2.into_sql::<BigInt>() * tournament_debate_teams::seq
+                    + tournament_debate_teams::side,
             ))
             .load::<DebateTeam>(conn)
             .unwrap();
 
-        Self { debate, teams }
+        let teams = tournament_teams::table
+            .filter(tournament_teams::tournament_id.eq(&debate.tournament_id))
+            .load::<Team>(conn)
+            .unwrap();
+
+        let tournament_team_speakers = tournament_team_speakers::table
+            .filter(
+                tournament_team_speakers::team_id.eq_any(
+                    tournament_teams::table
+                        .filter(
+                            tournament_teams::tournament_id
+                                .eq(&debate.tournament_id),
+                        )
+                        .select(tournament_teams::id),
+                ),
+            )
+            .select((
+                tournament_team_speakers::team_id,
+                tournament_team_speakers::speaker_id,
+            ))
+            .load::<(String, String)>(&mut *conn)
+            .unwrap();
+
+        let tournament_speakers = tournament_speakers::table
+            .filter(
+                tournament_speakers::tournament_id.eq(&debate.tournament_id),
+            )
+            .load::<Speaker>(&mut *conn)
+            .unwrap();
+
+        Self {
+            debate,
+            teams_of_debate: debate_teams,
+            teams: teams
+                .into_iter()
+                .map(|team| (team.id.clone(), team))
+                .collect(),
+            speakers_of_team: {
+                let mut map = HashMap::new();
+                for (team_id, speaker_id) in tournament_team_speakers {
+                    let speaker = tournament_speakers
+                        .iter()
+                        .find(|s| s.id == speaker_id)
+                        .unwrap();
+                    map.entry(team_id)
+                        .and_modify(|speakers: &mut Vec<Speaker>| {
+                            speakers.push(speaker.clone())
+                        })
+                        .or_insert(vec![speaker.clone()]);
+                }
+                map
+            },
+        }
     }
 
     /// Retrieve all the ballots that have been submitted for this debate.
@@ -132,7 +197,7 @@ pub enum DrawStatus {
 #[derive(QueryableByName, Queryable, Debug, Clone)]
 #[diesel(table_name = tournament_debates)]
 pub struct Debate {
-    id: String,
+    pub id: String,
     pub tournament_id: String,
     pub draw_id: String,
     pub room_id: Option<String>,

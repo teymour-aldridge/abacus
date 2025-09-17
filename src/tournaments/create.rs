@@ -132,6 +132,7 @@ pub async fn do_create_tournament(
             tournament_members::id.eq(Uuid::now_v7().to_string()),
             tournament_members::user_id.eq(user.id),
             tournament_members::tournament_id.eq(&tid),
+            tournament_members::is_superuser.eq(true),
         ))
         .execute(&mut *conn)
         .unwrap();

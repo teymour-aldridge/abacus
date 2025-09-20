@@ -1,7 +1,8 @@
+use std::collections::HashMap;
+
 use crate::{
     schema::{
-        tournament_debate_speaker_results, tournament_debates,
-        tournament_draws,
+        tournament_debate_teams, tournament_debates, tournament_draws,
         tournament_rounds::{self},
         tournament_teams,
     },
@@ -10,10 +11,11 @@ use crate::{
     },
 };
 use diesel::{dsl, prelude::*};
+use rust_decimal::prelude::FromPrimitive;
 
-pub struct TotalTeamSpeakerScoreComputer;
+pub struct AverageTotalSpeakerScoreComputer(pub HashMap<String, MetricValue>);
 
-impl Metric<MetricValue> for TotalTeamSpeakerScoreComputer {
+impl Metric<MetricValue> for AverageTotalSpeakerScoreComputer {
     fn compute(
         &self,
         tid: &str,
@@ -47,38 +49,40 @@ impl Metric<MetricValue> for TotalTeamSpeakerScoreComputer {
                     .on(tournament_debates::draw_id.eq(tournament_draws::id)),
             )
             .inner_join(
-                tournament_debate_speaker_results::table.on(
-                    tournament_debate_speaker_results::debate_id
-                        .eq(tournament_debates::id)
-                        .and(
-                            tournament_debate_speaker_results::team_id
-                                .eq(tournament_teams::id),
-                        ),
-                ),
+                tournament_debate_teams::table
+                    .on(
+                        tournament_debate_teams::team_id
+                            .eq(tournament_teams::id)
+                            .and(
+                                tournament_debate_teams::debate_id
+                                    .eq(tournament_debates::id),
+                            ),
+                    ),
             )
             .group_by(tournament_teams::id)
             .select((
                 tournament_teams::id,
-                dsl::case_when(
-                    dsl::sum(tournament_debate_speaker_results::score)
-                        .is_not_null(),
-                    dsl::sum(tournament_debate_speaker_results::score)
-                        .assume_not_null(),
-                )
-                .otherwise(0.0),
+                diesel::dsl::count(tournament_debates::id),
             ))
-            .load::<(String, f32)>(conn)
+            .load::<(String, i64)>(conn)
             .unwrap()
             .into_iter()
             .map(|(a, b)| {
-                (
-                    a,
+                let float = if b == 0 {
+                    assert_eq!(
+                        *self.0.get(&a).unwrap().as_float().unwrap(),
+                        rust_decimal::Decimal::ZERO
+                    );
+                    MetricValue::Float(rust_decimal::Decimal::ZERO)
+                } else {
                     MetricValue::Float(
-                        rust_decimal::Decimal::from_f32_retain(b).expect(
-                            &format!("could not convert `{b}` to rust_decimal"),
-                        ),
-                    ),
-                )
+                        self.0.get(&a).unwrap().as_float().unwrap()
+                            / rust_decimal::Decimal::from_i64(b).expect(&format!(
+                                "failed to convert {b} to rust_decimal::Decimal"
+                            )),
+                    )
+                };
+                (a, float)
             })
             .collect()
     }

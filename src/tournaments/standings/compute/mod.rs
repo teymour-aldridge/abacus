@@ -17,6 +17,7 @@ use crate::tournaments::config::{
 };
 use crate::tournaments::standings::compute::metrics::Metric;
 use crate::tournaments::standings::compute::metrics::MetricValue;
+use crate::tournaments::standings::compute::metrics::atss::AverageTotalSpeakerScoreComputer;
 use crate::tournaments::standings::compute::metrics::draw_strength::DrawStrengthComputer;
 use crate::tournaments::standings::compute::metrics::n_times_specific_result::NTimesSpecificResultComputer;
 use crate::tournaments::standings::compute::metrics::points::TeamPointsComputer;
@@ -105,8 +106,18 @@ impl TeamStandings {
 
                     DrawStrengthComputer::<false>(points).compute(tid, conn)
                 }
-                RankableTeamMetric::AverageTotalSpeakerScore
-                | RankableTeamMetric::Ballots
+                RankableTeamMetric::AverageTotalSpeakerScore => {
+                    // todo: (same as for draw strength by wins), we are doin
+                    // a computation twice here
+                    let tss = TotalTeamSpeakerScoreComputer::compute(
+                        &TotalTeamSpeakerScoreComputer,
+                        tid,
+                        conn,
+                    );
+
+                    AverageTotalSpeakerScoreComputer(tss).compute(tid, conn)
+                }
+                RankableTeamMetric::Ballots
                 | RankableTeamMetric::DrawStrengthBySpeaks => todo!(),
             };
 

@@ -6,9 +6,10 @@ use good_lp::{
 };
 use itertools::Itertools;
 use rand::Rng;
+use rust_decimal::prelude::ToPrimitive;
 
 use crate::tournaments::{
-    config::PullupMetric,
+    config::{PullupMetric, RankableTeamMetric, UnrankableTeamMetric},
     rounds::draws::manage::drawalgs::{DrawInput, MakeDrawError},
     standings::compute::{TeamStandings, history::TeamHistory},
     teams::Team,
@@ -17,14 +18,40 @@ use crate::tournaments::{
 /// A map of program objects to the corresponding linear programming variables.
 #[derive(Default)]
 pub struct VariableMap {
+    /// These are the variables x_{t,r,p}, each of which denotes whether team t
+    /// is assigned to room r in position p.
     pub team_allocs: HashMap<(String, usize, usize), Variable>,
+    /// These are the variables b_{r,s}, each of which denotes whether room r
+    /// is an s-point room.
     pub room_brackets: HashMap<(usize, usize), Variable>,
+    /// These are the variables y_{t,s}, each of which denotes whether team t
+    /// is in an s-point bracket.
     pub team_brackets: HashMap<(String, usize), Variable>,
+    /// These are the variables z_b, denoting the size of each room.
     pub bracket_size: HashMap<usize, Variable>,
 }
 
 pub type TeamsOfRoom = (Vec<Team>, Vec<Team>);
 
+/// A relatively general draw algorithm, which uses linear programming. I
+/// believe this handles WSDC and BP correctly. This may be too slow (and
+/// doesn't handle Australs-style formats). If it is not sufficiently rapid, it
+/// may be necessary to instead adopt format-specific algorithms. In this case,
+/// we should be careful to ensure that the user is first directed to pick the
+/// type of draw algorithm, and then only make available the configuration
+/// options relevant to this algorithm.
+///
+/// The variables in the problem are
+/// - x_{t,r,p}, a binary variable which is 1 if team t is assigned in room r
+///   at position p
+/// - b_{r,s}, a binary variable denoting whether room r is an s-point bracket
+///   room
+/// - y_{t,s}, a binary variable denoting whether team t is assigned to an
+///   s-point bracket room
+/// - z_{b}, an integer variable which denotes the size of bracket b
+///
+/// Additional description can be found here:
+/// https://www.overleaf.com/read/sstwcyfjbrhx#1c6d64
 pub fn make_draw(
     input: DrawInput,
     standings: &TeamStandings,
@@ -105,29 +132,25 @@ pub fn make_draw(
         variable_map.bracket_size.insert(bracket, z_b);
     }
 
-    {
+    let _each_team_assigned_exactly_once = {
         for team in &input.teams {
-            let sum = {
-                let mut expr = Expression::default();
+            let mut sum = Expression::default();
 
-                for room in 0..rooms {
-                    for p in 0..teams_per_room {
-                        expr += variable_map
-                            .team_allocs
-                            // todo: string interning
-                            .get(&(team.id.clone(), room, p))
-                            .unwrap();
-                    }
+            for room in 0..rooms {
+                for p in 0..teams_per_room {
+                    sum += variable_map
+                        .team_allocs
+                        // todo: string interning
+                        .get(&(team.id.clone(), room, p))
+                        .unwrap();
                 }
-
-                expr
-            };
+            }
 
             constraints.push(good_lp::constraint::eq(sum, 1));
         }
     };
 
-    {
+    let _each_position_has_exactly_one_team_assigned = {
         for p in 0..teams_per_room {
             for room in 0..rooms {
                 let mut expr = Expression::default();
@@ -144,7 +167,7 @@ pub fn make_draw(
         }
     };
 
-    {
+    let _each_team_is_in_exactly_one_bracket = {
         for team in &input.teams {
             let mut sum = Expression::default();
 
@@ -159,7 +182,7 @@ pub fn make_draw(
         }
     };
 
-    {
+    let _teams_not_pulled_down = {
         for team in &input.teams {
             for bracket in min_score
                 ..(standings.points_of_team(&team.id).unwrap() as usize)
@@ -175,20 +198,21 @@ pub fn make_draw(
         }
     };
 
-    {
+    let _bracket_sizes_match = {
         for score in min_score..=max_score {
-            let mut sum = Expression::default();
+            let mut number_of_rooms_of_score_s = Expression::default();
             for room in 0..rooms {
-                sum += variable_map.room_brackets.get(&(room, score)).unwrap();
+                number_of_rooms_of_score_s +=
+                    variable_map.room_brackets.get(&(room, score)).unwrap();
             }
             constraints.push(good_lp::constraint::eq(
                 *variable_map.bracket_size.get(&score).unwrap(),
-                sum,
+                number_of_rooms_of_score_s,
             ));
 
-            let mut sum = Expression::default();
+            let mut number_of_teams_in_bracket = Expression::default();
             for team in &input.teams {
-                sum += *variable_map
+                number_of_teams_in_bracket += *variable_map
                     .team_brackets
                     .get(&(team.id.clone(), score))
                     .unwrap();
@@ -196,12 +220,12 @@ pub fn make_draw(
             constraints.push(good_lp::constraint::eq(
                 *variable_map.bracket_size.get(&score).unwrap()
                     * (teams_per_room as f64),
-                sum,
+                number_of_teams_in_bracket,
             ));
         }
     };
 
-    {
+    let _right_number_of_teams_per_room = {
         for room in 0..rooms {
             let mut teams_assigned_to_this_room = Expression::default();
             for team in &input.teams {
@@ -219,7 +243,10 @@ pub fn make_draw(
         }
     };
 
-    {
+    // We also need to ensure that when a team is assigned to score bracket s
+    // it can only be allocated to a room r if r is a room that is also an
+    // s-point room.
+    let _team_brackets_match_room_brackets = {
         for team in &input.teams {
             for room in 0..rooms {
                 for score in min_score..=max_score {
@@ -278,46 +305,69 @@ pub fn make_draw(
                         // the metrics (work out upper/lower bounds and add
                         // multipliers accordingly)
                         match metric {
-                            PullupMetric::LowestRank => {
-                                penalty += standings
-                                    .ranked
-                                    .iter()
-                                    .enumerate()
-                                    .find_map(|(idx, cmp)| {
-                                        if cmp
-                                            .iter()
-                                            .any(|cmp| cmp.id == team.id)
-                                        {
-                                            Some(idx)
-                                        } else {
-                                            None
-                                        }
-                                    })
-                                    .unwrap()
-                                    as f64
-                            }
-                            PullupMetric::HighestRank => {
-                                penalty += -(standings
-                                    .ranked
-                                    .iter()
-                                    .enumerate()
-                                    .find_map(|(idx, cmp)| {
-                                        if cmp
-                                            .iter()
-                                            .any(|cmp| cmp.id == team.id)
-                                        {
-                                            Some(idx)
-                                        } else {
-                                            None
-                                        }
-                                    })
-                                    .unwrap()
-                                    as f64)
+                            PullupMetric::LowestRank
+                            | PullupMetric::HighestRank => {
+                                let sign = if matches!(
+                                    metric,
+                                    PullupMetric::LowestRank
+                                ) {
+                                    -1.0
+                                } else {
+                                    1.0
+                                };
+                                penalty += sign
+                                    * standings
+                                        .ranked
+                                        .iter()
+                                        .enumerate()
+                                        .find_map(|(idx, cmp)| {
+                                            if cmp
+                                                .iter()
+                                                .any(|cmp| cmp.id == team.id)
+                                            {
+                                                Some(idx)
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                        .unwrap()
+                                        as f64
                             }
                             PullupMetric::Random => (),
                             PullupMetric::FewerPreviousPullups => todo!(),
-                            PullupMetric::LowestDsRank => todo!(),
-                            PullupMetric::LowestDsSpeaks => todo!(),
+                            PullupMetric::LowestDsRank => {
+                                let ds_rank = standings.pullup_metrics.get(&(
+                                    team.id.clone(),
+                                    UnrankableTeamMetric::DrawStrengthByRank,
+                                )).unwrap();
+                                penalty +=
+                                    -(*ds_rank.as_integer().unwrap() as f64);
+                            }
+                            PullupMetric::LowestDsSpeaks => {
+                                let sub_penalty = standings
+                                    .ranked_metrics_of_team
+                                    .get(&team.id)
+                                    .unwrap()
+                                    .iter()
+                                    .find_map(|(kind, value)| {
+                                        if matches!(
+                                            kind,
+                                            RankableTeamMetric::AverageTotalSpeakerScore
+                                        ) {
+                                            Some(
+                                                -value
+                                                    .as_float()
+                                                    .unwrap()
+                                                    .to_f64()
+                                                    .unwrap(),
+                                            )
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .unwrap();
+                                penalty += sub_penalty;
+                            }
                         }
                     }
 

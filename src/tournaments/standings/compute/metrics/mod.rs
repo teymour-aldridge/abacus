@@ -5,7 +5,7 @@ use diesel::{connection::LoadConnection, sqlite::Sqlite};
 
 use crate::schema::tournament_rounds;
 
-pub mod ds_wins;
+pub mod draw_strength;
 pub mod n_times_specific_result;
 pub mod points;
 pub mod tss;

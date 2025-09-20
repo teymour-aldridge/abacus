@@ -44,6 +44,9 @@ pub enum RankableTeamMetric {
     /// achieved.
     #[serde(rename = "draw_strength_by_wins")]
     DrawStrengthByWins,
+    /// The sum of speaks of all the teams that the given team has faced.
+    #[serde(rename = "draw_strength_by_speaks")]
+    DrawStrengthBySpeaks,
     /// The total number of times a team has achieved this many points.
     #[serde(rename = "n_times_achieved")]
     NTimesAchieved(u8),
@@ -61,6 +64,9 @@ impl std::fmt::Display for RankableTeamMetric {
             RankableTeamMetric::Wins => "#points",
             RankableTeamMetric::Ballots => "#ballots",
             RankableTeamMetric::DrawStrengthByWins => "draw strength by wins",
+            RankableTeamMetric::DrawStrengthBySpeaks => {
+                "draw strength by (average) total speaker score"
+            }
             RankableTeamMetric::NTimesAchieved(points) => {
                 return write!(f, "#times achieved {points} points");
             }
@@ -70,6 +76,12 @@ impl std::fmt::Display for RankableTeamMetric {
             }
         })
     }
+}
+
+#[derive(Serialize, Deserialize, Hash, Eq, PartialEq)]
+pub enum UnrankableTeamMetric {
+    #[serde(rename = "draw_strength_by_rank")]
+    DrawStrengthByRank,
 }
 
 #[derive(Serialize, Deserialize)]

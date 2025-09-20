@@ -12,7 +12,7 @@ use crate::{
         tournament_group_members, tournament_group_permissions,
         tournament_groups, tournament_members, tournaments,
     },
-    tournaments::config::RankableTeamMetric,
+    tournaments::config::{PullupMetric, RankableTeamMetric},
     util_resp::{FailureResponse, unauthorized},
 };
 
@@ -61,6 +61,10 @@ pub enum UserRole {
 }
 
 impl Tournament {
+    pub fn pullup_metrics(&self) -> Vec<PullupMetric> {
+        serde_json::from_str(&self.pullup_metrics).unwrap()
+    }
+
     pub fn metrics(&self) -> Vec<RankableTeamMetric> {
         serde_json::from_str(&self.team_standings_metrics).unwrap()
     }

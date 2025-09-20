@@ -12,9 +12,16 @@ use crate::{
     },
 };
 
-pub struct DsWinsComputer(pub std::collections::HashMap<String, MetricValue>);
+/// This computes the draw strength for a given team, according to the
+/// provided metric (i.e. the HashMap passed to this struct). Note that the
+/// draw strength
+pub struct DrawStrengthComputer<const FLOAT_METRIC: bool>(
+    pub std::collections::HashMap<String, MetricValue>,
+);
 
-impl Metric<MetricValue> for DsWinsComputer {
+impl<const FLOAT_METRIC: bool> Metric<MetricValue>
+    for DrawStrengthComputer<FLOAT_METRIC>
+{
     fn compute(
         &self,
         tid: &str,
@@ -27,6 +34,8 @@ impl Metric<MetricValue> for DsWinsComputer {
             tournament_teams as other_team
         );
 
+        // First retrieve a list of (team_a, team_b) where team_a debated
+        // against team_b.
         let teams_and_debated_against = team
             .filter(team.field(tournament_teams::id).eq(tid))
             .inner_join(completed_preliminary_rounds())
@@ -84,6 +93,7 @@ impl Metric<MetricValue> for DsWinsComputer {
                 team.field(tournament_teams::id),
                 other_team.field(tournament_teams::id),
             ))
+            .order_by(team.field(tournament_teams::id).asc())
             .load::<(String, String)>(conn)
             .unwrap();
 
@@ -91,18 +101,32 @@ impl Metric<MetricValue> for DsWinsComputer {
 
         // todo: we could also place this in the SQL
         for (team, debated_against) in &teams_and_debated_against {
-            let points_of_team_hit = match self.0.get(debated_against).unwrap()
-            {
-                MetricValue::Integer(p) => p,
-                _ => unreachable!(),
-            };
+            let debated_against_metric =
+                match (self.0.get(debated_against).unwrap(), FLOAT_METRIC) {
+                    (MetricValue::Integer(p), false) => {
+                        MetricValue::Integer(*p)
+                    }
+                    (MetricValue::Float(f), true) => MetricValue::Float(*f),
+                    _ => unreachable!(),
+                };
             ds_wins
                 .entry(team.clone())
-                .and_modify(|metric| match metric {
-                    MetricValue::Integer(ds) => *ds += *points_of_team_hit,
+                .and_modify(|metric| match (metric, FLOAT_METRIC) {
+                    (MetricValue::Integer(ds), false) => {
+                        *ds += match debated_against_metric {
+                            MetricValue::Integer(i) => i,
+                            _ => unreachable!(),
+                        }
+                    }
+                    (MetricValue::Float(ds), true) => {
+                        *ds += match debated_against_metric {
+                            MetricValue::Float(decimal) => decimal,
+                            _ => unreachable!(),
+                        }
+                    }
                     _ => unreachable!(),
                 })
-                .or_insert(MetricValue::Integer(*points_of_team_hit));
+                .or_insert(debated_against_metric);
         }
 
         ds_wins

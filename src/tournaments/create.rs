@@ -10,7 +10,7 @@ use crate::state::Conn;
 use crate::template::Page;
 
 use crate::auth::User;
-use crate::tournaments::config::{RankeableTeamMetric, Speakeretric};
+use crate::tournaments::config::{RankableTeamMetric, SpeakerMetric};
 use crate::util_resp::{StandardResponse, SuccessResponse, see_other_ok};
 use crate::validation::is_valid_slug;
 

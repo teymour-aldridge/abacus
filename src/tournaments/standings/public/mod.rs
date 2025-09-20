@@ -54,7 +54,7 @@ pub async fn public_team_tab_page(
                                 td {
                                     (team.name)
                                 }
-                                @for metric in standings.metrics_of_team.get(&team.id).unwrap() {
+                                @for metric in standings.ranked_metrics_of_team.get(&team.id).unwrap() {
                                     td {
                                         (metric.1.to_string())
                                     }

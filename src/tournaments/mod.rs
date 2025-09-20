@@ -12,6 +12,7 @@ use crate::{
         tournament_group_members, tournament_group_permissions,
         tournament_groups, tournament_members, tournaments,
     },
+    tournaments::config::TeamMetric,
     util_resp::{FailureResponse, unauthorized},
 };
 
@@ -60,6 +61,10 @@ pub enum UserRole {
 }
 
 impl Tournament {
+    pub fn metrics(&self) -> Vec<TeamMetric> {
+        serde_json::from_str(&self.team_standings_metrics).unwrap()
+    }
+
     pub fn fetch(
         id: &str,
         conn: &mut impl LoadConnection<Backend = Sqlite>,

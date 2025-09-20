@@ -244,6 +244,16 @@ diesel::table! {
 }
 
 diesel::table! {
+    tournament_speaker_metrics (id) {
+        id -> Text,
+        tournament_id -> Text,
+        speaker_id -> Text,
+        metric_kind -> Text,
+        metric_value -> Float,
+    }
+}
+
+diesel::table! {
     tournament_speaker_score_entries (id) {
         id -> Text,
         ballot_id -> Text,
@@ -251,6 +261,15 @@ diesel::table! {
         speaker_id -> Text,
         speaker_position -> BigInt,
         score -> Float,
+    }
+}
+
+diesel::table! {
+    tournament_speaker_standings (id) {
+        id -> Text,
+        tournament_id -> Text,
+        speaker_id -> Text,
+        rank -> BigInt,
     }
 }
 
@@ -274,10 +293,29 @@ diesel::table! {
 }
 
 diesel::table! {
+    tournament_team_metrics (id) {
+        id -> Text,
+        tournament_id -> Text,
+        team_id -> Text,
+        metric_kind -> Text,
+        metric_value -> Float,
+    }
+}
+
+diesel::table! {
     tournament_team_speakers (rowid) {
         rowid -> BigInt,
         team_id -> Text,
         speaker_id -> Text,
+    }
+}
+
+diesel::table! {
+    tournament_team_standings (id) {
+        id -> Text,
+        tournament_id -> Text,
+        team_id -> Text,
+        rank -> BigInt,
     }
 }
 
@@ -376,15 +414,23 @@ diesel::joinable!(tournament_round_tickets -> tournament_rounds (round_id));
 diesel::joinable!(tournament_rounds -> tournament_break_categories (break_category));
 diesel::joinable!(tournament_rounds -> tournaments (tournament_id));
 diesel::joinable!(tournament_snapshots -> tournaments (tournament_id));
+diesel::joinable!(tournament_speaker_metrics -> tournament_speakers (speaker_id));
+diesel::joinable!(tournament_speaker_metrics -> tournaments (tournament_id));
 diesel::joinable!(tournament_speaker_score_entries -> tournament_ballots (ballot_id));
 diesel::joinable!(tournament_speaker_score_entries -> tournament_speakers (speaker_id));
 diesel::joinable!(tournament_speaker_score_entries -> tournament_teams (team_id));
+diesel::joinable!(tournament_speaker_standings -> tournament_speakers (speaker_id));
+diesel::joinable!(tournament_speaker_standings -> tournaments (tournament_id));
 diesel::joinable!(tournament_speakers -> tournament_participants (participant_id));
 diesel::joinable!(tournament_speakers -> tournaments (tournament_id));
 diesel::joinable!(tournament_team_availability -> tournament_rounds (round_id));
 diesel::joinable!(tournament_team_availability -> tournament_teams (team_id));
+diesel::joinable!(tournament_team_metrics -> tournament_teams (team_id));
+diesel::joinable!(tournament_team_metrics -> tournaments (tournament_id));
 diesel::joinable!(tournament_team_speakers -> tournament_speakers (speaker_id));
 diesel::joinable!(tournament_team_speakers -> tournament_teams (team_id));
+diesel::joinable!(tournament_team_standings -> tournament_teams (team_id));
+diesel::joinable!(tournament_team_standings -> tournaments (tournament_id));
 diesel::joinable!(tournament_teams -> tournament_institutions (institution_id));
 diesel::joinable!(tournament_teams -> tournaments (tournament_id));
 
@@ -414,10 +460,14 @@ diesel::allow_tables_to_appear_in_same_query!(
     tournament_round_tickets,
     tournament_rounds,
     tournament_snapshots,
+    tournament_speaker_metrics,
     tournament_speaker_score_entries,
+    tournament_speaker_standings,
     tournament_speakers,
     tournament_team_availability,
+    tournament_team_metrics,
     tournament_team_speakers,
+    tournament_team_standings,
     tournament_teams,
     tournaments,
     users,

@@ -112,7 +112,7 @@ impl Metric<MetricValue> for TeamPointsComputer {
         .load::<(String, i64)>(conn)
         .unwrap()
         .into_iter()
-        .map(|(a, b)| (a, MetricValue::Points(b)))
+        .map(|(a, b)| (a, MetricValue::Integer(b)))
         .collect()
     }
 }

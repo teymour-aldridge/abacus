@@ -18,7 +18,9 @@ impl Metric<MetricValue> for NTimesSpecificResultComputer {
     fn compute(
         &self,
         tid: &str,
-        conn: &mut impl diesel::connection::LoadConnection<Backend = diesel::sqlite::Sqlite>,
+        conn: &mut impl diesel::connection::LoadConnection<
+            Backend = diesel::sqlite::Sqlite,
+        >,
     ) -> std::collections::HashMap<String, MetricValue> {
         tournament_teams::table
             .filter(tournament_teams::tournament_id.eq(tid))
@@ -62,9 +64,7 @@ impl Metric<MetricValue> for NTimesSpecificResultComputer {
             .load::<(String, i64)>(conn)
             .unwrap()
             .into_iter()
-            .map(|(team, value)| {
-                (team, MetricValue::NTimesResult(self.0, value))
-            })
+            .map(|(team, value)| (team, (MetricValue::Integer(value))))
             .collect()
     }
 }

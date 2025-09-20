@@ -93,16 +93,16 @@ impl Metric<MetricValue> for DsWinsComputer {
         for (team, debated_against) in &teams_and_debated_against {
             let points_of_team_hit = match self.0.get(debated_against).unwrap()
             {
-                MetricValue::Points(p) => p,
+                MetricValue::Integer(p) => p,
                 _ => unreachable!(),
             };
             ds_wins
                 .entry(team.clone())
                 .and_modify(|metric| match metric {
-                    MetricValue::DsWins(ds) => *ds += *points_of_team_hit,
+                    MetricValue::Integer(ds) => *ds += *points_of_team_hit,
                     _ => unreachable!(),
                 })
-                .or_insert(MetricValue::DsWins(*points_of_team_hit));
+                .or_insert(MetricValue::Integer(*points_of_team_hit));
         }
 
         ds_wins

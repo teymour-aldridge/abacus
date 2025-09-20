@@ -10,7 +10,7 @@ use rand::Rng;
 use crate::tournaments::{
     config::PullupMetric,
     rounds::draws::manage::drawalgs::{DrawInput, MakeDrawError},
-    standings::compute::{TournamentTeamStandings, history::TeamHistory},
+    standings::compute::{TeamStandings, history::TeamHistory},
     teams::Team,
 };
 
@@ -27,7 +27,7 @@ pub type TeamsOfRoom = (Vec<Team>, Vec<Team>);
 
 pub fn make_draw(
     input: DrawInput,
-    standings: &TournamentTeamStandings,
+    standings: &TeamStandings,
     TeamHistory(history): &TeamHistory,
 ) -> Result<Vec<TeamsOfRoom>, MakeDrawError> {
     if input.teams.is_empty() {
@@ -51,12 +51,13 @@ pub fn make_draw(
     }
 
     let (min_score, max_score) = match standings
-        .sorted
+        .ranked
         .iter()
         .map(|team| {
-            // todo: should we unwrap_or(0) ?
-            standings.points_of_team(&team.id).unwrap()
+            team.iter()
+                .map(|team| standings.points_of_team(&team.id).unwrap())
         })
+        .flatten()
         .minmax()
     {
         itertools::MinMaxResult::MinMax(a, b) => (a as usize, b as usize),
@@ -280,11 +281,14 @@ pub fn make_draw(
                         match metric {
                             PullupMetric::LowestRank => {
                                 penalty += standings
-                                    .sorted
+                                    .ranked
                                     .iter()
                                     .enumerate()
                                     .find_map(|(idx, cmp)| {
-                                        if cmp.id == team.id {
+                                        if cmp
+                                            .iter()
+                                            .any(|cmp| cmp.id == team.id)
+                                        {
                                             Some(idx)
                                         } else {
                                             None
@@ -295,11 +299,14 @@ pub fn make_draw(
                             }
                             PullupMetric::HighestRank => {
                                 penalty += -(standings
-                                    .sorted
+                                    .ranked
                                     .iter()
                                     .enumerate()
                                     .find_map(|(idx, cmp)| {
-                                        if cmp.id == team.id {
+                                        if cmp
+                                            .iter()
+                                            .any(|cmp| cmp.id == team.id)
+                                        {
                                             Some(idx)
                                         } else {
                                             None

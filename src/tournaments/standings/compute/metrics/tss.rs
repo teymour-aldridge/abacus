@@ -17,7 +17,9 @@ impl Metric<MetricValue> for TotalTeamSpeakerScoreComputer {
     fn compute(
         &self,
         tid: &str,
-        conn: &mut impl diesel::connection::LoadConnection<Backend = diesel::sqlite::Sqlite>,
+        conn: &mut impl diesel::connection::LoadConnection<
+            Backend = diesel::sqlite::Sqlite,
+        >,
     ) -> std::collections::HashMap<String, MetricValue> {
         tournament_teams::table
             .filter(tournament_teams::tournament_id.eq(tid))
@@ -69,9 +71,11 @@ impl Metric<MetricValue> for TotalTeamSpeakerScoreComputer {
             .map(|(a, b)| {
                 (
                     a,
-                    MetricValue::Tss(
+                    MetricValue::Float(
                         rust_decimal::Decimal::from_f32_retain(b)
-                            .unwrap_or_else(|| panic!("unrepresentable float: {b}")),
+                            .unwrap_or_else(|| {
+                                panic!("unrepresentable float: {b}")
+                            }),
                     ),
                 )
             })

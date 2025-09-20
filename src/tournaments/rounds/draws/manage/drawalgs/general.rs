@@ -53,11 +53,10 @@ pub fn make_draw(
     let (min_score, max_score) = match standings
         .ranked
         .iter()
-        .map(|team| {
+        .flat_map(|team| {
             team.iter()
                 .map(|team| standings.points_of_team(&team.id).unwrap())
         })
-        .flatten()
         .minmax()
     {
         itertools::MinMaxResult::MinMax(a, b) => (a as usize, b as usize),

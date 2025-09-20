@@ -135,7 +135,7 @@ impl TeamStandings {
 
         teams.sort_by_cached_key(f);
 
-        let binding = teams.clone().into_iter().chunk_by(|team| (f)(team));
+        let binding = teams.clone().into_iter().chunk_by(f);
         let grouped = binding
             .into_iter()
             .map(|(_key, chunk)| chunk.into_iter().collect::<Vec<_>>())
@@ -278,7 +278,7 @@ impl TeamStandings {
         });
 
         Self {
-            metrics: metrics,
+            metrics,
             ranked_metrics_of_team: metrics_of_team,
             ranked,
             pullup_metrics: non_ranking_metrics,
@@ -299,7 +299,7 @@ impl TeamStandings {
         tid: &str,
         conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Result<(), diesel::result::Error> {
-        let _flush_existing = {
+        {
             diesel::delete(
                 tournament_team_metrics::table
                     .filter(tournament_team_metrics::tournament_id.eq(tid)),
@@ -308,7 +308,7 @@ impl TeamStandings {
             .unwrap();
         };
 
-        let _save_ranked_metrics = {
+        {
             let mut records = Vec::new();
 
             for (team, metric) in &self.ranked_metrics_of_team {
@@ -338,7 +338,7 @@ impl TeamStandings {
                 .unwrap();
         };
 
-        let _save_unranked_metrics = {
+        {
             let mut records = Vec::new();
 
             for ((team, metric_kind), value) in &self.pullup_metrics {
@@ -365,7 +365,7 @@ impl TeamStandings {
                 .unwrap();
         };
 
-        let _save_team_ranks = {
+        {
             let mut records = Vec::new();
 
             let mut n = 1;

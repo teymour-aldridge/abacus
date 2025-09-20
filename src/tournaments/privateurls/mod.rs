@@ -32,7 +32,7 @@ impl Participant {
             .unwrap();
 
         let ret = private_url
-            .map(|url| {
+            .and_then(|url| {
                 let speaker = tournament_speakers::table
                     .filter(tournament_speakers::participant_id.eq(&url.id))
                     .first::<Speaker>(conn)
@@ -50,7 +50,6 @@ impl Participant {
                         .map(|t| (url, t)),
                 }
             })
-            .flatten()
             .map(|(url, kind)| Participant { url, kind });
 
         match ret {

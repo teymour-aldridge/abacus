@@ -263,7 +263,7 @@ pub async fn do_submit_ballot(
     // up as `bye` and will have no adjudicators).
     let actual_teams = &debate_repr.teams_of_debate;
 
-    let _check_submitted_form_lengths = {
+    {
         if form.speakers.len() != actual_teams.len()
             || form.scores.len() != actual_teams.len()
         {
@@ -307,7 +307,7 @@ pub async fn do_submit_ballot(
         }
     };
 
-    let _check_valid_motion = {
+    {
         if let Some(motion) = &form.motion
             && !diesel::dsl::select(diesel::dsl::exists(
                 tournament_round_motions::table
@@ -522,6 +522,6 @@ fn debate_of_judge_in_round(
         .unwrap()
     {
         Some(debate) => Ok(debate),
-        None => return err_not_found().map(|_| unreachable!()),
+        None => err_not_found().map(|_| unreachable!()),
     }
 }

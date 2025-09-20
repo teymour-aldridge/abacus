@@ -74,9 +74,7 @@ impl Metric<MetricValue> for TotalTeamSpeakerScoreComputer {
                 (
                     a,
                     MetricValue::Float(
-                        rust_decimal::Decimal::from_f32_retain(b).expect(
-                            &format!("could not convert `{b}` to rust_decimal"),
-                        ),
+                        rust_decimal::Decimal::from_f32_retain(b).unwrap_or_else(|| panic!("could not convert `{b}` to rust_decimal")),
                     ),
                 )
             })

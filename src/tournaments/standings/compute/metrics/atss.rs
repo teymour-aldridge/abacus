@@ -77,9 +77,7 @@ impl Metric<MetricValue> for AverageTotalSpeakerScoreComputer {
                 } else {
                     MetricValue::Float(
                         self.0.get(&a).unwrap().as_float().unwrap()
-                            / rust_decimal::Decimal::from_i64(b).expect(&format!(
-                                "failed to convert {b} to rust_decimal::Decimal"
-                            )),
+                            / rust_decimal::Decimal::from_i64(b).unwrap_or_else(|| panic!("failed to convert {b} to rust_decimal::Decimal")),
                     )
                 };
                 (a, float)

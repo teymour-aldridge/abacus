@@ -14,7 +14,9 @@ use crate::tournaments::rounds::draws::manage::drawalgs::general::TeamsOfRoom;
 use crate::tournaments::snapshots::take_snapshot;
 use crate::{
     schema::tournament_teams,
-    tournaments::{Tournament, config::TeamMetric, rounds::Round, teams::Team},
+    tournaments::{
+        Tournament, config::RankableTeamMetric, rounds::Round, teams::Team,
+    },
 };
 
 pub mod general;
@@ -33,7 +35,7 @@ pub struct DrawInput {
     pub tournament: Tournament,
     pub round: Round,
     /// Team metrics necessary to generate the draw.
-    pub metrics: HashMap<(String, TeamMetric), f32>,
+    pub metrics: HashMap<(String, RankableTeamMetric), f32>,
     pub teams: Vec<Team>,
     pub rng: rand_chacha::ChaCha20Rng,
 }

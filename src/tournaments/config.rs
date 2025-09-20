@@ -31,7 +31,10 @@ impl std::fmt::Display for PullupMetric {
 }
 
 #[derive(Serialize, Deserialize, Copy, Clone, PartialEq, Eq)]
-pub enum TeamMetric {
+/// A metric upon which teams can be ranked. Note that some metrics _cannot_ be
+/// used to rank teams (for example, draw strength by rank) as this turns into a
+/// recursive mess.
+pub enum RankableTeamMetric {
     #[serde(rename = "wins")]
     Wins,
     /// The total number of ballots in favour of this team.
@@ -52,17 +55,19 @@ pub enum TeamMetric {
     AverageTotalSpeakerScore,
 }
 
-impl std::fmt::Display for TeamMetric {
+impl std::fmt::Display for RankableTeamMetric {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
-            TeamMetric::Wins => "#points",
-            TeamMetric::Ballots => "#ballots",
-            TeamMetric::DrawStrengthByWins => "draw strength by wins",
-            TeamMetric::NTimesAchieved(points) => {
+            RankableTeamMetric::Wins => "#points",
+            RankableTeamMetric::Ballots => "#ballots",
+            RankableTeamMetric::DrawStrengthByWins => "draw strength by wins",
+            RankableTeamMetric::NTimesAchieved(points) => {
                 return write!(f, "#times achieved {points} points");
             }
-            TeamMetric::TotalSpeakerScore => "total speaker score",
-            TeamMetric::AverageTotalSpeakerScore => "avg total speaker score",
+            RankableTeamMetric::TotalSpeakerScore => "total speaker score",
+            RankableTeamMetric::AverageTotalSpeakerScore => {
+                "avg total speaker score"
+            }
         })
     }
 }

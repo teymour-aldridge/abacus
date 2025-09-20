@@ -11,7 +11,7 @@ use crate::schema::{
     tournaments,
 };
 use crate::tournaments::Tournament;
-use crate::tournaments::config::TeamMetric;
+use crate::tournaments::config::RankableTeamMetric;
 use crate::tournaments::standings::compute::metrics::Metric;
 use crate::tournaments::standings::compute::metrics::MetricValue;
 use crate::tournaments::standings::compute::metrics::ds_wins::DsWinsComputer;
@@ -26,8 +26,9 @@ pub mod metrics;
 /// This struct groups together related items for computing the base metrics
 /// which apply to each team.
 pub struct TeamStandings {
-    pub metrics: Vec<TeamMetric>,
-    pub metrics_of_team: HashMap<String, Vec<(TeamMetric, MetricValue)>>,
+    pub metrics: Vec<RankableTeamMetric>,
+    pub metrics_of_team:
+        HashMap<String, Vec<(RankableTeamMetric, MetricValue)>>,
     /// Stores the teams, ranked. Note that teams which are tied will occupy
     /// the same rank. Teams which are not tied occupy a single bracket each.
     pub ranked: Vec<Vec<Team>>,
@@ -43,26 +44,26 @@ impl TeamStandings {
             .first::<Tournament>(conn)
             .unwrap();
 
-        let metrics: Vec<TeamMetric> = tournament.metrics();
+        let metrics: Vec<RankableTeamMetric> = tournament.metrics();
 
         let mut metrics_of_team = HashMap::new();
 
         for metric in &metrics {
             let val2merge = match metric {
-                TeamMetric::Wins => {
+                RankableTeamMetric::Wins => {
                     TeamPointsComputer::compute(&TeamPointsComputer, tid, conn)
                 }
-                TeamMetric::NTimesAchieved(t) => {
+                RankableTeamMetric::NTimesAchieved(t) => {
                     NTimesSpecificResultComputer(*t).compute(tid, conn)
                 }
-                TeamMetric::TotalSpeakerScore => {
+                RankableTeamMetric::TotalSpeakerScore => {
                     TotalTeamSpeakerScoreComputer::compute(
                         &TotalTeamSpeakerScoreComputer,
                         tid,
                         conn,
                     )
                 }
-                TeamMetric::DrawStrengthByWins => {
+                RankableTeamMetric::DrawStrengthByWins => {
                     // todo: can re-use the points allocation
                     // (unnecessary to compute twice)
                     let points = TeamPointsComputer::compute(
@@ -73,16 +74,18 @@ impl TeamStandings {
 
                     DsWinsComputer(points).compute(tid, conn)
                 }
-                TeamMetric::AverageTotalSpeakerScore => todo!(),
-                TeamMetric::Ballots => todo!(),
+                RankableTeamMetric::AverageTotalSpeakerScore => todo!(),
+                RankableTeamMetric::Ballots => todo!(),
             };
 
             for (k, v) in val2merge {
                 metrics_of_team
                     .entry(k)
-                    .and_modify(|vals: &mut Vec<(TeamMetric, MetricValue)>| {
-                        vals.push((*metric, v))
-                    })
+                    .and_modify(
+                        |vals: &mut Vec<(RankableTeamMetric, MetricValue)>| {
+                            vals.push((*metric, v))
+                        },
+                    )
                     .or_insert(vec![(*metric, v)]);
             }
         }
@@ -171,7 +174,7 @@ impl TeamStandings {
         let mut metrics_of_team = HashMap::new();
 
         for (team, kind, value) in team_metrics {
-            let kind: TeamMetric = serde_json::from_str(&kind).unwrap();
+            let kind: RankableTeamMetric = serde_json::from_str(&kind).unwrap();
             let value = if (value as i64) as f32 == value {
                 MetricValue::Integer(value as i64)
             } else {
@@ -220,7 +223,7 @@ impl TeamStandings {
     pub fn points_of_team(&self, team: &String) -> Option<i64> {
         self.metrics_of_team.get(team).and_then(|t| t.iter().find_map(|(kind, value)| {
             match (kind, value) {
-                (TeamMetric::Wins, crate::tournaments::standings::compute::metrics::MetricValue::Integer(p)) => Some(*p),
+                (RankableTeamMetric::Wins, crate::tournaments::standings::compute::metrics::MetricValue::Integer(p)) => Some(*p),
                 _ => None,
             }
         }))

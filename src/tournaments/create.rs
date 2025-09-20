@@ -10,7 +10,7 @@ use crate::state::Conn;
 use crate::template::Page;
 
 use crate::auth::User;
-use crate::tournaments::config::{SpeakerMetric, TeamMetric};
+use crate::tournaments::config::{RankeableTeamMetric, Speakeretric};
 use crate::util_resp::{StandardResponse, SuccessResponse, see_other_ok};
 use crate::validation::is_valid_slug;
 
@@ -110,11 +110,11 @@ pub async fn do_create_tournament(
             tournaments::institution_penalty.eq(None::<i64>),
             tournaments::history_penalty.eq(None::<i64>),
             tournaments::team_standings_metrics.eq(serde_json::to_string(&[
-                TeamMetric::Wins,
-                TeamMetric::NTimesAchieved(3),
-                TeamMetric::NTimesAchieved(2),
-                TeamMetric::NTimesAchieved(1),
-                TeamMetric::DrawStrengthByWins,
+                RankableTeamMetric::Wins,
+                RankableTeamMetric::NTimesAchieved(3),
+                RankableTeamMetric::NTimesAchieved(2),
+                RankableTeamMetric::NTimesAchieved(1),
+                RankableTeamMetric::DrawStrengthByWins,
             ])
             .unwrap()),
             tournaments::speaker_standings_metrics.eq(serde_json::to_string(

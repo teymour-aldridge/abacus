@@ -42,7 +42,7 @@ pub async fn public_team_tab_page(
                     }
                 }
                 tbody {
-                    @for (i, teams) in standings.ranked.iter().enumerate() {
+                    @for (i, teams) in standings.teams_in_rank_order.iter().enumerate() {
                         @for team in teams {
                             tr {
                                 th scope="row" {

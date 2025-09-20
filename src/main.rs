@@ -1,3 +1,5 @@
+#![allow(clippy::let_unit_value)]
+
 use diesel_migrations::EmbeddedMigrations;
 use rocket::launch;
 

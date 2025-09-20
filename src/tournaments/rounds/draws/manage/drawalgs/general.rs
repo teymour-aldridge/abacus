@@ -78,7 +78,7 @@ pub fn make_draw(
     }
 
     let (min_score, max_score) = match standings
-        .ranked
+        .teams_in_rank_order
         .iter()
         .flat_map(|team| {
             team.iter()
@@ -316,22 +316,11 @@ pub fn make_draw(
                                     1.0
                                 };
                                 penalty += sign
-                                    * standings
-                                        .ranked
-                                        .iter()
-                                        .enumerate()
-                                        .find_map(|(idx, cmp)| {
-                                            if cmp
-                                                .iter()
-                                                .any(|cmp| cmp.id == team.id)
-                                            {
-                                                Some(idx)
-                                            } else {
-                                                None
-                                            }
-                                        })
+                                    * (*standings
+                                        .rank_of_team
+                                        .get(&team.id)
                                         .unwrap()
-                                        as f64
+                                        as f64)
                             }
                             PullupMetric::Random => (),
                             PullupMetric::FewerPreviousPullups => todo!(),
@@ -344,27 +333,14 @@ pub fn make_draw(
                                     -(*ds_rank.as_integer().unwrap() as f64);
                             }
                             PullupMetric::LowestDsSpeaks => {
-                                let sub_penalty = standings
-                                    .ranked_metrics_of_team
-                                    .get(&team.id)
+                                let sub_penalty = -standings
+                                    .get_ranked_metric_of_team(
+                                        &team.id,
+                                        RankableTeamMetric::AverageTotalSpeakerScore
+                                    )
+                                    .as_float()
                                     .unwrap()
-                                    .iter()
-                                    .find_map(|(kind, value)| {
-                                        if matches!(
-                                            kind,
-                                            RankableTeamMetric::AverageTotalSpeakerScore
-                                        ) {
-                                            Some(
-                                                -value
-                                                    .as_float()
-                                                    .unwrap()
-                                                    .to_f64()
-                                                    .unwrap(),
-                                            )
-                                        } else {
-                                            None
-                                        }
-                                    })
+                                    .to_f64()
                                     .unwrap();
                                 penalty += sub_penalty;
                             }

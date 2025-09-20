@@ -42,12 +42,33 @@ pub struct TeamStandings {
         HashMap<String, Vec<(RankableTeamMetric, MetricValue)>>,
     /// Metrics that are exclusively used for pullups.
     pub pullup_metrics: HashMap<(String, UnrankableTeamMetric), MetricValue>,
-    /// Stores the teams, ranked. Note that teams which are tied will occupy
-    /// the same rank. Teams which are not tied occupy a single bracket each.
-    pub ranked: Vec<Vec<Team>>,
+    /// Stores the teams, in ranked. Note that teams which are tied will occupy
+    /// the same list. Teams which are not tied occupy a single list each.
+    pub teams_in_rank_order: Vec<Vec<Team>>,
+    /// Stores the actual rank of each team (i.e. the position this team is at:
+    /// the number of teams which outperformed this team, plus one).
+    pub rank_of_team: HashMap<String, i64>,
 }
 
 impl TeamStandings {
+    pub fn get_ranked_metric_of_team(
+        &self,
+        team_id: &str,
+        metric: RankableTeamMetric,
+    ) -> MetricValue {
+        *self
+            .ranked_metrics_of_team
+            .get(team_id)
+            .unwrap()
+            .iter()
+            .find_map(
+                |(kind, value)| {
+                    if *kind == metric { Some(value) } else { None }
+                },
+            )
+            .unwrap()
+    }
+
     pub fn recompute(
         tid: &str,
         conn: &mut impl LoadConnection<Backend = Sqlite>,
@@ -168,11 +189,39 @@ impl TeamStandings {
             map
         };
 
+        let rank_of_team = {
+            let mut map = HashMap::new();
+
+            let mut n = 1;
+
+            for rank in &grouped {
+                for team in rank {
+                    map.insert(team.id.clone(), n as i64);
+                }
+
+                // we increase in line with the number of teams we just handled,
+                // i.e. if the brackets are
+                //
+                // [t1, t2]
+                // [t3, t4]
+                // [t5, t6, t7]
+                //
+                // then the ranks are
+                // =1 : t1, t2
+                // =3 : t3, t4
+                // =5 : t5, t6, t7
+                n += rank.len();
+            }
+
+            map
+        };
+
         Self {
             metrics,
             ranked_metrics_of_team,
-            ranked: grouped,
+            teams_in_rank_order: grouped,
             pullup_metrics,
+            rank_of_team,
         }
     }
 
@@ -211,7 +260,8 @@ impl TeamStandings {
             .load::<(String, i64)>(conn)
             .unwrap();
 
-        let grouped = rankings.into_iter().chunk_by(|(_team, rank)| *rank);
+        let grouped =
+            rankings.clone().into_iter().chunk_by(|(_team, rank)| *rank);
         let ranked = grouped
             .into_iter()
             .map(|(_rank, team)| {
@@ -291,8 +341,9 @@ impl TeamStandings {
         Self {
             metrics,
             ranked_metrics_of_team: metrics_of_team,
-            ranked,
+            teams_in_rank_order: ranked,
             pullup_metrics: non_ranking_metrics,
+            rank_of_team: rankings.into_iter().collect::<HashMap<_, _>>(),
         }
     }
 
@@ -310,16 +361,23 @@ impl TeamStandings {
         tid: &str,
         conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Result<(), diesel::result::Error> {
-        {
+        let _flush = {
             diesel::delete(
                 tournament_team_metrics::table
                     .filter(tournament_team_metrics::tournament_id.eq(tid)),
             )
             .execute(conn)
             .unwrap();
+
+            diesel::delete(
+                tournament_team_standings::table
+                    .filter(tournament_team_standings::tournament_id.eq(tid)),
+            )
+            .execute(conn)
+            .unwrap();
         };
 
-        {
+        let _save_ranked_metrics = {
             let mut records = Vec::new();
 
             for (team, metric) in &self.ranked_metrics_of_team {
@@ -349,7 +407,7 @@ impl TeamStandings {
                 .unwrap();
         };
 
-        {
+        let _save_unranked_metrics = {
             let mut records = Vec::new();
 
             for ((team, metric_kind), value) in &self.pullup_metrics {
@@ -376,32 +434,17 @@ impl TeamStandings {
                 .unwrap();
         };
 
-        {
+        let _save_rankings = {
             let mut records = Vec::new();
 
-            let mut n = 1;
-            for rank in self.ranked.iter() {
-                for each in rank {
-                    records.push((
-                        tournament_team_standings::id
-                            .eq(Uuid::now_v7().to_string()),
-                        tournament_team_standings::tournament_id.eq(tid),
-                        tournament_team_standings::team_id.eq(&each.id),
-                        tournament_team_standings::rank.eq(n as i64),
-                    ));
-                }
-                // we increase in line with the number of teams we just handled,
-                // i.e. if the brackets are
-                //
-                // [t1, t2]
-                // [t3, t4]
-                // [t5, t6, t7]
-                //
-                // then the ranks are
-                // =1 : t1, t2
-                // =3 : t3, t4
-                // =5 : t5, t6, t7
-                n += rank.len();
+            for (team, rank) in &self.rank_of_team {
+                records.push((
+                    tournament_team_standings::id
+                        .eq(Uuid::now_v7().to_string()),
+                    tournament_team_standings::tournament_id.eq(tid),
+                    tournament_team_standings::team_id.eq(team.clone()),
+                    tournament_team_standings::rank.eq(rank),
+                ));
             }
 
             diesel::insert_into(tournament_team_standings::table)

@@ -15,7 +15,7 @@ pub mod manage;
 #[derive(Serialize, Deserialize, Queryable, Clone)]
 pub struct Round {
     id: String,
-    tournament_id: String,
+    pub tournament_id: String,
     seq: i64,
     name: String,
     kind: String,

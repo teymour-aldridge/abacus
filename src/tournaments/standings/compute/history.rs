@@ -9,6 +9,8 @@ use crate::{
     tournaments::Tournament,
 };
 
+/// Contains the position history of each team in the given tournament. The map
+/// is from team IDs to a list of team positions.
 pub struct TeamHistory(pub HashMap<String, Vec<usize>>);
 
 impl TeamHistory {

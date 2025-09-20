@@ -288,6 +288,39 @@ create table if not exists tournament_debate_judges (
     primary key (debate_id, judge_id)
 );
 
+-- Note: the standings are (re)computed whenever a round is confirmed.
+create table if not exists tournament_team_standings (
+    id text primary key not null,
+    tournament_id text not null references tournaments (id),
+    team_id text not null references tournament_teams (id),
+    rank integer not null
+);
+
+create table if not exists tournament_speaker_standings (
+    id text primary key not null,
+    tournament_id text not null references tournaments (id),
+    speaker_id text not null references tournament_speakers (id),
+    rank integer not null
+);
+
+create table if not exists tournament_team_metrics (
+    id text primary key not null,
+    tournament_id text not null references tournaments (id),
+    team_id text not null references tournament_teams (id),
+    metric_kind text not null,
+    metric_value float not null,
+    unique (tournament_id, team_id, metric_kind)
+);
+
+create table if not exists tournament_speaker_metrics (
+    id text primary key not null,
+    tournament_id text not null references tournaments (id),
+    speaker_id text not null references tournament_speakers (id),
+    metric_kind text not null,
+    metric_value float not null,
+    unique (tournament_id, speaker_id, metric_kind)
+);
+
 create table if not exists tournament_debate_team_results (
     id text primary key not null,
     debate_id text not null references tournament_debates (id),

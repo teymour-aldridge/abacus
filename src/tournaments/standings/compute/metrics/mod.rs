@@ -27,19 +27,15 @@ pub fn completed_preliminary_rounds() -> _ {
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Ord, Eq)]
 pub enum MetricValue {
-    Points(i64),
-    NTimesResult(u8, i64),
-    Tss(rust_decimal::Decimal),
-    DsWins(i64),
+    Integer(i64),
+    Float(rust_decimal::Decimal),
 }
 
 impl std::fmt::Display for MetricValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            MetricValue::Points(n) => write!(f, "{n}"),
-            MetricValue::NTimesResult(_, times) => write!(f, "{times}"),
-            MetricValue::Tss(decimal) => write!(f, "{decimal}"),
-            MetricValue::DsWins(wins) => write!(f, "{wins}"),
+            MetricValue::Integer(integer) => write!(f, "{integer}"),
+            MetricValue::Float(decimal) => write!(f, "{decimal}"),
         }
     }
 }

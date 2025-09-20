@@ -5,7 +5,7 @@ use crate::{
     auth::User,
     state::Conn,
     template::Page,
-    tournaments::{Tournament, standings::compute::TournamentTeamStandings},
+    tournaments::{Tournament, standings::compute::TeamStandings},
     util_resp::{StandardResponse, success, unauthorized},
 };
 
@@ -21,7 +21,7 @@ pub async fn public_team_tab_page(
         return unauthorized();
     }
 
-    let standings = TournamentTeamStandings::fetch(tournament_id, &mut *conn);
+    let standings = TeamStandings::recompute(tournament_id, &mut *conn);
 
     success(Page::new()
         .tournament(tournament)
@@ -42,17 +42,22 @@ pub async fn public_team_tab_page(
                     }
                 }
                 tbody {
-                    @for (i, team) in standings.sorted.iter().enumerate() {
-                        tr {
-                            th scope="row" {
-                                (i)
-                            }
-                            td {
-                                (team.name)
-                            }
-                            @for metric in standings.metrics_of_team.get(&team.id).unwrap() {
-                                th scope = "col" {
-                                    (metric.to_string())
+                    @for (i, teams) in standings.ranked.iter().enumerate() {
+                        @for team in teams {
+                            tr {
+                                th scope="row" {
+                                    @if teams.len() > 1 {
+                                        "="
+                                    }
+                                    (i)
+                                }
+                                td {
+                                    (team.name)
+                                }
+                                @for metric in standings.metrics_of_team.get(&team.id).unwrap() {
+                                    td {
+                                        (metric.1.to_string())
+                                    }
                                 }
                             }
                         }

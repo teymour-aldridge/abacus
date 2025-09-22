@@ -10,7 +10,9 @@ use crate::state::Conn;
 use crate::template::Page;
 
 use crate::auth::User;
-use crate::tournaments::config::{RankableTeamMetric, SpeakerMetric};
+use crate::tournaments::config::{
+    PullupMetric, RankableTeamMetric, SpeakerMetric,
+};
 use crate::util_resp::{StandardResponse, SuccessResponse, see_other_ok};
 use crate::validation::is_valid_slug;
 
@@ -31,7 +33,8 @@ pub async fn create_tournament_page(user: User<true>) -> SuccessResponse {
                               aria-describedby="tournamentNameHelp"
                               minlength = "4"
                               maxlength = "32"
-                              required;
+                              required
+                              name="name";
                         div id = "tournamentNameHelp" class="form-text" {
                             "The full name of the tournament."
                         }
@@ -46,7 +49,8 @@ pub async fn create_tournament_page(user: User<true>) -> SuccessResponse {
                               class = "form-control"
                               id = "tournamentName"
                               aria-describedby="tournamentNameHelp"
-                              required;
+                              required
+                              name="abbrv";
                         div id = "tournamentNameHelp" class="form-text" {
                             "A short name for the tournament."
                         }
@@ -60,10 +64,14 @@ pub async fn create_tournament_page(user: User<true>) -> SuccessResponse {
                                 id = "tournamentSlug"
                                 aria-describedby="tournamentSlugHelp"
                                 required
-                                pattern = r#"pattern="[a-zA-Z0-9]+""#;
+                                pattern = "[a-zA-Z0-9]+"
+                                name="slug";
                         div id = "tournamentSlugHelp" class="form-text" {
                             "A unique identifier for the tournament, used in URLs."
                         }
+                    }
+                    button type="submit" class="btn btn-primary" {
+                        "Submit"
                     }
                 }
             })
@@ -121,6 +129,9 @@ pub async fn do_create_tournament(
                 &[SpeakerMetric::Avg, SpeakerMetric::StdDev],
             )
             .unwrap()),
+            tournaments::pullup_metrics
+                .eq(serde_json::to_string(&[PullupMetric::Random]).unwrap()),
+            tournaments::repeat_pullup_penalty.eq(0),
             tournaments::exclude_from_speaker_standings_after.eq(-1),
         ))
         .execute(&mut *conn)

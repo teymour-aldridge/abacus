@@ -1,9 +1,11 @@
 use diesel::prelude::*;
 use hypertext::prelude::*;
 use rocket::{form::Form, get, post, response::Redirect};
+use tokio::sync::broadcast::Sender;
 
 use crate::{
     auth::User,
+    msg::{Msg, MsgContents},
     schema::{tournament_institutions, tournament_teams},
     state::Conn,
     template::Page,
@@ -120,11 +122,12 @@ pub async fn edit_team_details_page(
                 form {
                   div class="mb-3" {
                     label for="teamName" class="form-label" { "Name of new team" }
-                    input type="email"
+                    input type="text"
                           class="form-control"
                           id="teamName"
                           aria-describedby="teamNameHelp"
-                          value=(team.name);
+                          value=(team.name)
+                          name="name";
                     div id="teamNameHelp" class="form-text" {
                         "The team name. Please note that (if an institution is "
                         "selected) this will be prefixed with the institution name."
@@ -164,8 +167,9 @@ pub async fn do_edit_team_details(
     user: User<true>,
     tournament_id: &str,
     team_id: &str,
-    mut conn: Conn<true>,
     form: Form<CreateTeamForm>,
+    tx: &rocket::State<Sender<Msg>>,
+    mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
     tournament.check_user_has_permission(
@@ -243,6 +247,11 @@ pub async fn do_edit_team_details(
     .unwrap();
 
     take_snapshot(&tournament.id, &mut *conn);
+
+    let _ = tx.send(Msg {
+        tournament: tournament.clone(),
+        inner: MsgContents::ParticipantsUpdate,
+    });
 
     see_other_ok(Redirect::to(format!(
         "/tournaments/{}/teams/{}",

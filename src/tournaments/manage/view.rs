@@ -1,5 +1,4 @@
 use hypertext::prelude::*;
-use rocket::get;
 
 use crate::{
     auth::User,
@@ -9,9 +8,10 @@ use crate::{
     util_resp::{StandardResponse, success},
 };
 
-#[get("/tournaments/<tid>", rank = 1)]
-/// Returns the tournament view for an administrator. We use lower-ranking
-/// routes to handle other cases.
+/// Returns the tournament view for tab directors (i.e. superusers).
+///
+/// TODO: in future we probably want to unify the separate functions into a
+/// single entity (which shows appropriate actions).
 pub async fn admin_view_tournament(
     tid: &str,
     user: User<true>,

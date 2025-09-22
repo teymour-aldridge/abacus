@@ -19,7 +19,6 @@ use crate::{
     template::Page,
     tournaments::{
         create::{create_tournament_page, do_create_tournament},
-        manage::view::admin_view_tournament,
         participants::manage::{
             create_team::{create_teams_page, do_create_team},
             manage_team::{
@@ -27,7 +26,6 @@ use crate::{
             },
             manage_tournament_participants, tournament_participant_updates,
         },
-        public::view::public_tournament_page,
         rounds::{
             draws::{
                 manage::{
@@ -48,6 +46,7 @@ use crate::{
             },
         },
         standings::public::public_team_tab_page,
+        view::view_tournament_page,
     },
     util_resp::{StandardResponse, success},
 };
@@ -101,12 +100,10 @@ pub fn make_rocket() -> Rocket<Build> {
 
     let figment = if let Ok(secret) = std::env::var("SECRET_KEY") {
         figment.merge(("secret_key", secret))
+    } else if cfg!(test) {
+        figment.merge(("secret_key", "0".repeat(64)))
     } else {
-        if cfg!(test) {
-            figment.merge(("secret_key", "0".repeat(64)))
-        } else {
-            figment
-        }
+        figment
     };
 
     #[allow(unexpected_cfgs)]
@@ -157,7 +154,7 @@ pub fn make_rocket() -> Rocket<Build> {
                 do_register,
                 create_tournament_page,
                 do_create_tournament,
-                admin_view_tournament,
+                view_tournament_page,
                 create_teams_page,
                 do_create_team,
                 manage_team_page,
@@ -165,7 +162,6 @@ pub fn make_rocket() -> Rocket<Build> {
                 do_edit_team_details,
                 manage_tournament_participants,
                 tournament_participant_updates,
-                public_tournament_page,
                 generate_draw_page,
                 do_generate_draw,
                 view_draw,

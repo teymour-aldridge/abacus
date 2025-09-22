@@ -1,5 +1,4 @@
 use hypertext::prelude::*;
-use rocket::get;
 
 use crate::{
     auth::User,
@@ -9,7 +8,6 @@ use crate::{
     util_resp::{StandardResponse, success},
 };
 
-#[get("/tournaments/<tournament_id>")]
 pub async fn public_tournament_page(
     tournament_id: &str,
     user: Option<User<true>>,

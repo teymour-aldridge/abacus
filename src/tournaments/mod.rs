@@ -27,6 +27,7 @@ pub mod rounds;
 pub mod snapshots;
 pub mod standings;
 pub mod teams;
+pub mod view;
 
 #[derive(Queryable, Clone, Debug)]
 pub struct Tournament {

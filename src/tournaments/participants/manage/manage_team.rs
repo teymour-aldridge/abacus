@@ -1,6 +1,6 @@
 use diesel::prelude::*;
 use hypertext::prelude::*;
-use rocket::{form::Form, get, response::Redirect};
+use rocket::{form::Form, get, post, response::Redirect};
 
 use crate::{
     auth::User,
@@ -18,7 +18,9 @@ use crate::{
     },
 };
 
-#[get("/tournaments/<tournament_id>/teams/<team_id>")]
+/// This has rank = 2 so that it does not collide with
+/// [`super::create_team::create_teams_age`].
+#[get("/tournaments/<tournament_id>/teams/<team_id>", rank = 2)]
 pub async fn manage_team_page(
     user: User<true>,
     tournament_id: &str,
@@ -157,7 +159,7 @@ pub async fn edit_team_details_page(
     )
 }
 
-#[get("/tournaments/<tournament_id>/teams/<team_id>/edit", data = "<form>")]
+#[post("/tournaments/<tournament_id>/teams/<team_id>/edit", data = "<form>")]
 pub async fn do_edit_team_details(
     user: User<true>,
     tournament_id: &str,

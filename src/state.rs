@@ -9,7 +9,7 @@ use diesel::{
     r2d2::{ConnectionManager, Pool, PooledConnection},
 };
 use rocket::{
-    Request, Response, State,
+    Request, Response,
     fairing::{Fairing, Info, Kind},
     http::StatusClass,
     outcome::Outcome,
@@ -86,7 +86,7 @@ impl<'r, const TX: bool> FromRequest<'r> for Conn<TX> {
         request: &'r Request<'_>,
     ) -> request::Outcome<Self, Self::Error> {
         request::Outcome::Success({
-            let conn = request.guard::<&State<ThreadSafeConn<TX>>>().await;
+            let conn = request.guard::<ThreadSafeConn<TX>>().await;
             match conn {
                 rocket::outcome::Outcome::Success(conn) => Conn {
                     inner: conn.inner.clone().try_lock_owned().unwrap(),
@@ -100,6 +100,7 @@ impl<'r, const TX: bool> FromRequest<'r> for Conn<TX> {
     }
 }
 
+#[derive(Clone)]
 pub struct ThreadSafeConn<const TX: bool> {
     pub inner: Arc<
         tokio::sync::Mutex<
@@ -115,8 +116,8 @@ impl<'r, const TX: bool> FromRequest<'r> for ThreadSafeConn<TX> {
         request: &'r Request<'_>,
     ) -> request::Outcome<Self, Self::Error> {
         request::Outcome::Success({
-            let t = request
-                .local_cache_async(async {
+            request
+                .local_cache_async::<Option<ThreadSafeConn<TX>>, _>(async {
                     let pool = request.rocket().state::<DbPool>().unwrap().clone();
 
                     let mut conn = tokio::task::spawn_blocking(move || pool.get().unwrap())
@@ -129,12 +130,13 @@ impl<'r, const TX: bool> FromRequest<'r> for ThreadSafeConn<TX> {
                             ::begin_transaction(&mut conn).unwrap();
                     }
 
-                    Arc::new(tokio::sync::Mutex::new(conn))
+                    let t = Arc::new(tokio::sync::Mutex::new(conn));
+
+                    Some(ThreadSafeConn { inner: t })
                 })
                 .await
-                .clone();
-
-            ThreadSafeConn { inner: t }
+                .clone()
+                .unwrap()
         })
     }
 }

@@ -20,7 +20,10 @@ use crate::{
     util_resp::{StandardResponse, err_not_found, success},
 };
 
-#[get("/tournaments/<tournament_id>/rounds/<round_id>/draw/<draw_id>")]
+#[get(
+    "/tournaments/<tournament_id>/rounds/<round_id>/draw/<draw_id>",
+    rank = 2
+)]
 pub async fn view_draw(
     tournament_id: &str,
     round_id: &str,

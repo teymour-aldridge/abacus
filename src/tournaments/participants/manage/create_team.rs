@@ -3,7 +3,7 @@ use diesel::{
     prelude::*,
 };
 use hypertext::prelude::*;
-use rocket::{FromForm, form::Form, get, response::Redirect};
+use rocket::{FromForm, form::Form, get, post, response::Redirect};
 use uuid::Uuid;
 
 use crate::{
@@ -17,7 +17,7 @@ use crate::{
     util_resp::{StandardResponse, bad_request, see_other_ok, success},
 };
 
-#[get("/tournaments/<tid>/teams/create")]
+#[get("/tournaments/<tid>/teams/create", rank = 1)]
 pub async fn create_teams_page(
     tid: &str,
     mut conn: Conn<true>,
@@ -74,7 +74,7 @@ pub struct CreateTeamForm {
     pub institution_id: String,
 }
 
-#[get("/tournaments/<tid>/teams/create", data = "<form>")]
+#[post("/tournaments/<tid>/teams/create", data = "<form>")]
 pub async fn do_create_team(
     tid: &str,
     mut conn: Conn<true>,

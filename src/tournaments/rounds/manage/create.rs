@@ -20,7 +20,7 @@ use crate::{
     util_resp::{StandardResponse, err_not_found, see_other_ok, success},
 };
 
-#[get("/tournaments/<tid>/rounds/create")]
+#[get("/tournaments/<tid>/rounds/create", rank = 1)]
 pub async fn create_new_round(
     tid: &str,
     mut conn: Conn<true>,

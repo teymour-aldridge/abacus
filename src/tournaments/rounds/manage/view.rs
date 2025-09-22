@@ -11,7 +11,7 @@ use crate::{
     util_resp::{StandardResponse, err_not_found, success},
 };
 
-#[get("/tournaments/<tid>/rounds/<rid>")]
+#[get("/tournaments/<tid>/rounds/<rid>", rank = 2)]
 pub async fn view_tournament_round_page(
     tid: &str,
     rid: &str,

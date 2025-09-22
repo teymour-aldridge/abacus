@@ -32,8 +32,8 @@ pub async fn login_page(user: Option<User<true>>) -> StandardResponse {
     bad_request(Page::new().user_opt(user).body(maud! {
         form method="post" {
             div class="form-group" {
-                label for="email" { "Email address" }
-                input type="email" class="form-control" id="email" name="email" placeholder="Enter email";
+                label for="email" { "Email or username" }
+                input type="text" class="form-control" id="email" name="id" placeholder="Enter email or username";
             }
             div class="form-group" {
                 label for="password" { "Password" }

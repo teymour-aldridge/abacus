@@ -24,7 +24,7 @@ use crate::{
     widgets::alert::ErrorAlert,
 };
 
-#[get("/tournaments/<tournament_id>/rounds/<round_id>/draw/create")]
+#[get("/tournaments/<tournament_id>/rounds/<round_id>/draw/create", rank = 1)]
 pub async fn generate_draw_page(
     tournament_id: &str,
     round_id: &str,

@@ -65,7 +65,12 @@ impl<'r, const TX: bool> FromRequest<'r> for User<TX> {
                 .map_error(|(t, _)| (t, AuthError::NoDatabase))
         );
 
-        let mut conn = conn.inner.try_lock().unwrap();
+        let mut conn = conn.inner.try_lock().expect(
+            "failed to acquire the lock on this request's SQLite connection
+             (note: this might be because the guards are specified in the wrong
+              order -- it is important that `Conn` is always requested
+              __after__ any other guards which require database access)",
+        );
 
         let login_cookie = match request.cookies().get_private(LOGIN_COOKIE) {
             Some(cookie) => cookie,

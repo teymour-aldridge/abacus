@@ -1,7 +1,7 @@
-#[cfg(not(test))]
+#[cfg(not(debug_assertions))]
 pub const WEBSOCKET_SCHEME: &str = "wss://";
 
-#[cfg(test)]
+#[cfg(debug_assertions)]
 pub const WEBSOCKET_SCHEME: &str = "ws://";
 
 use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};

@@ -73,6 +73,7 @@ pub struct STeam {
     name: String,
     /// Institution name
     inst: Option<String>,
+    edit: String,
 }
 
 #[derive(Serialize)]
@@ -107,6 +108,10 @@ impl TournamentParticipants {
                                 .clone()
                         })
                     },
+                    edit: format!(
+                        "/tournaments/{}/teams/{}/edit",
+                        team.tournament_id, team.id
+                    ),
                 },
                 speakers: {
                     // note: the map from team to speakers might not be created if

@@ -1,13 +1,12 @@
-use diesel::{
-    dsl::{exists, select},
-    prelude::*,
-};
+use diesel::prelude::*;
 use hypertext::prelude::*;
 use rocket::{FromForm, form::Form, get, post, response::Redirect};
+use tokio::sync::broadcast::Sender;
 use uuid::Uuid;
 
 use crate::{
     auth::User,
+    msg::{Msg, MsgContents},
     schema::{tournament_institutions, tournament_teams},
     state::Conn,
     template::Page,
@@ -20,8 +19,8 @@ use crate::{
 #[get("/tournaments/<tid>/teams/create", rank = 1)]
 pub async fn create_teams_page(
     tid: &str,
-    mut conn: Conn<true>,
     user: User<true>,
+    mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(tid, &mut *conn)?;
     tournament.check_user_has_permission(
@@ -39,10 +38,15 @@ pub async fn create_teams_page(
         .user(user)
         .tournament(tournament)
         .body(maud! {
-            form {
+            form method="post" {
               div class="mb-3" {
                 label for="teamName" class="form-label" { "Name of new team" }
-                input type="email" class="form-control" id="teamName" aria-describedby="teamNameHelp";
+                input
+                    type="text"
+                    class="form-control"
+                    id="teamName"
+                    aria-describedby="teamNameHelp"
+                    name="name";
                 div id="teamNameHelp" class="form-text" {
                     "The team name. Please note that (if an institution is "
                     "selected) this will be prefixed with the institution name."
@@ -77,9 +81,10 @@ pub struct CreateTeamForm {
 #[post("/tournaments/<tid>/teams/create", data = "<form>")]
 pub async fn do_create_team(
     tid: &str,
-    mut conn: Conn<true>,
     user: User<true>,
     form: Form<CreateTeamForm>,
+    tx: &rocket::State<Sender<Msg>>,
+    mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(tid, &mut *conn)?;
     tournament.check_user_has_permission(
@@ -120,7 +125,7 @@ pub async fn do_create_team(
         None => None,
     };
 
-    let exists = select(exists(
+    let exists = diesel::dsl::select(diesel::dsl::exists(
         tournament_teams::table.filter(
             tournament_teams::tournament_id
                 .eq(&tid)
@@ -148,6 +153,16 @@ pub async fn do_create_team(
         );
     }
 
+    let next_number = tournament_teams::table
+        .filter(tournament_teams::tournament_id.eq(tid))
+        .order_by(tournament_teams::number.desc())
+        .select(tournament_teams::number)
+        .first::<i64>(&mut *conn)
+        .optional()
+        .unwrap()
+        .unwrap_or(0)
+        + 1;
+
     let n = diesel::insert_into(tournament_teams::table)
         .values((
             (tournament_teams::id.eq(Uuid::now_v7().to_string())),
@@ -155,12 +170,18 @@ pub async fn do_create_team(
             tournament_teams::name.eq(&form.name),
             tournament_teams::institution_id
                 .eq(inst.as_ref().map(|inst| inst.id.clone())),
+            tournament_teams::number.eq(next_number),
         ))
         .execute(&mut *conn)
         .unwrap();
     assert_eq!(n, 1);
 
     take_snapshot(tid, &mut *conn);
+
+    let _ = tx.send(Msg {
+        tournament: tournament.clone(),
+        inner: MsgContents::ParticipantsUpdate,
+    });
 
     see_other_ok(Redirect::to(format!(
         "/tournaments/{}/participants",

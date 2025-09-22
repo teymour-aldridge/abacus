@@ -100,8 +100,8 @@ pub fn make_rocket() -> Rocket<Build> {
 
     let figment = if let Ok(secret) = std::env::var("SECRET_KEY") {
         figment.merge(("secret_key", secret))
-    } else if cfg!(test) {
-        figment.merge(("secret_key", "0".repeat(64)))
+    } else if cfg!(debug_assertions) {
+        figment.merge(("secret_key", "0".repeat(88)))
     } else {
         figment
     };

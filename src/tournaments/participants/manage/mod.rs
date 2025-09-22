@@ -4,7 +4,7 @@ use crate::{
     util_resp::{StandardResponse, success},
 };
 use diesel::prelude::*;
-use hypertext::prelude::*;
+use hypertext::{Raw, prelude::*};
 use rocket::{State, futures::SinkExt, get};
 use tokio::{sync::broadcast::Receiver, task::spawn_blocking};
 
@@ -33,14 +33,21 @@ pub async fn manage_tournament_participants(
         <script>
         var table = new Tabulator('#participants', {{
             layout:"fitColumns",
+            height:"100%",
             columnDefaults:{{
               resizable:true,
             }},
             data:[],
             columns:[
-                {{title:"id", field:"ID"}},
-                {{title:"name", field:"Name"}},
-                {{title:"inst", field:"Institution"}},
+                {{title:"ID", field:"id"}},
+                {{title:"Name", field:"name"}},
+                {{title:"Institution", field:"inst"}},
+                {{title:"Edit", field:"edit", formatter:function(cell, formatterParams, onRendered) {{
+                    let a = document.createElement("a");
+                    a.href = cell.getValue();
+                    a.text = "Edit";
+                    return a;
+                }} }}
             ],
             rowFormatter:function(row){{
                var holderEl = document.createElement("div");
@@ -59,18 +66,18 @@ pub async fn manage_tournament_participants(
 
                var subTable = new Tabulator(tableEl, {{
                    layout:"fitColumns",
-                   data:row.getData().serviceHistory,
+                   data:row.getData().speakers,
                    columns:[
                     {{title:"ID", field:"id"}},
                     {{title:"Name", field:"name", sorter: "string"}},
                     {{title:"Email", field:"email"}},
                     {{title:"Private URL", field:"private_url"}}
                    ]
-               }})
+               }});
             }},
         }});
 
-        ws = new WebSocket(`{WEBSOCKET_SCHEME}${{window.location.host}}/tournaments/${{{tid}}}/participants?channel`);
+        ws = new WebSocket(`{WEBSOCKET_SCHEME}${{window.location.host}}/tournaments/{tid}/participants?channel`);
 
         ws.onmessage = function(event) {{
             let data = JSON.parse(event.data);
@@ -90,8 +97,19 @@ pub async fn manage_tournament_participants(
             .user(user)
             .tournament(tournament)
             .body(maud! {
+                // todo: checksum
+                link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet";
+                script type="text/javascript" src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js" {}
                 div #participants {}
-                (script)
+
+                ul {
+                    li {
+                        a href=(format!("/tournaments/{tid}/teams/create")) {
+                            "Add team"
+                        }
+                    }
+                }
+                (Raw::dangerously_create(&script))
             })
             .render(),
     )

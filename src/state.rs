@@ -59,6 +59,7 @@ impl Fairing for TxCommitFairing {
     }
 }
 
+/// Note:
 pub struct Conn<const TX: bool> {
     inner: tokio::sync::OwnedMutexGuard<
         PooledConnection<ConnectionManager<SqliteConnection>>,

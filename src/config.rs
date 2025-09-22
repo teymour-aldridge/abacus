@@ -116,8 +116,6 @@ pub fn make_rocket() -> Rocket<Build> {
     let db_url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| ":memory:".to_string());
 
-    println!("location = {db_url}");
-
     let pool: DbPool = Pool::builder()
         .max_size(if db_url == ":memory:" { 1 } else { 10 })
         .build(ConnectionManager::<SqliteConnection>::new(db_url))

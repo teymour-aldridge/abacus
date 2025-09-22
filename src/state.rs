@@ -117,27 +117,25 @@ impl<'r, const TX: bool> FromRequest<'r> for ThreadSafeConn<TX> {
         request: &'r Request<'_>,
     ) -> request::Outcome<Self, Self::Error> {
         request::Outcome::Success({
-            request
-                .local_cache_async::<Option<ThreadSafeConn<TX>>, _>(async {
-                    let pool = request.rocket().state::<DbPool>().unwrap().clone();
+            let pool = request.rocket().state::<DbPool>().unwrap().clone();
 
-                    let mut conn = tokio::task::spawn_blocking(move || pool.get().unwrap())
-                        .await
-                        .unwrap();
-
-                    if TX {
-                        <PooledConnection<ConnectionManager<SqliteConnection>> as diesel::Connection>
-                            ::TransactionManager
-                            ::begin_transaction(&mut conn).unwrap();
-                    }
-
-                    let t = Arc::new(tokio::sync::Mutex::new(conn));
-
-                    Some(ThreadSafeConn { inner: t })
-                })
+            let conn = tokio::task::spawn_blocking(move || pool.get().unwrap())
                 .await
-                .clone()
-                .unwrap()
+                .unwrap();
+
+            let t = Arc::new(tokio::sync::Mutex::new(conn));
+
+            let tsc = ThreadSafeConn { inner: t };
+
+            if TX {
+                request.local_cache(|| Some(tsc.clone()));
+
+                <PooledConnection<ConnectionManager<SqliteConnection>> as diesel::Connection>
+                    ::TransactionManager
+                    ::begin_transaction(&mut tsc.inner.try_lock().unwrap()).unwrap();
+            }
+
+            tsc
         })
     }
 }

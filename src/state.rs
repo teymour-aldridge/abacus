@@ -117,9 +117,9 @@ impl<'r, const TX: bool> FromRequest<'r> for ThreadSafeConn<TX> {
         request::Outcome::Success({
             let t = request
                 .local_cache_async(async {
-                    let pool = request.rocket().state::<&State<DbPool>>().unwrap();
+                    let pool = request.rocket().state::<DbPool>().unwrap().clone();
 
-                    let mut conn = tokio::task::spawn_blocking(|| pool.get().unwrap())
+                    let mut conn = tokio::task::spawn_blocking(move || pool.get().unwrap())
                         .await
                         .unwrap();
 

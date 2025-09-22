@@ -31,7 +31,7 @@ pub fn make_rocket() -> Rocket<Build> {
     let db_url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| ":memory:".to_string());
 
-    let pool =
+    let pool: DbPool =
         Pool::new(ConnectionManager::<SqliteConnection>::new(db_url)).unwrap();
 
     let (tx, rx) = tokio::sync::broadcast::channel::<Msg>(1000);
@@ -41,9 +41,9 @@ pub fn make_rocket() -> Rocket<Build> {
         .manage(rx)
         .manage(tx)
         .attach(AdHoc::try_on_ignite("migrations", |rocket| async move {
-            let conn = rocket.state::<&rocket::State<DbPool>>().unwrap();
+            let conn = rocket.state::<DbPool>().unwrap().clone();
 
-            let ret = spawn_blocking(|| {
+            let ret = spawn_blocking(move || {
                 let mut conn = conn.get().unwrap();
                 conn.run_pending_migrations(MIGRATIONS).unwrap();
             })

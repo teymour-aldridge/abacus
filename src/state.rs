@@ -36,10 +36,12 @@ impl Fairing for TxCommitFairing {
         req: &'r Request<'_>,
         res: &mut Response<'r>,
     ) {
-        let conn: &Option<ThreadSafeConn<true>> = req.local_cache(|| None);
+        let conn = req.local_cache::<Option<RequestSpecificTxConn>, _>(|| None);
+
+        dbg!(conn.is_some());
 
         if let Some(conn) = conn {
-            let mut conn = conn.inner.try_lock().unwrap();
+            let mut conn = conn.0.try_lock().unwrap();
 
             if matches!(
                 res.status().class(),
@@ -59,7 +61,6 @@ impl Fairing for TxCommitFairing {
     }
 }
 
-/// Note:
 pub struct Conn<const TX: bool> {
     inner: tokio::sync::OwnedMutexGuard<
         PooledConnection<ConnectionManager<SqliteConnection>>,
@@ -110,6 +111,21 @@ pub struct ThreadSafeConn<const TX: bool> {
     >,
 }
 
+#[derive(Clone)]
+struct RequestSpecificTxConn(
+    Arc<
+        tokio::sync::Mutex<
+            PooledConnection<ConnectionManager<SqliteConnection>>,
+        >,
+    >,
+);
+
+impl std::fmt::Debug for RequestSpecificTxConn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("RequestSpecificTxConn").finish()
+    }
+}
+
 #[rocket::async_trait]
 impl<'r, const TX: bool> FromRequest<'r> for ThreadSafeConn<TX> {
     type Error = ();
@@ -117,25 +133,39 @@ impl<'r, const TX: bool> FromRequest<'r> for ThreadSafeConn<TX> {
         request: &'r Request<'_>,
     ) -> request::Outcome<Self, Self::Error> {
         request::Outcome::Success({
-            let pool = request.rocket().state::<DbPool>().unwrap().clone();
-
-            let conn = tokio::task::spawn_blocking(move || pool.get().unwrap())
-                .await
-                .unwrap();
-
-            let t = Arc::new(tokio::sync::Mutex::new(conn));
-
-            let tsc = ThreadSafeConn { inner: t };
-
             if TX {
-                request.local_cache(|| Some(tsc.clone()));
+                let inner = request
+                    .local_cache_async(async {
+                        let pool =
+                            request.rocket().state::<DbPool>().unwrap().clone();
 
-                <PooledConnection<ConnectionManager<SqliteConnection>> as diesel::Connection>
-                    ::TransactionManager
-                    ::begin_transaction(&mut tsc.inner.try_lock().unwrap()).unwrap();
+                        let conn = tokio::task::spawn_blocking(move || {
+                            pool.get().unwrap()
+                        })
+                        .await
+                        .unwrap();
+
+                        let t = Arc::new(tokio::sync::Mutex::new(conn));
+
+                        Some(RequestSpecificTxConn(t))
+                    })
+                    .await
+                    .clone()
+                    .unwrap();
+
+                ThreadSafeConn { inner: inner.0 }
+            } else {
+                let pool = request.rocket().state::<DbPool>().unwrap().clone();
+
+                let conn =
+                    tokio::task::spawn_blocking(move || pool.get().unwrap())
+                        .await
+                        .unwrap();
+
+                let t = Arc::new(tokio::sync::Mutex::new(conn));
+
+                ThreadSafeConn { inner: t }
             }
-
-            tsc
         })
     }
 }

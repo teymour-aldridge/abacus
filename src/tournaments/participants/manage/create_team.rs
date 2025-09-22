@@ -163,9 +163,10 @@ pub async fn do_create_team(
         .unwrap_or(0)
         + 1;
 
+    let id = Uuid::now_v7().to_string();
     let n = diesel::insert_into(tournament_teams::table)
         .values((
-            (tournament_teams::id.eq(Uuid::now_v7().to_string())),
+            (tournament_teams::id.eq(&id)),
             tournament_teams::tournament_id.eq(&tid),
             tournament_teams::name.eq(&form.name),
             tournament_teams::institution_id

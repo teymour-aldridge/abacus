@@ -18,9 +18,7 @@ use crate::widgets::alert::ErrorAlert;
 use crate::{auth::User, schema::users, template::Page};
 
 #[get("/register")]
-pub async fn register_page(
-    user: Option<User<true>>,
-) -> StandardResponse {
+pub async fn register_page(user: Option<User<true>>) -> StandardResponse {
     if user.is_some() {
         // todo: flash message
         return bad_request(maud! {p {"You are already logged in!"}}.render());
@@ -69,7 +67,6 @@ pub struct RegisterForm<'v> {
 }
 
 #[post("/register", data = "<form>")]
-// todo: spawn_blocking for function?
 pub async fn do_register(
     user: Option<User<true>>,
     mut conn: Conn<true>,

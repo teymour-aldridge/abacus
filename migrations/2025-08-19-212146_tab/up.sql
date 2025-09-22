@@ -206,7 +206,6 @@ create table if not exists tournament_round_motions (
     motion text not null
 );
 
--- TODO: should implement versioning in the application?
 create table if not exists tournament_draws (
     id text primary key not null,
     tournament_id text not null references tournaments (id),

@@ -13,6 +13,7 @@ pub struct Page<R: Renderable, const TX: bool> {
     body: Option<R>,
     user: Option<User<TX>>,
     hx_ext: Option<String>,
+    tournament: Option<Tournament>,
 }
 
 impl<R: Renderable, const TX: bool> Page<R, TX> {
@@ -20,8 +21,8 @@ impl<R: Renderable, const TX: bool> Page<R, TX> {
         Default::default()
     }
 
-    pub fn tournament(self, _tournament: Tournament) -> Self {
-        // todo: implement
+    pub fn tournament(mut self, tournament: Tournament) -> Self {
+        self.tournament = Some(tournament);
         self
     }
 
@@ -69,26 +70,31 @@ impl<R: Renderable, const TX: bool> Renderable for Page<R, TX> {
                 }
                 body hx-ext=(self.hx_ext) {
                     nav class="navbar navbar-expand"
-                    style="background-color: #452859"
-                    data-bs-theme="dark" {
+                        style="background-color: #452859"
+                        data-bs-theme="dark" {
                         div class="container-fluid" {
-                            ul class="nav nav-justify-start"
-                                data-bs-theme="dark" {
+                            ul class="nav nav-justify-start" data-bs-theme="dark" {
                                 li class="nav-item" {
-                                    a
-                                        class="nav-link text-white"
-                                        href="/" { "Home" }
+                                    @if let Some(tournament) = &self.tournament {
+                                        a class="nav-link text-white"
+                                          href=(format!("/tournaments/{}", tournament.id)) {
+                                            (tournament.abbrv)
+                                        }
+                                    } @else {
+                                        a class="nav-link text-white" href="/" {
+                                            "Home"
+                                        }
+                                    }
                                 }
                             }
-                            ul
-                                class="nav nav-justify-end"
-                                data-bs-theme="dark" {
-                                    @if let Some(user) = &self.user {
-                                        a
-                                            class="nav-link text-white"
-                                            href="/user" { (user.username) }
-
+                            ul class="nav nav-justify-end" data-bs-theme="dark" {
+                                @if let Some(user) = &self.user {
+                                    li class="nav-item" {
+                                        a class="nav-link text-white" href="/user" {
+                                            (user.username)
+                                        }
                                     }
+                                }
                             }
                         }
                     }
@@ -111,6 +117,7 @@ impl<R: Renderable, const TX: bool> Default for Page<R, TX> {
             body: Default::default(),
             user: Default::default(),
             hx_ext: Default::default(),
+            tournament: Default::default(),
         }
     }
 }

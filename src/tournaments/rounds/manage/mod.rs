@@ -51,7 +51,7 @@ pub async fn manage_rounds_page(
     let min_outround_seq = rounds.elim.iter().map(get_seq).min();
     let max_outround_seq = rounds.elim.iter().map(get_seq).max();
 
-    assert!(!min_outround_seq.is_some() || max_outround_seq.is_some());
+    assert!(min_outround_seq.is_none() || max_outround_seq.is_some());
 
     success(Page::new()
         .tournament(tournament.clone())

@@ -28,7 +28,7 @@ pub struct Draw {
     tournament_id: String,
     round_id: String,
     status: String,
-    released_at: Option<NaiveDateTime>,
+    pub released_at: Option<NaiveDateTime>,
 }
 
 impl Draw {

@@ -60,42 +60,79 @@ pub async fn manage_rounds_page(
             h1 {
                 "Rounds for " (tournament.name)
             }
-            @if let Some(min_in_round_seq) = min_in_round_seq {
-                @let max_in_round_seq = max_in_round_seq.unwrap();
-                div class = "container" {
-                    @for seq in min_in_round_seq..=max_in_round_seq {
-                        div class = "row p-3" {
-                            @for prelim in rounds.prelim.iter().filter(|round| round.seq == seq) {
-                                div class="col" {
-                                    div class = "card" {
-                                        div class="card-body" {
-                                            h5 class="card-title" {
-                                                span class="badge text-bg-secondary" {
-                                                    "Seq " (seq)
+
+            Actions options = (&[
+                (format!("/tournaments/{}/rounds/create", tournament.id).as_str(), "Create round")
+            ]);
+
+
+            div class = "container" {
+                h3 {
+                    "Preliminary rounds"
+                }
+
+                @if let Some(min_in_round_seq) = min_in_round_seq {
+                    @let max_in_round_seq = max_in_round_seq.unwrap();
+                        @for seq in min_in_round_seq..=max_in_round_seq {
+                            div class = "row p-3" {
+                                @for prelim in rounds.prelim.iter().filter(|round| round.seq == seq) {
+                                    div class="col" {
+                                        div class = "card" {
+                                            div class="card-body" {
+                                                h5 class="card-title" {
+                                                    span class="badge text-bg-secondary" {
+                                                        "Seq " (seq)
+                                                    }
+
+                                                    " "
+                                                    (prelim.name)
                                                 }
 
-                                                " "
-                                                (prelim.name)
-                                            }
+                                                p class="card-text" {
+                                                    "Status:"
+                                                    @match rounds.statuses.get(&prelim.id).unwrap() {
+                                                        crate::tournaments::rounds::RoundStatus::NotStarted => {
+                                                            span class="m-1 badge rounded-pill text-bg-secondary" {
+                                                                "Not started"
+                                                            }
+                                                        },
+                                                        crate::tournaments::rounds::RoundStatus::InProgress => {
+                                                            span class="m-1 badge rounded-pill text-bg-warning" {
+                                                                "In progress"
+                                                            }
+                                                        },
+                                                        crate::tournaments::rounds::RoundStatus::Completed => {
+                                                            span class="m-1 badge rounded-pill text-bg-success" {
+                                                                "Completed"
+                                                            }
+                                                        },
+                                                        crate::tournaments::rounds::RoundStatus::Draft => {
+                                                            span class="m-1 badge rounded-pill text-bg-dark" {
+                                                                "Draft"
+                                                            }
+                                                        },
+                                                    }
+                                                }
 
-                                            a class="btn btn-primary" href=(format!("/tournaments/{tid}/rounds/{}/edit", prelim.id))
-                                            {
-                                                "Edit"
+                                                a class="btn btn-primary" href=(format!("/tournaments/{tid}/rounds/{}/edit", prelim.id))
+                                                {
+                                                    "Edit"
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
                         }
-
-                    }
-                }
-            } @else {
-                div class = "container "{
+                } @else {
                     "Note: there are no preliminary rounds in this tournament."
                 }
             }
             div class = "container" {
+                h3 {
+                    "Elimination rounds"
+                }
+
                 @if let Some(min_outround_seq) = min_outround_seq {
                     @let max_outround_seq = max_outround_seq.unwrap();
                     @for i in min_outround_seq..max_outround_seq {
@@ -124,9 +161,6 @@ pub async fn manage_rounds_page(
                     "Note: there are no elimination rounds in this tournament."
                 }
             }
-            Actions options = (&[
-                (format!("/tournaments/{}/rounds/create", tournament.id).as_str(), "Create round")
-            ]);
         })
         .render())
 }

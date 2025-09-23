@@ -69,11 +69,11 @@ pub struct TournamentParticipants {
 
 #[derive(Serialize)]
 pub struct STeam {
-    id: String,
+    id: i64,
     name: String,
     /// Institution name
     inst: Option<String>,
-    edit: String,
+    actions: [String; 2],
 }
 
 #[derive(Serialize)]
@@ -97,7 +97,7 @@ impl TournamentParticipants {
             .into_values()
             .map(|team| NestedDataItem {
                 team: STeam {
-                    id: team.id.clone(),
+                    id: team.number,
                     name: team.name,
                     inst: {
                         team.institution_id.map(|id| {
@@ -108,10 +108,16 @@ impl TournamentParticipants {
                                 .clone()
                         })
                     },
-                    edit: format!(
-                        "/tournaments/{}/teams/{}/edit",
-                        team.tournament_id, team.id
-                    ),
+                    actions: [
+                        format!(
+                            "/tournaments/{}/teams/{}/edit",
+                            team.tournament_id, team.id
+                        ),
+                        format!(
+                            "/tournaments/{}/teams/{}/speakers/create",
+                            team.tournament_id, team.id
+                        ),
+                    ],
                 },
                 speakers: {
                     // note: the map from team to speakers might not be created if
@@ -180,11 +186,11 @@ impl TournamentParticipants {
                 teams
                     .entry(team.clone())
                     .and_modify(|s: &mut HashSet<String>| {
-                        s.insert(speaker);
+                        s.insert(speaker.clone());
                     })
                     .or_insert({
                         let mut set = HashSet::new();
-                        set.insert(team);
+                        set.insert(speaker);
                         set
                     });
             }

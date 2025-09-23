@@ -56,6 +56,7 @@ pub async fn register_page(user: Option<User<true>>) -> StandardResponse {
 #[derive(FromForm, Serialize)]
 pub struct RegisterForm<'v> {
     #[field(validate = is_ascii_no_spaces())]
+    #[field(validate = len(..128))]
     pub username: &'v str,
     #[field(validate = is_valid_email())]
     pub(crate) email: &'v str,

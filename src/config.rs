@@ -20,6 +20,7 @@ use crate::{
     tournaments::{
         create::{create_tournament_page, do_create_tournament},
         participants::manage::{
+            create_speaker::{create_speaker_page, do_create_speaker},
             create_team::{create_teams_page, do_create_team},
             manage_team::{
                 do_edit_team_details, edit_team_details_page, manage_team_page,
@@ -174,7 +175,9 @@ pub fn make_rocket() -> Rocket<Build> {
                 view_tournament_round_page,
                 public_team_tab_page,
                 do_create_new_round_of_specific_category,
-                do_edit_round
+                do_edit_round,
+                create_speaker_page,
+                do_create_speaker
             ],
         )
 }

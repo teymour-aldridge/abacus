@@ -18,6 +18,7 @@ use crate::{
     util_resp::{
         StandardResponse, bad_request, err_not_found, see_other_ok, success,
     },
+    widgets::actions::Actions,
 };
 
 /// This has rank = 2 so that it does not collide with
@@ -58,6 +59,10 @@ pub async fn manage_team_page(
                 h1 {
                     "Team " (team.name)
                 }
+
+                Actions options=(&[
+                    (format!("/tournaments/{}/teams/{}/speakers/create", tournament.id, team.id).as_str(), "Add speaker")
+                ]);
 
                 ul class="list-group list-group-horizontal" {
                     li class="list-group-item" {

@@ -16,6 +16,7 @@ use crate::{
         rounds::{Round, TournamentRounds},
     },
     util_resp::{StandardResponse, success},
+    widgets::actions::Actions,
 };
 
 pub mod create;
@@ -43,6 +44,9 @@ pub async fn manage_rounds_page(
         .collect::<HashMap<_, _>>();
 
     let get_seq = |round: &Round| round.seq;
+    let min_in_round_seq = rounds.prelim.iter().map(get_seq).min();
+    let max_in_round_seq = rounds.prelim.iter().map(get_seq).max();
+
     // todo: case with no outrounds
     let min_outround_seq = rounds.elim.iter().map(get_seq).min();
     let max_outround_seq = rounds.elim.iter().map(get_seq).max();
@@ -56,17 +60,34 @@ pub async fn manage_rounds_page(
             h1 {
                 "Rounds for " (tournament.name)
             }
-            @if !rounds.prelim.is_empty() {
+            @if let Some(min_in_round_seq) = min_in_round_seq {
+                @let max_in_round_seq = max_in_round_seq.unwrap();
                 div class = "container" {
-                    @for prelim in &rounds.prelim {
-                        div class = "m-2" {
-                            (prelim.name)
+                    @for seq in min_in_round_seq..=max_in_round_seq {
+                        div class = "row p-3" {
+                            @for prelim in rounds.prelim.iter().filter(|round| round.seq == seq) {
+                                div class="col" {
+                                    div class = "card" {
+                                        div class="card-body" {
+                                            h5 class="card-title" {
+                                                span class="badge text-bg-secondary" {
+                                                    "Seq " (seq)
+                                                }
 
-                            a href=(format!("/tournaments/{tid}/rounds/{}", prelim.id))
-                            {
-                                " (edit)"
+                                                " "
+                                                (prelim.name)
+                                            }
+
+                                            a class="btn btn-primary" href=(format!("/tournaments/{tid}/rounds/{}/edit", prelim.id))
+                                            {
+                                                "Edit"
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
+
                     }
                 }
             } @else {
@@ -103,6 +124,9 @@ pub async fn manage_rounds_page(
                     "Note: there are no elimination rounds in this tournament."
                 }
             }
+            Actions options = (&[
+                (format!("/tournaments/{}/rounds/create", tournament.id).as_str(), "Create round")
+            ]);
         })
         .render())
 }

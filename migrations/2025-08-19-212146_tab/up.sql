@@ -194,7 +194,6 @@ create table if not exists tournament_rounds (
     kind text not null check (kind in ('E', 'P')),
     break_category text references tournament_break_categories (id),
     completed boolean not null,
-    unique (tournament_id, seq),
     unique (tournament_id, name)
 );
 

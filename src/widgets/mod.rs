@@ -3,4 +3,5 @@
 //!
 //! Currently it just contains the [`alert`] module (but more will come).
 
+pub mod actions;
 pub mod alert;

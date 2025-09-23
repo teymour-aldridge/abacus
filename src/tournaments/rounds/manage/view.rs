@@ -15,8 +15,8 @@ use crate::{
 pub async fn view_tournament_round_page(
     tid: &str,
     rid: &str,
-    mut conn: Conn<true>,
     user: User<true>,
+    mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
@@ -42,7 +42,7 @@ pub async fn view_tournament_round_page(
             .user(user)
             .body(maud! {
                 h1 {
-                    "Round " (round.name)
+                    (round.name)
                 }
 
                 ul class="list-group list-group-horizontal" {

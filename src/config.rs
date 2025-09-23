@@ -39,8 +39,9 @@ use crate::{
                 create::{
                     create_new_round,
                     create_new_round_of_specific_category_page,
+                    do_create_new_round_of_specific_category,
                 },
-                edit::edit_round_page,
+                edit::{do_edit_round, edit_round_page},
                 manage_rounds_page,
                 view::view_tournament_round_page,
             },
@@ -172,6 +173,8 @@ pub fn make_rocket() -> Rocket<Build> {
                 manage_rounds_page,
                 view_tournament_round_page,
                 public_team_tab_page,
+                do_create_new_round_of_specific_category,
+                do_edit_round
             ],
         )
 }

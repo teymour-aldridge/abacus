@@ -61,12 +61,11 @@ pub async fn view_active_draw_page(
                 @for draw in &draws {
                     @if draw.draw.released_at.is_some() {
                         h3 {
-                            "Round "
-                                (rounds
-                                    .iter()
-                                    .find(|round| round.id == draw.draw.id)
-                                    .unwrap()
-                                    .name)
+                            (rounds
+                                .iter()
+                                .find(|round| round.id == draw.draw.id)
+                                .unwrap()
+                                .name)
                         }
                         table {
                             thead {

@@ -6,6 +6,7 @@ use crate::{
     template::Page,
     tournaments::Tournament,
     util_resp::{StandardResponse, success},
+    widgets::actions::Actions,
 };
 
 /// Returns the tournament view for tab directors (i.e. superusers).
@@ -28,22 +29,10 @@ pub async fn admin_view_tournament(
                 "Overview"
             }
 
-            div class = "row" {
-                div class = "col-md-auto" {
-                    a class="btn btn-primary"
-                        href=(format!("/tournaments/{}/participants", tournament.id)) {
-                        "Manage participants"
-                    }
-                }
-
-                // todo: can integrate the manage rounds page onto this one
-                div class = "col-md-auto" {
-                    a class="btn btn-primary"
-                        href=(format!("/tournaments/{}/rounds", tournament.id)) {
-                        "Manage rounds"
-                    }
-                }
-            }
+            Actions options=(&[
+                (format!("/tournaments/{}/participants", tournament.id).as_str(), "Manage participants"),
+                (format!("/tournaments/{}/rounds", tournament.id).as_str(), "Manage rounds")
+            ]);
         })
         .render())
 }

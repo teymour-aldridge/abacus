@@ -2,6 +2,7 @@ use crate::{
     state::Conn,
     tournaments::WEBSOCKET_SCHEME,
     util_resp::{StandardResponse, success},
+    widgets::actions::Actions,
 };
 use diesel::prelude::*;
 use hypertext::{Raw, prelude::*};
@@ -65,6 +66,10 @@ pub async fn manage_tournament_participants(
 
                tableEl.style.border = "1px solid #333";
 
+               let participants = document.createElement("p");
+               participants.textContent = "Participants";
+               holderEl.appendChild(participants);
+
                holderEl.appendChild(tableEl);
 
                row.getElement().appendChild(holderEl);
@@ -105,15 +110,15 @@ pub async fn manage_tournament_participants(
                 // todo: checksum
                 link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet";
                 script type="text/javascript" src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js" {}
+
+                Actions options=(&[
+                    (format!("/tournaments/{tid}/teams/create").as_str(), "Add team")
+                ]);
+
+                br;
+
                 div #participants {}
 
-                ul {
-                    li {
-                        a href=(format!("/tournaments/{tid}/teams/create")) {
-                            "Add team"
-                        }
-                    }
-                }
                 (Raw::dangerously_create(&script))
             })
             .render(),

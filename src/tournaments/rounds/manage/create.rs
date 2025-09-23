@@ -23,8 +23,8 @@ use crate::{
 #[get("/tournaments/<tid>/rounds/create", rank = 1)]
 pub async fn create_new_round(
     tid: &str,
-    mut conn: Conn<true>,
     user: User<true>,
+    mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
@@ -41,17 +41,17 @@ pub async fn create_new_round(
         .body(maud! {
             h1 {
                 "Please select a category in which to create this round"
+            }
 
-                ul {
-                    li {
-                        a href=(format!("/tournaments/{tid}/rounds/in_round/create")) {
-                            "In round"
-                        }
+            ul {
+                li {
+                    a href=(format!("/tournaments/{tid}/rounds/in_round/create")) {
+                        "In round"
                     }
-                    @for cat in &cats {
-                        a href=(format!("/tournaments/{tid}/rounds/{}/create", cat.id)) {
-                            (cat.name)
-                        }
+                }
+                @for cat in &cats {
+                    a href=(format!("/tournaments/{tid}/rounds/{}/create", cat.id)) {
+                        (cat.name)
                     }
                 }
             }
@@ -63,8 +63,8 @@ pub async fn create_new_round(
 pub async fn create_new_round_of_specific_category_page(
     tid: &str,
     category_id: &str,
-    mut conn: Conn<true>,
     user: User<true>,
+    mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
@@ -92,7 +92,7 @@ pub async fn create_new_round_of_specific_category_page(
             .tournament(tournament)
             .user(user)
             .body(maud! {
-                form {
+                form method="post" {
                     div class="mb-3" {
                         label for="roundName" class="form-label" {
                             "Round name"
@@ -120,6 +120,7 @@ pub async fn create_new_round_of_specific_category_page(
                             "The sequence number of the round."
                         }
                     }
+                    button type="submit" class="btn btn-primary" { "Submit" }
                     // todo: break categories
                 }
             })
@@ -139,24 +140,14 @@ pub struct CreateNewRoundForm {
 pub async fn do_create_new_round_of_specific_category(
     tid: &str,
     category_id: &str,
-    mut conn: Conn<true>,
     form: Form<CreateNewRoundForm>,
     user: User<true>,
+    mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
     let break_cat = if category_id == "in_round" {
-        diesel::update(
-            tournament_rounds::table.filter(
-                tournament_rounds::tournament_id
-                    .eq(&tournament.id)
-                    .and(tournament_rounds::seq.ge(form.seq as i64)),
-            ),
-        )
-        .set(tournament_rounds::seq.eq(tournament_rounds::seq + 1))
-        .execute(&mut *conn)
-        .unwrap();
         None
     } else {
         let cat = match tournament_break_categories::table
@@ -180,14 +171,19 @@ pub async fn do_create_new_round_of_specific_category(
             tournament_rounds::tournament_id.eq(&tournament.id),
             tournament_rounds::seq.eq(form.seq as i64),
             tournament_rounds::name.eq(&form.name),
-            tournament_rounds::kind.eq("P"),
+            tournament_rounds::kind.eq(if category_id == "in_round" {
+                "P"
+            } else {
+                "E"
+            }),
             tournament_rounds::break_category.eq(break_cat.map(|c| c.id)),
+            tournament_rounds::completed.eq(false),
         ))
         .execute(&mut *conn)
         .unwrap();
 
     see_other_ok(Redirect::to(format!(
-        "/tournament/{}/rounds",
+        "/tournaments/{}/rounds",
         tournament.id
     )))
 }

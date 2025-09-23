@@ -40,7 +40,7 @@ pub async fn edit_round_page(
             .tournament(tournament)
             .user(user)
             .body(maud! {
-                form {
+                form method="post" {
                     div class="mb-3" {
                         label for="roundName" class="form-label" {
                             "Round name"
@@ -71,6 +71,7 @@ pub async fn edit_round_page(
                             " example 'Round 1', or 'Grand final'"
                         }
                     }
+                    button type="submit" class="btn btn-primary" { "Submit" }
                     // todo: break categories
                 }
             })
@@ -98,7 +99,7 @@ pub async fn do_edit_round(
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
     let round = match tournament_rounds::table
-        .filter(tournament_rounds::id.eq(&tid))
+        .filter(tournament_rounds::tournament_id.eq(&tid))
         .filter(tournament_rounds::id.eq(&rid))
         .first::<Round>(&mut *conn)
         .optional()

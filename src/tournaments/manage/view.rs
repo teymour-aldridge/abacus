@@ -28,10 +28,19 @@ pub async fn admin_view_tournament(
                 "Overview"
             }
 
-            ul {
-                li {
-                    a href=(format!("/tournaments/{}/participants", tournament.id)) {
+            div class = "row" {
+                div class = "col-md-auto" {
+                    a class="btn btn-primary"
+                        href=(format!("/tournaments/{}/participants", tournament.id)) {
                         "Manage participants"
+                    }
+                }
+
+                // todo: can integrate the manage rounds page onto this one
+                div class = "col-md-auto" {
+                    a class="btn btn-primary"
+                        href=(format!("/tournaments/{}/rounds", tournament.id)) {
+                        "Manage rounds"
                     }
                 }
             }

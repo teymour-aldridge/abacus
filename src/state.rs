@@ -38,8 +38,6 @@ impl Fairing for TxCommitFairing {
     ) {
         let conn = req.local_cache::<Option<RequestSpecificTxConn>, _>(|| None);
 
-        dbg!(conn.is_some());
-
         if let Some(conn) = conn {
             let mut conn = conn.0.try_lock().unwrap();
 
@@ -139,11 +137,15 @@ impl<'r, const TX: bool> FromRequest<'r> for ThreadSafeConn<TX> {
                         let pool =
                             request.rocket().state::<DbPool>().unwrap().clone();
 
-                        let conn = tokio::task::spawn_blocking(move || {
+                        let mut conn = tokio::task::spawn_blocking(move || {
                             pool.get().unwrap()
                         })
                         .await
                         .unwrap();
+
+                        <PooledConnection<ConnectionManager<SqliteConnection>> as diesel::Connection>
+                            ::TransactionManager
+                            ::begin_transaction(&mut conn).unwrap();
 
                         let t = Arc::new(tokio::sync::Mutex::new(conn));
 

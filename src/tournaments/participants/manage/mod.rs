@@ -5,7 +5,12 @@ use crate::{
 };
 use diesel::prelude::*;
 use hypertext::{Raw, prelude::*};
-use rocket::{State, futures::SinkExt, get};
+use itertools::Either;
+use rocket::{
+    State,
+    futures::{SinkExt, StreamExt},
+    get,
+};
 use tokio::{sync::broadcast::Receiver, task::spawn_blocking};
 
 use crate::{
@@ -190,7 +195,22 @@ pub async fn tournament_participant_updates(
             // we then send the data again on each update
             loop {
                 let msg = {
-                    let msg = rx.recv().await.unwrap();
+                    let msg = tokio::select! {
+                        msg = rx.recv() => Either::Left(msg.unwrap()),
+                        msg = stream.next() => Either::Right(msg.unwrap()),
+                    };
+                    let msg = match msg {
+                        Either::Left(left) => left,
+                        Either::Right(close) => {
+                            let close = close?;
+                            if matches!(close, rocket_ws::Message::Close(_)) {
+                                return Ok(());
+                            } else {
+                                continue;
+                            }
+                        }
+                    };
+
                     if msg.tournament.id == tournament.id
                         && matches!(msg.inner, MsgContents::ParticipantsUpdate)
                     {

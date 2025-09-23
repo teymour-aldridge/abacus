@@ -44,47 +44,63 @@ pub async fn manage_rounds_page(
 
     let get_seq = |round: &Round| round.seq;
     // todo: case with no outrounds
-    let min_outround_seq = rounds.elim.iter().map(get_seq).min().unwrap();
-    let max_outround_seq = rounds.elim.iter().map(get_seq).max().unwrap();
+    let min_outround_seq = rounds.elim.iter().map(get_seq).min();
+    let max_outround_seq = rounds.elim.iter().map(get_seq).max();
+
+    assert!(!min_outround_seq.is_some() || max_outround_seq.is_some());
 
     success(Page::new()
-        .tournament(tournament)
+        .tournament(tournament.clone())
         .user(user)
         .body(maud! {
-            div class = "container" {
-                @for prelim in &rounds.prelim {
-                    div class = "m-2" {
-                        (prelim.name)
+            h1 {
+                "Rounds for " (tournament.name)
+            }
+            @if !rounds.prelim.is_empty() {
+                div class = "container" {
+                    @for prelim in &rounds.prelim {
+                        div class = "m-2" {
+                            (prelim.name)
 
-                        a href=(format!("/tournaments/{tid}/rounds/{}", prelim.id))
-                        {
-                            " (edit)"
+                            a href=(format!("/tournaments/{tid}/rounds/{}", prelim.id))
+                            {
+                                " (edit)"
+                            }
                         }
                     }
                 }
+            } @else {
+                div class = "container "{
+                    "Note: there are no preliminary rounds in this tournament."
+                }
             }
             div class = "container" {
-                @for i in min_outround_seq..max_outround_seq {
-                    div class = "row" {
-                        @for (_, rounds) in categories2rounds.iter().sorted_by_key(
-                            |(cat_id, _)| {
-                                categories.get(*cat_id).unwrap().priority
-                            }
-                        ) {
-                            div class = "col" {
-                                @if let Some(round) =
-                                    rounds.iter().find(|round| round.seq == i) {
-                                    (round.name)
-                                    a href=(format!("/tournaments/{tid}/rounds/{}", round.id))
-                                    {
-                                        " (edit)"
+                @if let Some(min_outround_seq) = min_outround_seq {
+                    @let max_outround_seq = max_outround_seq.unwrap();
+                    @for i in min_outround_seq..max_outround_seq {
+                        div class = "row" {
+                            @for (_, rounds) in categories2rounds.iter().sorted_by_key(
+                                |(cat_id, _)| {
+                                    categories.get(*cat_id).unwrap().priority
+                                }
+                            ) {
+                                div class = "col" {
+                                    @if let Some(round) =
+                                        rounds.iter().find(|round| round.seq == i) {
+                                        (round.name)
+                                        a href=(format!("/tournaments/{tid}/rounds/{}", round.id))
+                                        {
+                                            " (edit)"
+                                        }
+                                    } @else {
+                                        "---"
                                     }
-                                } @else {
-                                    "---"
                                 }
                             }
                         }
                     }
+                } @else {
+                    "Note: there are no elimination rounds in this tournament."
                 }
             }
         })

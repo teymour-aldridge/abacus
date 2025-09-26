@@ -1,5 +1,6 @@
 use diesel::{
     SqliteConnection,
+    prelude::*,
     r2d2::{ConnectionManager, Pool},
 };
 use diesel_migrations::MigrationHarness;
@@ -15,9 +16,11 @@ use crate::{
         register::{do_register, register_page},
     },
     msg::Msg,
-    state::{DbPool, TxCommitFairing},
+    schema::{tournament_members, tournaments},
+    state::{Conn, DbPool, TxCommitFairing},
     template::Page,
     tournaments::{
+        Tournament,
         create::{create_tournament_page, do_create_tournament},
         participants::manage::{
             create_speaker::{create_speaker_page, do_create_speaker},
@@ -51,24 +54,84 @@ use crate::{
         view::view_tournament_page,
     },
     util_resp::{StandardResponse, success},
+    widgets::actions::Actions,
 };
 
 #[get("/")]
-pub fn home(user: Option<User<true>>) -> StandardResponse {
-    success(
-        Page::new()
-            .user_opt(user)
-            .body(maud! {
-                ul {
-                    li {
-                        a href="/tournaments/create" {
-                            "Create new tournament"
+pub fn home(
+    user: Option<User<true>>,
+    mut conn: Conn<true>,
+) -> StandardResponse {
+    if let Some(user) = user {
+        let tournaments = tournaments::table
+            .inner_join(
+                tournament_members::table.on(tournament_members::tournament_id
+                    .eq(tournaments::id)
+                    .and(tournament_members::user_id.eq(&user.id))),
+            )
+            .select(tournaments::all_columns)
+            .load::<Tournament>(&mut *conn)
+            .unwrap();
+
+        let tournaments = maud! {
+            h1 {"My tournaments"}
+            @if tournaments.is_empty() {
+                p {"You are not a member of any tournaments"}
+            } @else {
+                table class = "table" {
+                    thead {
+                        tr  {
+                            th scope="col" {
+                                "#"
+                            }
+                            th scope="col" {
+                                "Tournament name"
+                            }
+                            th scope="col" {
+                                "View tournament"
+                            }
+                        }
+                    }
+                    tbody {
+                        @for (i, tournament) in tournaments.iter().enumerate() {
+                            tr {
+                                th scope="col" {
+                                    (i)
+                                }
+                                td {
+                                    (tournament.name)
+                                }
+                                td {
+                                    a href=(format!("/tournaments/{}", tournament.id)) {
+                                        "View"
+                                    }
+                                }
+                            }
                         }
                     }
                 }
-            })
-            .render(),
-    )
+            }
+        };
+
+        success(
+            Page::new()
+                .user(user)
+                .body(maud! {
+                    Actions options=(&[("Create tournament", "/tournaments/new")]);
+                    (tournaments)
+                })
+                .render(),
+        )
+    } else {
+        success(
+            Page::new()
+                .user_opt(None::<User<true>>)
+                .body(maud! {
+                    "Abacus"
+                })
+                .render(),
+        )
+    }
 }
 
 // #[derive(Debug)]

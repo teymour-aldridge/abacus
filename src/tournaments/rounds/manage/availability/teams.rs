@@ -380,7 +380,7 @@ pub async fn update_team_eligibility(
     let n = diesel::insert_into(tournament_team_availability::table)
         .values((
             tournament_team_availability::id.eq(Uuid::now_v7().to_string()),
-            tournament_team_availability::round_id.eq(round.id),
+            tournament_team_availability::round_id.eq(&round.id),
             tournament_team_availability::team_id.eq(&team.id),
             tournament_team_availability::available.eq(!form.available),
         ))
@@ -393,6 +393,27 @@ pub async fn update_team_eligibility(
         .execute(&mut *conn)
         .unwrap();
     assert_eq!(n, 1);
+
+    diesel::update(
+        tournament_team_availability::table.filter(
+            tournament_team_availability::team_id.eq(&team.id).and(
+                diesel::dsl::exists(
+                    tournament_rounds::table.filter(
+                        tournament_rounds::tournament_id
+                            .eq(&tournament.id)
+                            .and(
+                                tournament_rounds::seq
+                                    .eq(round.seq)
+                                    .and(tournament_rounds::id.ne(&round.id)),
+                            ),
+                    ),
+                ),
+            ),
+        ),
+    )
+    .set(tournament_team_availability::available.eq(false))
+    .execute(&mut *conn)
+    .unwrap();
 
     let _ = tx.send(Msg {
         tournament,

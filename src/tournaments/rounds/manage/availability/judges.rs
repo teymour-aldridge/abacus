@@ -446,6 +446,27 @@ pub async fn update_judge_availability(
         .unwrap();
     assert_eq!(n, 1);
 
+    diesel::update(
+        tournament_judge_availability::table.filter(
+            tournament_judge_availability::judge_id.eq(&judge.id).and(
+                diesel::dsl::exists(
+                    tournament_rounds::table.filter(
+                        tournament_rounds::tournament_id
+                            .eq(&tournament.id)
+                            .and(
+                                tournament_rounds::seq
+                                    .eq(round.seq)
+                                    .and(tournament_rounds::id.ne(&round.id)),
+                            ),
+                    ),
+                ),
+            ),
+        ),
+    )
+    .set(tournament_judge_availability::available.eq(false))
+    .execute(&mut *conn)
+    .unwrap();
+
     let _ = tx.send(Msg {
         tournament,
         inner: MsgContents::JudgeAvailabilityUpdate,

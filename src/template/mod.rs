@@ -9,24 +9,26 @@ use crate::{auth::User, tournaments::Tournament};
 
 pub mod form;
 
-pub struct Page<R: Renderable, const TX: bool> {
-    body: Option<R>,
+pub struct Page<R1: Renderable, R2: Renderable, const TX: bool> {
+    body: Option<R1>,
     user: Option<User<TX>>,
-    hx_ext: Option<String>,
+    extra_head: Option<R2>,
     tournament: Option<Tournament>,
 }
 
-impl<R: Renderable, const TX: bool> Page<R, TX> {
+impl<R1: Renderable, const TX: bool> Page<R1, String, TX> {
     pub fn new() -> Self {
         Default::default()
     }
+}
 
+impl<R1: Renderable, R2: Renderable, const TX: bool> Page<R1, R2, TX> {
     pub fn tournament(mut self, tournament: Tournament) -> Self {
         self.tournament = Some(tournament);
         self
     }
 
-    pub fn body(mut self, body: R) -> Self {
+    pub fn body(mut self, body: R1) -> Self {
         self.body = Some(body);
         self
     }
@@ -36,18 +38,20 @@ impl<R: Renderable, const TX: bool> Page<R, TX> {
         self
     }
 
+    pub fn extra_head(mut self, content: R2) -> Self {
+        self.extra_head = Some(content);
+        self
+    }
+
     pub fn user_opt(mut self, user: Option<User<TX>>) -> Self {
         self.user = user;
         self
     }
-
-    pub fn hx_ext(mut self, set: &str) -> Self {
-        self.hx_ext = Some(set.to_string());
-        self
-    }
 }
 
-impl<R: Renderable, const TX: bool> Renderable for Page<R, TX> {
+impl<R1: Renderable, R2: Renderable, const TX: bool> Renderable
+    for Page<R1, R2, TX>
+{
     fn render_to(
         &self,
         buffer: &mut hypertext::Buffer<hypertext::context::Node>,
@@ -67,8 +71,11 @@ impl<R: Renderable, const TX: bool> Renderable for Page<R, TX> {
                     meta
                         name="viewport"
                         content="width=device-width, initial-scale=1";
+                    @if let Some(extra) = &self.extra_head {
+                        (extra)
+                    }
                 }
-                body hx-ext=(self.hx_ext) {
+                body {
                     nav class="navbar navbar-expand"
                         style="background-color: #452859"
                         data-bs-theme="dark" {
@@ -122,13 +129,15 @@ impl<R: Renderable, const TX: bool> Renderable for Page<R, TX> {
     }
 }
 
-impl<R: Renderable, const TX: bool> Default for Page<R, TX> {
+impl<R1: Renderable, R2: Renderable, const TX: bool> Default
+    for Page<R1, R2, TX>
+{
     fn default() -> Self {
         Self {
             body: Default::default(),
             user: Default::default(),
-            hx_ext: Default::default(),
             tournament: Default::default(),
+            extra_head: Default::default(),
         }
     }
 }

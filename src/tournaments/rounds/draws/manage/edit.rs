@@ -86,7 +86,6 @@ pub async fn edit_draw_page_tab_dir(
             Page::new()
                 .tournament(tournament.clone())
                 .user(user)
-                .hx_ext("ws")
                 .body(maud! {
                     script src="https://cdn.jsdelivr.net/npm/htmx-ext-response-targets@2.0.2" integrity="sha384-T41oglUPvXLGBVyRdZsVRxNWnOOqCynaPubjUVjxhsjFTKrFJGEMm3/0KGmNQ+Pg" crossorigin="anonymous" {
                     }

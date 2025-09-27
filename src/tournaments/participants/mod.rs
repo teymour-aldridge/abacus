@@ -1,6 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -60,101 +61,21 @@ pub struct BaseParticipant {
 }
 
 pub struct TournamentParticipants {
-    teams: HashMap<String, Team>,
-    speakers: HashMap<String, Speaker>,
-    team_speakers: HashMap<String, HashSet<String>>,
-    institutions: HashMap<String, Institution>,
-    base_participants: HashMap<String, BaseParticipant>,
-}
-
-#[derive(Serialize)]
-pub struct STeam {
-    id: i64,
-    name: String,
-    /// Institution name
-    inst: Option<String>,
-    actions: [String; 2],
-}
-
-#[derive(Serialize)]
-pub struct SSpeaker {
-    id: String,
-    name: String,
-    email: String,
-    private_url: String,
-}
-
-#[derive(Serialize)]
-pub struct NestedDataItem {
-    #[serde(flatten)]
-    team: STeam,
-    speakers: Vec<SSpeaker>,
+    pub teams: IndexMap<String, Team>,
+    pub speakers: IndexMap<String, Speaker>,
+    pub team_speakers: IndexMap<String, HashSet<String>>,
+    pub institutions: IndexMap<String, Institution>,
+    pub base_participants: IndexMap<String, BaseParticipant>,
 }
 
 impl TournamentParticipants {
-    fn for_tabulator(self) -> Vec<NestedDataItem> {
-        self.teams
-            .into_values()
-            .map(|team| NestedDataItem {
-                team: STeam {
-                    id: team.number,
-                    name: team.name,
-                    inst: {
-                        team.institution_id.map(|id| {
-                            self.institutions
-                                .get(&id)
-                                .expect("failed to create participant")
-                                .name
-                                .clone()
-                        })
-                    },
-                    actions: [
-                        format!(
-                            "/tournaments/{}/teams/{}/edit",
-                            team.tournament_id, team.id
-                        ),
-                        format!(
-                            "/tournaments/{}/teams/{}/speakers/create",
-                            team.tournament_id, team.id
-                        ),
-                    ],
-                },
-                speakers: {
-                    // note: the map from team to speakers might not be created if
-                    // there are no speakers, but we might want to always create
-                    // this and panic if it doesn't exist
-                    let empty = HashSet::new();
-                    let speakers =
-                        self.team_speakers.get(&team.id).unwrap_or(&empty);
-                    speakers
-                        .iter()
-                        .map(|speaker| {
-                            let speaker =
-                                self.speakers.get(speaker).unwrap().clone();
-                            SSpeaker {
-                                id: speaker.id,
-                                name: speaker.name,
-                                email: speaker.email,
-                                private_url: self
-                                    .base_participants
-                                    .get(&speaker.participant_id)
-                                    .unwrap()
-                                    .private_url
-                                    .clone(),
-                            }
-                        })
-                        .collect()
-                },
-            })
-            .collect::<Vec<_>>()
-    }
-
     pub fn load(
         tid: &str,
         conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> TournamentParticipants {
-        let teams: HashMap<String, Team> = tournament_teams::table
+        let teams: IndexMap<String, Team> = tournament_teams::table
             .filter(tournament_teams::tournament_id.eq(&tid))
+            .order_by(tournament_teams::number.asc())
             .load::<Team>(conn)
             .unwrap()
             .into_iter()
@@ -180,7 +101,7 @@ impl TournamentParticipants {
                 .load::<(String, String)>(conn)
                 .unwrap();
 
-            let mut teams = HashMap::with_capacity(teams.len());
+            let mut teams = IndexMap::with_capacity(teams.len());
 
             for (team, speaker) in list {
                 teams

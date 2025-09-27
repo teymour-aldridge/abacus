@@ -93,7 +93,7 @@ pub async fn do_register(
             let is_email_problem = user.email == form.email;
 
             bad_request(
-                Page::<_, true>::new()
+                Page::<_, _, true>::new()
                     .body(maud! {
                         ErrorAlert msg=(match is_email_problem {
                             true => "That email is already taken",

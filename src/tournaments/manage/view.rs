@@ -4,7 +4,7 @@ use crate::{
     auth::User,
     state::Conn,
     template::Page,
-    tournaments::Tournament,
+    tournaments::{Tournament, rounds::Round},
     util_resp::{StandardResponse, success},
     widgets::actions::Actions,
 };
@@ -21,6 +21,8 @@ pub async fn admin_view_tournament(
     let tournament = Tournament::fetch(tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
+    let active_rounds = Round::current_rounds(&tournament.id, &mut *conn);
+
     success(Page::new()
         .user(user)
         .tournament(tournament.clone())
@@ -33,6 +35,16 @@ pub async fn admin_view_tournament(
                 (format!("/tournaments/{}/participants", tournament.id).as_str(), "Manage participants"),
                 (format!("/tournaments/{}/rounds", tournament.id).as_str(), "Manage rounds")
             ]);
+
+            @if active_rounds.is_empty() {
+                p {
+                    "Currently, there are no active rounds"
+                }
+            } @else {
+                @for round in &active_rounds {
+                    (round.name)
+                }
+            }
         })
         .render())
 }

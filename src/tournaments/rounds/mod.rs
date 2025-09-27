@@ -17,7 +17,7 @@ pub struct Round {
     id: String,
     pub tournament_id: String,
     seq: i64,
-    name: String,
+    pub name: String,
     kind: String,
     break_cat: Option<String>,
     completed: bool,
@@ -63,7 +63,7 @@ impl Round {
 
         // TODO: is this desirable?
         debug_assert!(if ret.iter().any(|r| r.kind == "P") {
-            ret.iter().all(|r| r.kind == "E")
+            ret.iter().all(|r| r.kind != "E")
         } else {
             true
         });
@@ -150,14 +150,12 @@ impl TournamentRounds {
                 .map(|(round, completed, draw_released_at, draw_exists)| {
                     if completed {
                         (round, RoundStatus::Completed)
+                    } else if draw_exists && draw_released_at.is_some() {
+                        (round, RoundStatus::InProgress)
+                    } else if draw_exists && draw_released_at.is_none() {
+                        (round, RoundStatus::Draft)
                     } else {
-                        if draw_exists && draw_released_at.is_some() {
-                            (round, RoundStatus::InProgress)
-                        } else if draw_exists && draw_released_at.is_none() {
-                            (round, RoundStatus::Draft)
-                        } else {
-                            (round, RoundStatus::NotStarted)
-                        }
+                        (round, RoundStatus::NotStarted)
                     }
                 })
                 .collect::<HashMap<_, _>>()

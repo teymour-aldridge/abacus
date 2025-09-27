@@ -65,6 +65,12 @@ pub async fn manage_rounds_page(
                 (format!("/tournaments/{}/rounds/create", tournament.id).as_str(), "Create round")
             ]);
 
+            p {
+                "Rounds which take place concurrently should share the same"
+                "sequence number -- where two rounds have the same sequence"
+                "number, it will be possible to generate and edit the draw"
+                "for both rounds simultaneously."
+            }
 
             div class = "container" {
                 h3 {

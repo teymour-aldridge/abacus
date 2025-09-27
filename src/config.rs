@@ -70,6 +70,7 @@ pub fn home(
                     .and(tournament_members::user_id.eq(&user.id))),
             )
             .select(tournaments::all_columns)
+            .order_by(tournaments::created_at.desc())
             .load::<Tournament>(&mut *conn)
             .unwrap();
 
@@ -88,7 +89,7 @@ pub fn home(
                                 "Tournament name"
                             }
                             th scope="col" {
-                                "View tournament"
+                                "Actions"
                             }
                         }
                     }
@@ -96,7 +97,7 @@ pub fn home(
                         @for (i, tournament) in tournaments.iter().enumerate() {
                             tr {
                                 th scope="col" {
-                                    (i)
+                                    (i + 1)
                                 }
                                 td {
                                     (tournament.name)
@@ -117,7 +118,7 @@ pub fn home(
             Page::new()
                 .user(user)
                 .body(maud! {
-                    Actions options=(&[("Create tournament", "/tournaments/new")]);
+                    Actions options=(&[("/tournaments/new", "Create tournament")]);
                     (tournaments)
                 })
                 .render(),

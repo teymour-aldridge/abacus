@@ -258,7 +258,8 @@ create table if not exists tournament_judge_availability (
     round_id text not null references tournament_rounds (id),
     judge_id text not null references tournament_judges (id),
     available bool not null default 'f',
-    comment text
+    comment text,
+    unique (round_id, judge_id)
 );
 
 create table if not exists tournament_debates (

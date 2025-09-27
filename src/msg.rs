@@ -16,6 +16,7 @@ pub struct Msg {
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum MsgContents {
     ParticipantsUpdate,
-    AvailabilityUpdate,
+    TeamAvailabilityUpdate,
+    JudgeAvailabilityUpdate,
     DrawUpdated(String),
 }

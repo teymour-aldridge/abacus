@@ -41,9 +41,12 @@ use crate::{
             },
             manage::{
                 availability::{
+                    judges::{
+                        update_judge_availability, view_judge_availability,
+                    },
                     manage_round_availability,
                     teams::{
-                        availability_updates, update_team_eligibility,
+                        team_availability_updates, update_team_eligibility,
                         view_team_availability,
                     },
                 },
@@ -252,7 +255,9 @@ pub fn make_rocket() -> Rocket<Build> {
                 manage_round_availability,
                 view_team_availability,
                 update_team_eligibility,
-                availability_updates
+                team_availability_updates,
+                view_judge_availability,
+                update_judge_availability
             ],
         )
 }

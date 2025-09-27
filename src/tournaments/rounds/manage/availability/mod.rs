@@ -121,7 +121,7 @@ pub async fn manage_round_availability(
                                             aria_valuemin=0 aria_valuemax=100
                                             aria_valuenow=(available.0 * 100.0) {
                                                 div class="progress-bar"
-                                                    style=(format!("width: {};", available.0 * 100.0)) {
+                                                    style=(format!("width: {}%;", available.0 * 100.0)) {
                                                 }
                                         }
                                     }

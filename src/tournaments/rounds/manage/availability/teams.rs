@@ -183,7 +183,10 @@ pub async fn view_team_availability(
             .body(maud! {
                 h1 {
                     "Manage availabilities for rounds "
-                    @for round in &rounds {
+                    @for (i, round) in rounds.iter().enumerate() {
+                        @if i > 0 {
+                            ", "
+                        }
                         (round.name)
                     }
                 }
@@ -196,7 +199,7 @@ pub async fn view_team_availability(
 #[get(
     "/tournaments/<tournament_id>/rounds/<round_seq>/availability/teams?channel"
 )]
-pub async fn availability_updates(
+pub async fn team_availability_updates(
     tournament_id: &str,
     round_seq: i64,
     ws: rocket_ws::WebSocket,
@@ -253,7 +256,10 @@ pub async fn availability_updates(
                     };
 
                     if msg.tournament.id == tournament.id
-                        && matches!(msg.inner, MsgContents::AvailabilityUpdate)
+                        && matches!(
+                            msg.inner,
+                            MsgContents::TeamAvailabilityUpdate
+                        )
                     {
                         msg
                     } else {
@@ -262,7 +268,7 @@ pub async fn availability_updates(
                 };
 
                 match msg.inner {
-                    MsgContents::AvailabilityUpdate => {
+                    MsgContents::TeamAvailabilityUpdate => {
                         let pool1 = pool.clone();
                         let tournament_id = tournament_id.to_string();
 
@@ -390,7 +396,7 @@ pub async fn update_team_eligibility(
 
     let _ = tx.send(Msg {
         tournament,
-        inner: MsgContents::AvailabilityUpdate,
+        inner: MsgContents::TeamAvailabilityUpdate,
     });
 
     return see_other_ok(Redirect::to(format!(

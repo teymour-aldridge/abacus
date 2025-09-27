@@ -31,6 +31,21 @@ pub enum RoundStatus {
 }
 
 impl Round {
+    pub fn of_seq(
+        seq: i64,
+        tournament_id: &str,
+        conn: &mut impl LoadConnection<Backend = Sqlite>,
+    ) -> Vec<Round> {
+        tournament_rounds::table
+            .filter(
+                tournament_rounds::tournament_id
+                    .eq(tournament_id)
+                    .and(tournament_rounds::seq.eq(seq)),
+            )
+            .load::<Round>(conn)
+            .unwrap()
+    }
+
     pub fn fetch(
         round_id: &str,
         conn: &mut impl LoadConnection<Backend = Sqlite>,

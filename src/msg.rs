@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::tournaments::Tournament;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 /// A message which is sent following a modification made during a tournament.
 /// This is then used by individual pages to update the
 pub struct Msg {
@@ -13,8 +13,9 @@ pub struct Msg {
     pub inner: MsgContents,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum MsgContents {
     ParticipantsUpdate,
+    AvailabilityUpdate,
     DrawUpdated(String),
 }

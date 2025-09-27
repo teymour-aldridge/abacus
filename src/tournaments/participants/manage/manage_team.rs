@@ -22,7 +22,7 @@ use crate::{
 };
 
 /// This has rank = 2 so that it does not collide with
-/// [`super::create_team::create_teams_age`].
+/// [`super::create_team::create_team_page`].
 #[get("/tournaments/<tournament_id>/teams/<team_id>", rank = 2)]
 pub async fn manage_team_page(
     user: User<true>,

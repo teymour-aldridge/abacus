@@ -112,7 +112,7 @@ impl Tournament {
         permission: Permission,
         conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Result<(), FailureResponse> {
-        match diesel::dsl::select(diesel::dsl::exists(
+        let has_permission = diesel::dsl::select(diesel::dsl::exists(
             tournament_members::table
                 .filter(tournament_members::user_id.eq(user_id))
                 .filter(tournament_members::tournament_id.eq(&self.id))
@@ -137,20 +137,19 @@ impl Tournament {
                     tournament_group_permissions::permission
                         .eq(serde_json::to_string(&permission).unwrap()),
                 )
-                .select(true.into_sql::<diesel::sql_types::Bool>())
-                .union(
-                    tournament_members::table
-                        .filter(
-                            tournament_members::user_id
-                                .eq(user_id)
-                                .and(tournament_members::is_superuser.eq(true)),
-                        )
-                        .select(true.into_sql::<diesel::sql_types::Bool>()),
-                ),
-        ))
-        .get_result::<bool>(conn)
-        .unwrap()
-        {
+                .select(true.into_sql::<diesel::sql_types::Bool>()),
+        ));
+        let is_superuser = tournament_members::table
+            .filter(
+                tournament_members::user_id
+                    .eq(user_id)
+                    .and(tournament_members::is_superuser.eq(true)),
+            )
+            .select(true.into_sql::<diesel::sql_types::Bool>());
+        let select = diesel::dsl::select(diesel::dsl::exists(
+            has_permission.union(is_superuser),
+        ));
+        match select.get_result::<bool>(conn).unwrap() {
             true => Ok(()),
             false => unauthorized().map(|_| ()),
         }

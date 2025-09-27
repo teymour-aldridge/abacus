@@ -40,6 +40,13 @@ use crate::{
                 public::view::view_active_draw_page,
             },
             manage::{
+                availability::{
+                    manage_round_availability,
+                    teams::{
+                        availability_updates, update_team_eligibility,
+                        view_team_availability,
+                    },
+                },
                 create::{
                     create_new_round,
                     create_new_round_of_specific_category_page,
@@ -241,7 +248,11 @@ pub fn make_rocket() -> Rocket<Build> {
                 do_create_new_round_of_specific_category,
                 do_edit_round,
                 create_speaker_page,
-                do_create_speaker
+                do_create_speaker,
+                manage_round_availability,
+                view_team_availability,
+                update_team_eligibility,
+                availability_updates
             ],
         )
 }

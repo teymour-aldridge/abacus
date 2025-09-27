@@ -145,6 +145,7 @@ impl Renderable for ParticipantsTable {
     }
 }
 
+// TODO: can remove `table_only` flag (!)
 #[get("/tournaments/<tid>/participants?<table_only>")]
 pub async fn manage_tournament_participants(
     tid: &str,

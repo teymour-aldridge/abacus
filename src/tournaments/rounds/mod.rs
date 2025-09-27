@@ -16,7 +16,7 @@ pub mod manage;
 pub struct Round {
     id: String,
     pub tournament_id: String,
-    seq: i64,
+    pub seq: i64,
     pub name: String,
     kind: String,
     break_cat: Option<String>,

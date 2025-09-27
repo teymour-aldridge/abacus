@@ -19,6 +19,7 @@ use crate::{
     widgets::actions::Actions,
 };
 
+pub mod availability;
 pub mod create;
 pub mod edit;
 pub mod view;

@@ -41,8 +41,22 @@ pub async fn admin_view_tournament(
                     "Currently, there are no active rounds"
                 }
             } @else {
-                @for round in &active_rounds {
-                    (round.name)
+                h1 {
+                    "Currently active rounds"
+                }
+                Actions options=(&[
+                    (format!("/tournaments/{}/rounds/{}/availability", tournament.id, active_rounds[0].seq).as_str(), "Manage availability for current rounds"),
+                ]);
+                div class = "row" {
+                    @for round in &active_rounds {
+                        div class = "col" {
+                            div class="card" {
+                                div class="card-body" {
+                                        (round.name)
+                                }
+                            }
+                        }
+                    }
                 }
             }
         })

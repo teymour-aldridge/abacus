@@ -240,7 +240,8 @@ create table if not exists tournament_team_availability (
     id text primary key not null,
     round_id text not null references tournament_rounds (id),
     team_id text not null references tournament_teams (id),
-    available bool not null default 'f'
+    available bool not null default 'f',
+    unique (round_id, team_id)
 );
 
 -- Eligibility, as specified by judges.

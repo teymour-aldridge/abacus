@@ -5,15 +5,13 @@ use uuid::Uuid;
 
 use crate::{
     auth::User,
-    schema::{
-        tournament_institutions, tournament_judges, tournament_participants,
-    },
+    schema::{tournament_institutions, tournament_judges},
     state::Conn,
     template::Page,
     tournaments::{
         Tournament,
         participants::{
-            Institution, manage::create_speaker::get_unique_private_url,
+            Institution, manage::gen_private_url::get_unique_private_url,
         },
     },
     util_resp::{StandardResponse, bad_request, see_other_ok, success},
@@ -141,17 +139,7 @@ pub async fn do_create_judge(
         None => None,
     };
 
-    let participant_id = Uuid::now_v7().to_string();
-    let n = diesel::insert_into(tournament_participants::table)
-        .values((
-            tournament_participants::id.eq(&participant_id),
-            tournament_participants::tournament_id.eq(tournament_id),
-            tournament_participants::private_url
-                .eq(get_unique_private_url(tournament_id, &mut *conn)),
-        ))
-        .execute(&mut *conn)
-        .unwrap();
-    assert_eq!(n, 1);
+    let private_url = get_unique_private_url(&tournament.id, &mut *conn);
 
     let next_number = tournament_judges::table
         .filter(tournament_judges::tournament_id.eq(tournament_id))
@@ -171,7 +159,7 @@ pub async fn do_create_judge(
             tournament_judges::email.eq(&form.email),
             tournament_judges::institution_id
                 .eq(inst.map(|inst| inst.id.clone())),
-            tournament_judges::participant_id.eq(participant_id),
+            tournament_judges::private_url.eq(private_url),
             tournament_judges::number.eq(next_number),
         ))
         .execute(&mut *conn)

@@ -107,13 +107,6 @@ create table if not exists tournament_group_members (
     unique (member_id, group_id)
 );
 
-create table if not exists tournament_participants (
-    id text not null primary key,
-    tournament_id text not null references tournaments (id),
-    private_url text not null unique,
-    check (10 <= length(private_url))
-);
-
 create table if not exists tournament_institutions (
     id text primary key not null,
     tournament_id text not null references tournaments (id),
@@ -134,7 +127,7 @@ create table if not exists tournament_speakers (
     tournament_id text not null references tournaments (id),
     name text not null unique,
     email text not null,
-    participant_id text not null references tournament_participants(id)
+    private_url text not null unique
 );
 
 create table if not exists tournament_team_speakers (
@@ -148,7 +141,7 @@ create table if not exists tournament_judges (
     name text not null,
     email text not null,
     institution_id text references tournament_institutions (id),
-    participant_id text not null references tournament_participants(id),
+    private_url text not null unique,
     number integer not null check (number >= 0),
     unique (tournament_id, number)
 );

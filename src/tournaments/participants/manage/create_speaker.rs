@@ -1,17 +1,18 @@
-use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
+use diesel::prelude::*;
 use hypertext::prelude::*;
-use rand::{Rng, distr::Alphanumeric, rng};
 use rocket::{FromForm, form::Form, get, post, response::Redirect};
 use uuid::Uuid;
 
 use crate::{
     auth::User,
-    schema::{
-        tournament_participants, tournament_speakers, tournament_team_speakers,
-    },
+    schema::{tournament_speakers, tournament_team_speakers},
     state::Conn,
     template::Page,
-    tournaments::{Tournament, teams::Team},
+    tournaments::{
+        Tournament,
+        participants::manage::gen_private_url::get_unique_private_url,
+        teams::Team,
+    },
     util_resp::{StandardResponse, see_other_ok, success},
     validation::is_valid_email,
 };
@@ -64,33 +65,6 @@ pub struct CreateSpeakerForm {
     email: String,
 }
 
-pub fn get_unique_private_url(
-    tournament_id: &str,
-    conn: &mut impl LoadConnection<Backend = Sqlite>,
-) -> String {
-    loop {
-        let id: String = rng()
-            .sample_iter(Alphanumeric)
-            .take(10)
-            .map(char::from)
-            .collect();
-
-        let already_exists = diesel::dsl::select(diesel::dsl::exists(
-            tournament_participants::table.filter(
-                tournament_participants::tournament_id
-                    .eq(tournament_id)
-                    .and(tournament_participants::private_url.eq(&id)),
-            ),
-        ))
-        .get_result::<bool>(conn)
-        .unwrap();
-
-        if !already_exists {
-            return id;
-        }
-    }
-}
-
 #[post(
     "/tournaments/<tournament_id>/teams/<team_id>/speakers/create",
     data = "<form>"
@@ -106,18 +80,7 @@ pub async fn do_create_speaker(
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
     let team = Team::fetch(team_id, tournament_id, &mut *conn)?;
 
-    let participant_id = Uuid::now_v7().to_string();
-
-    let n = diesel::insert_into(tournament_participants::table)
-        .values((
-            tournament_participants::id.eq(&participant_id),
-            tournament_participants::tournament_id.eq(tournament_id),
-            tournament_participants::private_url
-                .eq(get_unique_private_url(tournament_id, &mut *conn)),
-        ))
-        .execute(&mut *conn)
-        .unwrap();
-    assert_eq!(n, 1);
+    let private_url = get_unique_private_url(&tournament.id, &mut *conn);
 
     let speaker_id = Uuid::now_v7().to_string();
     let n = diesel::insert_into(tournament_speakers::table)
@@ -126,7 +89,7 @@ pub async fn do_create_speaker(
             tournament_speakers::tournament_id.eq(&tournament.id),
             tournament_speakers::name.eq(&form.name),
             tournament_speakers::email.eq(&form.email),
-            tournament_speakers::participant_id.eq(participant_id),
+            tournament_speakers::private_url.eq(private_url),
         ))
         .execute(&mut *conn)
         .unwrap();

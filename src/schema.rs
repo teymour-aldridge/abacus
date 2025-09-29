@@ -167,7 +167,7 @@ diesel::table! {
         name -> Text,
         email -> Text,
         institution_id -> Nullable<Text>,
-        participant_id -> Text,
+        private_url -> Text,
         number -> BigInt,
     }
 }
@@ -178,14 +178,6 @@ diesel::table! {
         user_id -> Text,
         tournament_id -> Text,
         is_superuser -> Bool,
-    }
-}
-
-diesel::table! {
-    tournament_participants (id) {
-        id -> Text,
-        tournament_id -> Text,
-        private_url -> Text,
     }
 }
 
@@ -280,7 +272,7 @@ diesel::table! {
         tournament_id -> Text,
         name -> Text,
         email -> Text,
-        participant_id -> Text,
+        private_url -> Text,
     }
 }
 
@@ -403,11 +395,9 @@ diesel::joinable!(tournament_judge_team_clash -> tournament_judges (judge_id));
 diesel::joinable!(tournament_judge_team_clash -> tournament_teams (team_id));
 diesel::joinable!(tournament_judge_team_clash -> tournaments (tournament_id));
 diesel::joinable!(tournament_judges -> tournament_institutions (institution_id));
-diesel::joinable!(tournament_judges -> tournament_participants (participant_id));
 diesel::joinable!(tournament_judges -> tournaments (tournament_id));
 diesel::joinable!(tournament_members -> tournaments (tournament_id));
 diesel::joinable!(tournament_members -> users (user_id));
-diesel::joinable!(tournament_participants -> tournaments (tournament_id));
 diesel::joinable!(tournament_rooms -> tournaments (tournament_id));
 diesel::joinable!(tournament_round_motions -> tournament_rounds (round_id));
 diesel::joinable!(tournament_round_motions -> tournaments (tournament_id));
@@ -422,7 +412,6 @@ diesel::joinable!(tournament_speaker_score_entries -> tournament_speakers (speak
 diesel::joinable!(tournament_speaker_score_entries -> tournament_teams (team_id));
 diesel::joinable!(tournament_speaker_standings -> tournament_speakers (speaker_id));
 diesel::joinable!(tournament_speaker_standings -> tournaments (tournament_id));
-diesel::joinable!(tournament_speakers -> tournament_participants (participant_id));
 diesel::joinable!(tournament_speakers -> tournaments (tournament_id));
 diesel::joinable!(tournament_team_availability -> tournament_rounds (round_id));
 diesel::joinable!(tournament_team_availability -> tournament_teams (team_id));
@@ -455,7 +444,6 @@ diesel::allow_tables_to_appear_in_same_query!(
     tournament_judge_team_clash,
     tournament_judges,
     tournament_members,
-    tournament_participants,
     tournament_rooms,
     tournament_round_motions,
     tournament_round_tickets,

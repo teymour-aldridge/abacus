@@ -27,6 +27,7 @@ use crate::{
 pub mod create_judge;
 pub mod create_speaker;
 pub mod create_team;
+pub mod gen_private_url;
 pub mod institution_selector;
 pub mod manage_judge;
 pub mod manage_team;

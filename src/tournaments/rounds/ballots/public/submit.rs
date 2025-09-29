@@ -15,15 +15,14 @@ use crate::{
     auth::User,
     schema::{
         tournament_ballots, tournament_debate_judges, tournament_debates,
-        tournament_draws, tournament_round_motions,
+        tournament_draws, tournament_judges, tournament_round_motions,
         tournament_speaker_score_entries,
     },
     state::Conn,
     template::Page,
     tournaments::{
         Tournament,
-        participants::Speaker,
-        privateurls::{Participant, ParticipantKind},
+        participants::{Judge, Speaker},
         rounds::{
             Motion, Round,
             draws::{Debate, DebateRepr, Draw},
@@ -31,7 +30,6 @@ use crate::{
     },
     util_resp::{
         FailureResponse, StandardResponse, bad_request, err_not_found, success,
-        unauthorized,
     },
     widgets::alert::ErrorAlert,
 };
@@ -47,11 +45,19 @@ pub async fn submit_ballot_page(
     mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
-    let private_url = Participant::fetch(private_url, &mut *conn)?;
 
-    let judge = match private_url.kind {
-        ParticipantKind::Judge(judge) => judge,
-        _ => return unauthorized(),
+    let judge = match tournament_judges::table
+        .filter(
+            tournament_judges::private_url
+                .eq(private_url)
+                .and(tournament_judges::tournament_id.eq(tournament_id)),
+        )
+        .first::<Judge>(&mut *conn)
+        .optional()
+        .unwrap()
+    {
+        Some(judge) => judge,
+        None => return err_not_found(),
     };
 
     let round = Round::fetch(round_id, &mut *conn)?;
@@ -229,10 +235,18 @@ pub async fn do_submit_ballot(
     form: Form<BallotSubmissionForm>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
-    let private_url = Participant::fetch(private_url, &mut *conn)?;
-    let judge = match private_url.kind {
-        ParticipantKind::Judge(judge) => judge,
-        _ => return unauthorized(),
+    let judge = match tournament_judges::table
+        .filter(
+            tournament_judges::private_url
+                .eq(private_url)
+                .and(tournament_judges::tournament_id.eq(tournament_id)),
+        )
+        .first::<Judge>(&mut *conn)
+        .optional()
+        .unwrap()
+    {
+        Some(judge) => judge,
+        None => return err_not_found(),
     };
     let round = Round::fetch(round_id, &mut *conn)?;
     match tournament_draws::table

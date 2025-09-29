@@ -7,8 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     schema::{
         tournament_debate_judges, tournament_institutions, tournament_judges,
-        tournament_participants, tournament_speakers, tournament_team_speakers,
-        tournament_teams,
+        tournament_speakers, tournament_team_speakers, tournament_teams,
     },
     tournaments::teams::Team,
 };
@@ -35,7 +34,7 @@ pub struct Judge {
     // todo: this should be optional
     pub email: String,
     pub institution_id: Option<String>,
-    pub participant_id: String,
+    pub private_url: String,
     pub number: i64,
 }
 
@@ -69,7 +68,6 @@ pub struct TournamentParticipants {
     pub judges: IndexMap<String, Judge>,
     pub team_speakers: IndexMap<String, HashSet<String>>,
     pub institutions: IndexMap<String, Institution>,
-    pub base_participants: IndexMap<String, BaseParticipant>,
 }
 
 impl TournamentParticipants {
@@ -140,21 +138,12 @@ impl TournamentParticipants {
             .map(|record| (record.id.clone(), record))
             .collect();
 
-        let base_participants = tournament_participants::table
-            .filter(tournament_participants::tournament_id.eq(&tid))
-            .load::<BaseParticipant>(conn)
-            .unwrap()
-            .into_iter()
-            .map(|record| (record.id.clone(), record))
-            .collect();
-
         Self {
             teams,
             speakers,
             team_speakers,
             judges,
             institutions,
-            base_participants,
         }
     }
 }

@@ -14,7 +14,7 @@ pub mod manage;
 
 #[derive(Serialize, Deserialize, Queryable, Clone)]
 pub struct Round {
-    id: String,
+    pub id: String,
     pub tournament_id: String,
     pub seq: i64,
     pub name: String,
@@ -111,7 +111,7 @@ impl Round {
 pub struct TournamentRounds {
     prelim: Vec<Round>,
     elim: Vec<Round>,
-    statuses: HashMap<String, RoundStatus>,
+    pub statuses: HashMap<String, RoundStatus>,
 }
 
 impl TournamentRounds {

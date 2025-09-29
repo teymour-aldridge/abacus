@@ -138,7 +138,7 @@ pub async fn edit_team_details_page(
             .tournament(tournament)
             .body(maud! {
                 // todo: this can be deduplicated from `create_team`
-                form {
+                form method="post" {
                   div class="mb-3" {
                     label for="teamName" class="form-label" { "Name of new team" }
                     input type="text"

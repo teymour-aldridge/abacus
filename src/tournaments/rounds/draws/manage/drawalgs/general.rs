@@ -11,7 +11,7 @@ use rust_decimal::prelude::ToPrimitive;
 use crate::tournaments::{
     config::{PullupMetric, RankableTeamMetric, UnrankableTeamMetric},
     rounds::draws::manage::drawalgs::{DrawInput, MakeDrawError},
-    standings::compute::{TeamStandings, history::TeamHistory},
+    standings::compute::history::TeamHistory,
     teams::Team,
 };
 
@@ -52,16 +52,15 @@ pub type TeamsOfRoom = (Vec<Team>, Vec<Team>);
 ///
 /// Additional description can be found here:
 /// https://www.overleaf.com/read/sstwcyfjbrhx#1c6d64
-pub fn make_draw(
-    input: DrawInput,
-    standings: &TeamStandings,
-    TeamHistory(history): &TeamHistory,
-) -> Result<Vec<TeamsOfRoom>, MakeDrawError> {
+pub fn make_draw(input: DrawInput) -> Result<Vec<TeamsOfRoom>, MakeDrawError> {
     if input.teams.is_empty() {
         return Err(MakeDrawError::InvalidTeamCount(
             "There are no teams!".to_string(),
         ));
     }
+
+    let standings = &input.standings;
+    let TeamHistory(history) = &input.history;
 
     let mut problem = ProblemVariables::new();
     let mut variable_map = VariableMap::default();
@@ -87,8 +86,9 @@ pub fn make_draw(
         .minmax()
     {
         itertools::MinMaxResult::MinMax(a, b) => (a as usize, b as usize),
-        itertools::MinMaxResult::NoElements
-        | itertools::MinMaxResult::OneElement(_) => unreachable!(),
+        itertools::MinMaxResult::NoElements => (0, 0),
+        // todo: this shouldn't happen (so at least raise an error if it does)
+        itertools::MinMaxResult::OneElement(a) => (a as usize, a as usize),
     };
 
     let rooms = input.teams.len() / teams_per_room;
@@ -185,7 +185,9 @@ pub fn make_draw(
     let _teams_not_pulled_down = {
         for team in &input.teams {
             for bracket in min_score
-                ..(standings.points_of_team(&team.id).unwrap() as usize)
+                // todo: ensure that the standings module computes a value for
+                // every team (even if the team has no points)
+                ..(standings.points_of_team(&team.id).unwrap_or(0) as usize)
             {
                 constraints.push(good_lp::constraint::eq(
                     *variable_map
@@ -294,7 +296,7 @@ pub fn make_draw(
         let mut obj = Expression::default();
         for team in &input.teams {
             let team_score =
-                standings.points_of_team(&team.id).unwrap() as usize;
+                standings.points_of_team(&team.id).unwrap_or(0) as usize;
 
             for score in std::cmp::max(team_score, min_score)..=max_score {
                 let penalty = {
@@ -375,10 +377,14 @@ pub fn make_draw(
         for team in &input.teams {
             for room in 0..rooms {
                 for position in 0..teams_per_room {
-                    let position_cost =
-                        history.get(&team.id).unwrap()[position];
+                    let empty = vec![];
+                    let position_cost = history
+                        .get(&team.id)
+                        .unwrap_or(&empty)
+                        .get(position)
+                        .unwrap_or(&0);
 
-                    obj += (position_cost as f64
+                    obj += (*position_cost as f64
                         // add small random value to ensure sufficient
                         // randomness in generation
                         + rand::rng().sample(
@@ -394,16 +400,20 @@ pub fn make_draw(
         obj
     };
 
-    let solution = problem
-        .optimise(
-            good_lp::solvers::ObjectiveDirection::Minimisation,
-            1000 * power_pairing_objective + position_balance_objective,
-        )
-        .using(highs)
-        .set_mip_rel_gap(0.012)
-        .unwrap()
-        .solve()
-        .unwrap();
+    let solution = {
+        let mut highs_prob = problem
+            .optimise(
+                good_lp::solvers::ObjectiveDirection::Minimisation,
+                1000 * power_pairing_objective + position_balance_objective,
+            )
+            .using(highs);
+
+        for constraint in constraints {
+            highs_prob.add_constraint(constraint);
+        }
+
+        highs_prob.set_mip_rel_gap(0.012).unwrap().solve().unwrap()
+    };
 
     // todo: annotations (so that we can record which teams were pulled-up,
     // room brackets, etc)

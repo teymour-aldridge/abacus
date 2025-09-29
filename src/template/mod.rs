@@ -60,9 +60,8 @@ impl<R1: Renderable, R2: Renderable, const TX: bool> Renderable
             html {
                 head {
                     title { "Abacus" }
-                    script src="https://unpkg.com/htmx.org@2.0.2"
-                        integrity="sha384-Y7hw+L/jvKeWIRRkqWYfPcvVxHzVzn5REgzbawhxAuQGwX1XWe70vji+VSeHOThJ"
-                        crossorigin="anonymous" {}
+                    script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.7/dist/htmx.min.js" integrity="sha384-ZBXiYtYQ6hJ2Y0ZNoYuI+Nq5MqWBr+chMrS/RkXpNzQCApHEhOt2aY8EJgqwHLkJ" crossorigin="anonymous" {
+                    }
                     link
                         href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
                         rel="stylesheet"

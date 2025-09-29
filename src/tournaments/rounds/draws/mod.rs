@@ -1,12 +1,16 @@
 use std::collections::HashMap;
 
 use crate::schema::tournament_ballots;
+use crate::schema::tournament_debate_judges;
 use crate::schema::tournament_debate_teams;
 use crate::schema::tournament_debates;
 use crate::schema::tournament_draws;
+use crate::schema::tournament_judges;
 use crate::schema::tournament_speakers;
 use crate::schema::tournament_team_speakers;
 use crate::schema::tournament_teams;
+use crate::tournaments::participants::DebateJudge;
+use crate::tournaments::participants::Judge;
 use crate::tournaments::participants::Speaker;
 use crate::tournaments::rounds::ballots::BallotRepr;
 use crate::tournaments::teams::Team;
@@ -29,6 +33,7 @@ pub struct Draw {
     round_id: String,
     status: String,
     pub released_at: Option<NaiveDateTime>,
+    pub version: i64,
 }
 
 impl Draw {
@@ -90,6 +95,8 @@ pub struct DebateRepr {
     // also load the private URLs as part of this struct)
     pub teams: HashMap<String, Team>,
     pub speakers_of_team: HashMap<String, Vec<Speaker>>,
+    pub judges_of_debate: Vec<DebateJudge>,
+    pub judges: HashMap<String, Judge>,
 }
 
 impl DebateRepr {
@@ -147,6 +154,37 @@ impl DebateRepr {
             .load::<Speaker>(&mut *conn)
             .unwrap();
 
+        let judges_of_debate = tournament_debate_judges::table
+            .filter(tournament_debate_judges::debate_id.eq(&debate.id))
+            .order_by((
+                diesel::dsl::case_when(
+                    tournament_debate_judges::status.eq("C"),
+                    1.into_sql::<diesel::sql_types::BigInt>(),
+                )
+                .otherwise(2.into_sql::<diesel::sql_types::BigInt>()),
+                {
+                    let name = tournament_judges::table
+                        .filter(
+                            tournament_judges::id
+                                .eq(tournament_debate_judges::judge_id),
+                        )
+                        .select(tournament_judges::name)
+                        .single_value()
+                        .assume_not_null();
+                    name.asc()
+                },
+            ))
+            .load::<DebateJudge>(conn)
+            .unwrap();
+
+        let judges = tournament_judges::table
+            .filter(tournament_judges::tournament_id.eq(&debate.tournament_id))
+            .load::<Judge>(conn)
+            .unwrap()
+            .into_iter()
+            .map(|judge| (judge.id.clone(), judge))
+            .collect();
+
         Self {
             debate,
             teams_of_debate: debate_teams,
@@ -169,6 +207,8 @@ impl DebateRepr {
                 }
                 map
             },
+            judges_of_debate,
+            judges,
         }
     }
 

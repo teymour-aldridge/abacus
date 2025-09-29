@@ -39,10 +39,10 @@ where
                         }
                         @for i in 0..self.tournament.teams_per_side {
                             th scope="col" {
-                                "Prop " (i)
+                                "Prop " (i+1)
                             }
                             th scope="col" {
-                                "Opp " (i)
+                                "Opp " (i+1)
                             }
                         }
                         th scope="col" {
@@ -55,19 +55,27 @@ where
                 }
                 tbody {
                     @for (i, debate) in self.repr.debates.iter().enumerate() {
-                        th scope="row" {
-                            (i)
-                        }
-                        @for team in &debate.teams_of_debate {
-                            td {
-                                a href = (format!("/tournaments/{}/teams/{}", &self.tournament.id, team.id)) {
-                                    (self.teams.get(&team.id).unwrap().name)
+                        tr {
+                            th scope="row" {
+                                (i)
+                            }
+                            @for debate_team in &debate.teams_of_debate {
+                                td {
+                                    a href = (format!("/tournaments/{}/teams/{}", &self.tournament.id, debate_team.team_id)) {
+                                        (self.teams.get(&debate_team.team_id).unwrap().name)
+                                    }
                                 }
                             }
-                        }
-                        td {
-                            @let rendered = (self.actions)(debate);
-                            (rendered)
+                            td {
+                                @for debate_judge in &debate.judges_of_debate {
+                                    @let judge = &debate.judges.get(&debate_judge.judge_id).unwrap();
+                                    (judge.name)
+                                }
+                            }
+                            td {
+                                @let rendered = (self.actions)(debate);
+                                (rendered)
+                            }
                         }
                     }
                 }

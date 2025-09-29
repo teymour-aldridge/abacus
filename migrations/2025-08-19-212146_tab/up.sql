@@ -205,7 +205,8 @@ create table if not exists tournament_draws (
     round_id text not null references tournament_rounds(id),
     status text not null default 'D' check (status in ('D', 'C', 'R')),
     released_at timestamp,
-    unique (tournament_id, round_id)
+    version integer not null,
+    unique (round_id, version)
 );
 
 -- When generating draws, we have a ticketing system. This allows us to avoid
@@ -263,7 +264,7 @@ create table if not exists tournament_debates (
     room_id text references tournament_rooms(id),
     -- unique ID (starting from zero) assigned to each debate
     number integer not null check (number >= 0),
-    unique (tournament_id, number)
+    unique (tournament_id, draw_id, number)
 );
 
 create table if not exists tournament_debate_teams (

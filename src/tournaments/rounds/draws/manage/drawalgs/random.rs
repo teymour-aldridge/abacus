@@ -14,9 +14,17 @@ pub fn gen_random(
         metrics: _,
         mut teams,
         mut rng,
+        standings: _,
+        history: _,
     }: DrawInput,
 ) -> Result<Vec<TeamsOfRoom>, MakeDrawError> {
     let denominator = (tournament.teams_per_side * 2) as usize;
+
+    if teams.is_empty() {
+        return Err(MakeDrawError::InvalidTeamCount(
+            "There are no available teams!".to_string(),
+        ));
+    }
 
     if teams.len() % (denominator) != 0 {
         return Err(MakeDrawError::InvalidTeamCount(format!(

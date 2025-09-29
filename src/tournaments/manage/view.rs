@@ -4,7 +4,10 @@ use crate::{
     auth::User,
     state::Conn,
     template::Page,
-    tournaments::{Tournament, rounds::Round},
+    tournaments::{
+        Tournament,
+        rounds::{Round, TournamentRounds},
+    },
     util_resp::{StandardResponse, success},
     widgets::actions::Actions,
 };
@@ -21,6 +24,7 @@ pub async fn admin_view_tournament(
     let tournament = Tournament::fetch(tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
+    let rounds = TournamentRounds::fetch(tid, &mut *conn).unwrap();
     let active_rounds = Round::current_rounds(&tournament.id, &mut *conn);
 
     success(Page::new()
@@ -52,7 +56,35 @@ pub async fn admin_view_tournament(
                         div class = "col" {
                             div class="card" {
                                 div class="card-body" {
-                                        (round.name)
+                                    (round.name)
+                                }
+                                @let status = &rounds.statuses[&round.id];
+                                a href=(match status {
+                                    crate::tournaments::rounds::RoundStatus::NotStarted => {
+                                        format!("/tournaments/{tid}/rounds/{}/draws/create", round.id)
+                                    },
+                                    crate::tournaments::rounds::RoundStatus::InProgress => {
+                                        format!("/tournaments/{tid}/rounds/{}/draws/view", round.id)
+                                    },
+                                    crate::tournaments::rounds::RoundStatus::Completed => unreachable!(),
+                                    crate::tournaments::rounds::RoundStatus::Draft => {
+                                        format!("/tournaments/{tid}/rounds/{}/draws/view", round.id)
+                                    },
+                                }) class="btn btn-primary" {
+                                    @match status {
+                                        crate::tournaments::rounds::RoundStatus::NotStarted => {
+                                            "Generate draw"
+                                        },
+                                        crate::tournaments::rounds::RoundStatus::InProgress => {
+                                            "View draw"
+                                        },
+                                        crate::tournaments::rounds::RoundStatus::Completed => {
+                                            "Unreachable"
+                                        },
+                                        crate::tournaments::rounds::RoundStatus::Draft => {
+                                            "View draw"
+                                        }
+                                    }
                                 }
                             }
                         }

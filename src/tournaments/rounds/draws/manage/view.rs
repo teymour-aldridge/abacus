@@ -21,7 +21,7 @@ use crate::{
 };
 
 #[get(
-    "/tournaments/<tournament_id>/rounds/<round_id>/draw/<draw_id>",
+    "/tournaments/<tournament_id>/rounds/<round_id>/draws/<draw_id>",
     rank = 2
 )]
 pub async fn view_draw(
@@ -35,10 +35,11 @@ pub async fn view_draw(
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
     let (draw, round) = match tournament_draws::table
+        .find(draw_id)
         .filter(
             tournament_draws::round_id
                 .eq(round_id)
-                .and(tournament_draws::tournament_id.eq(draw_id)),
+                .and(tournament_draws::tournament_id.eq(tournament_id)),
         )
         .inner_join(tournament_rounds::table)
         .first::<(Draw, Round)>(&mut *conn)
@@ -79,7 +80,7 @@ pub async fn view_draw(
             .user(user)
             .body(maud! {
                 h1 {
-                    "Draw for round " (round.name)
+                    "Draw for " (round.name)
                 }
                 (renderer)
             })

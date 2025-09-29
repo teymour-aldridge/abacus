@@ -36,7 +36,10 @@ use crate::{
             draws::{
                 manage::{
                     create::{do_generate_draw, generate_draw_page},
-                    edit::{draw_updates, submit_cmd_tab_dir},
+                    edit::{
+                        draw_updates, edit_draw_page_tab_dir,
+                        submit_cmd_tab_dir,
+                    },
                     view::view_draw,
                 },
                 public::view::view_active_draw_page,
@@ -242,6 +245,7 @@ pub fn make_rocket() -> Rocket<Build> {
                 do_generate_draw,
                 view_draw,
                 view_active_draw_page,
+                edit_draw_page_tab_dir,
                 draw_updates,
                 submit_cmd_tab_dir,
                 create_new_round,
@@ -263,7 +267,7 @@ pub fn make_rocket() -> Rocket<Build> {
                 create_judge_page,
                 do_create_judge,
                 edit_judge_details_page,
-                do_edit_judge_details
+                do_edit_judge_details,
             ],
         )
 }

@@ -24,7 +24,10 @@ use crate::{
     widgets::alert::ErrorAlert,
 };
 
-#[get("/tournaments/<tournament_id>/rounds/<round_id>/draw/create", rank = 1)]
+#[get(
+    "/tournaments/<tournament_id>/rounds/<round_id>/draws/create",
+    rank = 1
+)]
 pub async fn generate_draw_page(
     tournament_id: &str,
     round_id: &str,
@@ -62,7 +65,7 @@ pub async fn generate_draw_page(
                          a new draw will delete the old draw!";
                 }
 
-                form {
+                form method="post" {
                     button type="submit" class="btn btn-primary" {
                         "Generate draw"
                     }
@@ -72,10 +75,11 @@ pub async fn generate_draw_page(
     )
 }
 
-#[post("/tournaments/<tournament_id>/rounds/<round_id>/draw/create")]
+#[post("/tournaments/<tournament_id>/rounds/<round_id>/draws/create")]
 pub async fn do_generate_draw(
     tournament_id: &str,
     round_id: &str,
+    user: User<false>,
     pool: &State<DbPool>,
 ) -> StandardResponse {
     let pool: DbPool = pool.inner().clone();
@@ -85,6 +89,7 @@ pub async fn do_generate_draw(
         let mut conn = pool.get().unwrap();
 
         let tournament = Tournament::fetch(&tournament_id, &mut conn)?;
+        tournament.check_user_is_superuser(&user.id, &mut conn)?;
 
         let round = match tournament_rounds::table
             .filter(tournament_rounds::id.eq(&round_id))
@@ -99,16 +104,16 @@ pub async fn do_generate_draw(
         };
 
         let draw_result = do_draw(
-            tournament,
+            tournament.clone(),
             round,
-            Box::new(drawalgs::random::gen_random),
+            Box::new(drawalgs::general::make_draw),
             &mut conn,
             false,
         );
 
         match draw_result {
             Ok(draw_id) => see_other_ok(Redirect::to(format!(
-                "/tournaments/{tournament_id}/rounds/{round_id}/draw/{draw_id}",
+                "/tournaments/{tournament_id}/rounds/{round_id}/draws/{draw_id}",
             ))),
             Err(e) => {
                 let msg = match e {
@@ -119,20 +124,27 @@ pub async fn do_generate_draw(
                         format!("Wrong number of teams: {str}")
                     }
                     MakeDrawError::AlreadyInProgress => {
+                        // todo: offer option to cancel this
                         "Draw generation already in progress".to_string()
                     }
                     MakeDrawError::TicketExpired => {
                         "Draw generation was cancelled.".to_string()
                     }
+                    MakeDrawError::Panic => {
+                        "Internal application error.".to_string()
+                    }
                 };
 
                 bad_request(
-                    maud! {
-                        p {
-                            "We encountered the following error: " (msg)
-                        }
-                    }
-                    .render(),
+                    Page::new()
+                        .user(user)
+                        .tournament(tournament)
+                        .body(maud! {
+                            p {
+                                "We encountered the following error: " (msg)
+                            }
+                        })
+                        .render(),
                 )
             }
         }

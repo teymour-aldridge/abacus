@@ -24,7 +24,7 @@ pub struct Speaker {
     pub participant_id: String,
 }
 
-#[derive(Queryable, QueryableByName, Serialize, Deserialize, Clone)]
+#[derive(Queryable, QueryableByName, Serialize, Deserialize, Clone, Debug)]
 #[diesel(check_for_backend(Sqlite))]
 #[diesel(table_name = tournament_judges)]
 pub struct Judge {
@@ -38,7 +38,7 @@ pub struct Judge {
     pub number: i64,
 }
 
-#[derive(Queryable, QueryableByName, Serialize, Deserialize, Clone)]
+#[derive(Queryable, QueryableByName, Serialize, Deserialize, Clone, Debug)]
 #[diesel(check_for_backend(Sqlite))]
 #[diesel(table_name = tournament_debate_judges)]
 pub struct DebateJudge {

@@ -1,7 +1,10 @@
 use std::collections::HashMap;
+use std::panic::{UnwindSafe, catch_unwind};
 
 use chrono::NaiveDateTime;
+use diesel::dsl::case_when;
 use diesel::prelude::*;
+use diesel::sql_types::BigInt;
 use diesel::{connection::LoadConnection, sqlite::Sqlite};
 use rand::SeedableRng;
 use uuid::Uuid;
@@ -12,6 +15,8 @@ use crate::schema::{
 };
 use crate::tournaments::rounds::draws::manage::drawalgs::general::TeamsOfRoom;
 use crate::tournaments::snapshots::take_snapshot;
+use crate::tournaments::standings::compute::TeamStandings;
+use crate::tournaments::standings::compute::history::TeamHistory;
 use crate::{
     schema::tournament_teams,
     tournaments::{
@@ -24,11 +29,13 @@ pub mod random;
 
 /// The error messages will be shown on the application page, and therefore
 /// should be readable.
+#[derive(Debug)]
 pub enum MakeDrawError {
     InvalidConfiguration(String),
     InvalidTeamCount(String),
     AlreadyInProgress,
     TicketExpired,
+    Panic,
 }
 
 pub struct DrawInput {
@@ -37,6 +44,8 @@ pub struct DrawInput {
     /// Team metrics necessary to generate the draw.
     pub metrics: HashMap<(String, RankableTeamMetric), f32>,
     pub teams: Vec<Team>,
+    pub standings: TeamStandings,
+    pub history: TeamHistory,
     pub rng: rand_chacha::ChaCha20Rng,
 }
 
@@ -48,13 +57,21 @@ pub fn do_draw(
     tournament: Tournament,
     round: Round,
     draw_generator: Box<
-        dyn Fn(DrawInput) -> Result<Vec<TeamsOfRoom>, MakeDrawError>,
+        dyn Fn(DrawInput) -> Result<Vec<TeamsOfRoom>, MakeDrawError>
+            + UnwindSafe,
     >,
     conn: &mut impl LoadConnection<Backend = Sqlite>,
     override_prior_ticket: bool,
 ) -> Result<String, MakeDrawError> {
     let ticket_id = conn
         .transaction(|conn| -> Result<Result<_, _>, diesel::result::Error> {
+            diesel::delete(
+                tournament_round_tickets::table
+                    .filter(tournament_round_tickets::released.eq(true)),
+            )
+            .execute(conn)
+            .unwrap();
+
             let previous_ticket_seq = tournament_round_tickets::table
                 .filter(
                     tournament_round_tickets::round_id
@@ -106,10 +123,17 @@ pub fn do_draw(
     let available_teams = tournament_teams::table
         .filter(tournament_teams::tournament_id.eq(&tournament.id))
         .inner_join(tournament_team_availability::table)
-        .filter(tournament_team_availability::available.eq(true))
+        .filter(
+            tournament_team_availability::available
+                .eq(true)
+                .and(tournament_team_availability::round_id.eq(&round.id)),
+        )
         .select(tournament_teams::all_columns)
         .load::<Team>(conn)
         .unwrap();
+
+    let standings = TeamStandings::fetch(&tournament.id, conn);
+    let history = TeamHistory::fetch(&tournament.id, conn);
 
     let rng = rand_chacha::ChaCha20Rng::from_os_rng();
 
@@ -120,9 +144,38 @@ pub fn do_draw(
         metrics: HashMap::new(),
         teams: available_teams,
         rng,
+        standings,
+        history,
     };
 
-    let draw = (draw_generator)(input)?;
+    let generated = match catch_unwind(move || (draw_generator)(input)) {
+        Ok(generated) => generated,
+        Err(_) => {
+            diesel::update(
+                tournament_round_tickets::table
+                    .filter(tournament_round_tickets::id.eq(&ticket_id)),
+            )
+            .set(tournament_round_tickets::released.eq(true))
+            .execute(conn)
+            .unwrap();
+            return Err(MakeDrawError::Panic);
+        }
+    };
+
+    let draw = match generated {
+        Ok(generated) => generated,
+        Err(failed) => {
+            diesel::update(
+                tournament_round_tickets::table
+                    .filter(tournament_round_tickets::id.eq(&ticket_id)),
+            )
+            .set(tournament_round_tickets::released.eq(true))
+            .execute(conn)
+            .unwrap();
+
+            return Err(failed);
+        }
+    };
 
     conn.transaction(
         |conn| -> Result<Result<String, MakeDrawError>, diesel::result::Error> {
@@ -130,24 +183,37 @@ pub fn do_draw(
                 tournament_round_tickets as tickets1,
                 tournament_round_tickets as tickets2
             );
-            let ticket_valid = diesel::dsl::select(diesel::dsl::exists(
-                tickets1.filter(
-                    tickets1.field(tournament_round_tickets::seq).gt(tickets2
-                        .select(tickets2.field(tournament_round_tickets::seq))
+            let exists_active_ticket_with_higher_seq =
+                diesel::dsl::select(diesel::dsl::exists(
+                    tickets1
                         .filter(
-                            tickets2
-                                .field(tournament_round_tickets::id)
-                                .eq(&ticket_id),
+                            tickets1.field(tournament_round_tickets::seq).gt(
+                                tickets2
+                                    .select(
+                                        tickets2.field(
+                                            tournament_round_tickets::seq,
+                                        ),
+                                    )
+                                    .filter(
+                                        tickets2
+                                            .field(tournament_round_tickets::id)
+                                            .eq(&ticket_id),
+                                    )
+                                    .into_boxed()
+                                    .single_value()
+                                    .assume_not_null(),
+                            ),
                         )
-                        .into_boxed()
-                        .single_value()
-                        .assume_not_null()),
-                ),
-            ))
-            .get_result::<bool>(conn)
-            .unwrap();
+                        .filter(
+                            tickets1
+                                .field(tournament_round_tickets::id)
+                                .ne(&ticket_id),
+                        ),
+                ))
+                .get_result::<bool>(conn)
+                .unwrap();
 
-            let response = if ticket_valid {
+            let response = if !exists_active_ticket_with_higher_seq {
                 let draw_id = Uuid::now_v7().to_string();
                 diesel::insert_into(tournament_draws::table)
                     .values((
@@ -156,6 +222,24 @@ pub fn do_draw(
                         tournament_draws::round_id.eq(&round.id),
                         tournament_draws::status.eq("D"),
                         tournament_draws::released_at.eq(None::<NaiveDateTime>),
+                        tournament_draws::version.eq({
+                            let sq = diesel::alias!(tournament_draws as sq);
+                            let max = sq
+                                .filter(
+                                    sq.field(tournament_draws::round_id)
+                                        .eq(&round.id),
+                                )
+                                .select(diesel::dsl::max(
+                                    sq.field(tournament_draws::version),
+                                ))
+                                .single_value()
+                                .nullable();
+                            case_when(
+                                max.is_not_null(),
+                                max.assume_not_null() + 1.into_sql::<BigInt>(),
+                            )
+                            .otherwise(0.into_sql::<BigInt>())
+                        }),
                     ))
                     .execute(conn)
                     .unwrap();
@@ -163,6 +247,7 @@ pub fn do_draw(
                 let mut debates = Vec::new();
                 let mut debate_teams = Vec::new();
 
+                let mut debate_no = 1;
                 for room in draw {
                     let debate_id = Uuid::now_v7().to_string();
                     debates.push((
@@ -170,6 +255,11 @@ pub fn do_draw(
                         tournament_debates::tournament_id.eq(&tournament.id),
                         tournament_debates::draw_id.eq(&draw_id),
                         tournament_debates::room_id.eq(None::<String>),
+                        tournament_debates::number.eq({
+                            let ret = debate_no;
+                            debate_no += 1;
+                            ret
+                        }),
                     ));
                     for (i, prop_team) in room.0.iter().enumerate() {
                         debate_teams.push((
@@ -197,15 +287,17 @@ pub fn do_draw(
                     }
                 }
 
-                diesel::insert_into(tournament_debates::table)
+                let n = diesel::insert_into(tournament_debates::table)
                     .values(&debates)
                     .execute(conn)
                     .unwrap();
+                assert_eq!(n, debates.len());
 
-                diesel::insert_into(tournament_debate_teams::table)
+                let n = diesel::insert_into(tournament_debate_teams::table)
                     .values(&debate_teams)
                     .execute(conn)
                     .unwrap();
+                assert_eq!(n, debate_teams.len());
 
                 diesel::update(
                     tournament_round_tickets::table

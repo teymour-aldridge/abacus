@@ -86,6 +86,7 @@ diesel::table! {
         round_id -> Text,
         status -> Text,
         released_at -> Nullable<Timestamp>,
+        version -> BigInt,
     }
 }
 

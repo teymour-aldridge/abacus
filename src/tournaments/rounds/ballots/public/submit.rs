@@ -64,7 +64,7 @@ pub async fn submit_ballot_page(
 
     match tournament_draws::table
         .filter(tournament_draws::round_id.eq(&round.id))
-        .order_by(tournament_draws::released_at.desc())
+        .order_by(tournament_draws::version.desc())
         .first::<Draw>(&mut *conn)
         .optional()
         .unwrap()

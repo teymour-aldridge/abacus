@@ -95,18 +95,20 @@ pub async fn view_active_draw_page(
                             }
                             tbody {
                                 @for (i, debate) in draw.debates.iter().enumerate() {
-                                    th scope="row" {
-                                        (i)
-                                    }
-                                    @for team in &debate.teams_of_debate {
-                                        td {
-                                            a href = (format!("/tournaments/{tournament_id}/teams/{}", &team.id)) {
-                                                (teams.get(&team.id).unwrap().name)
+                                    tr {
+                                        th scope="row" {
+                                            (i)
+                                        }
+                                        @for team in &debate.teams_of_debate {
+                                            td {
+                                                a href = (format!("/tournaments/{tournament_id}/teams/{}", &team.id)) {
+                                                    (teams.get(&team.id).unwrap().name)
+                                                }
                                             }
                                         }
-                                    }
-                                    td {
-                                        "TODO"
+                                        td {
+                                            "TODO"
+                                        }
                                     }
                                 }
                             }

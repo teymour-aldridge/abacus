@@ -11,7 +11,11 @@ use crate::{
     state::Conn,
     template::Page,
     tournaments::{
-        Tournament, participants::Institution, snapshots::take_snapshot,
+        Tournament,
+        participants::{
+            Institution, manage::institution_selector::InstitutionSelector,
+        },
+        snapshots::take_snapshot,
     },
     util_resp::{StandardResponse, bad_request, see_other_ok, success},
 };
@@ -33,6 +37,8 @@ pub async fn create_teams_page(
         .filter(tournament_institutions::tournament_id.eq(&tournament.id))
         .load::<Institution>(&mut *conn)
         .unwrap();
+    let institution_selector =
+        InstitutionSelector::new(&institutions, None, Some("institution_id"));
 
     success(Page::new()
         .user(user)
@@ -52,19 +58,7 @@ pub async fn create_teams_page(
                     "selected) this will be prefixed with the institution name."
                 }
               }
-              div class="mb-3" {
-                label for="institution" { "Institution" }
-                select name="institution_id" id="institution" {
-                    option value = "-----" {
-                        "No institution"
-                    }
-                    @for institution in &institutions {
-                        option value = (institution.id) {
-                            (institution.name)
-                        }
-                    }
-                }
-              }
+              (institution_selector)
               button type="submit" class="btn btn-primary" { "Create team" }
             }
         })

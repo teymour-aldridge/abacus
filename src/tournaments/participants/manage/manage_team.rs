@@ -11,7 +11,13 @@ use crate::{
     template::Page,
     tournaments::{
         Tournament,
-        participants::{Institution, manage::create_team::CreateTeamForm},
+        participants::{
+            Institution,
+            manage::{
+                create_team::CreateTeamForm,
+                institution_selector::InstitutionSelector,
+            },
+        },
         snapshots::take_snapshot,
         teams::Team,
     },
@@ -117,6 +123,14 @@ pub async fn edit_team_details_page(
         .filter(tournament_institutions::tournament_id.eq(&tournament.id))
         .load::<Institution>(&mut *conn)
         .unwrap();
+    let institution_selector = InstitutionSelector::new(
+        &institutions,
+        match &team.institution_id {
+            Some(id) => Some(id.as_str()),
+            None => None,
+        },
+        Some("institution_id"),
+    );
 
     success(
         Page::new()
@@ -138,27 +152,7 @@ pub async fn edit_team_details_page(
                         "selected) this will be prefixed with the institution name."
                     }
                   }
-                  div class="mb-3" {
-                    label for="institution" { "Institution" }
-                    select name="institution_id" id="institution" {
-                        option value = "-----"
-                            selected=(team.institution_id.is_none())
-                        {
-                            "No institution"
-                        }
-                        @for institution in &institutions {
-                            option
-                                value = (institution.id)
-                                selected= (
-                                    Some(&institution.id)
-                                        == team.institution_id.as_ref()
-                                )
-                            {
-                                (institution.name)
-                            }
-                        }
-                    }
-                  }
+                  (institution_selector)
                   button type="submit" class="btn btn-primary" { "Create team" }
                 }
 

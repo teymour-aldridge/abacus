@@ -70,7 +70,28 @@ impl Round {
             .filter(
                 tournament_rounds::tournament_id
                     .eq(tid)
-                    .and(tournament_rounds::completed.eq(false)),
+                    .and(tournament_rounds::completed.eq(false))
+                    .and({
+                        let sq = diesel::alias!(tournament_rounds as sq);
+                        let min_seq = sq
+                            .filter(
+                                sq.field(tournament_rounds::tournament_id)
+                                    .eq(tid)
+                                    .and(
+                                        tournament_rounds::completed.eq(false),
+                                    ),
+                            )
+                            .select(diesel::dsl::min(
+                                sq.field(tournament_rounds::seq),
+                            ))
+                            .single_value();
+
+                        tournament_rounds::seq.eq(diesel::dsl::case_when(
+                            min_seq.is_not_null(),
+                            min_seq.assume_not_null(),
+                        )
+                        .otherwise(1))
+                    }),
             )
             .order_by(tournament_rounds::seq.asc())
             .load::<Round>(conn)

@@ -64,33 +64,35 @@ impl Renderable for JudgeAvailabilityTable<'_> {
                 }
                 tbody {
                     @for (i, judge) in self.judges.iter().enumerate() {
-                        th scope="col" {
-                            (i)
-                        }
-                        td {
-                            (judge.name)
-                        }
-                        @for round in self.rounds {
-                            @let (indicated, actual): (bool, bool) = self.judge_availability[&(judge.id.clone(), round.id.clone())];
-                            td {
-                                @if indicated {
-                                    input type="checkbox" checked;
-                                } @else {
-                                    input type="checkbox";
-                                }
+                        tr {
+                            th scope="col" {
+                                (i)
                             }
                             td {
-                                form method="post"
-                                     action=(format!("/tournaments/{}/rounds/{}/update_judge_availability", self.tournament_id, round.id)) {
-                                    input type="text" hidden value=(judge.id) name="judge";
-                                    div style="display: inline-block; position: relative;" {
-                                        @if actual {
-                                            input type="checkbox" checked name="available";
-                                        } @else {
-                                            input type="checkbox" name="available";
+                                (judge.name)
+                            }
+                            @for round in self.rounds {
+                                @let (indicated, actual): (bool, bool) = self.judge_availability[&(judge.id.clone(), round.id.clone())];
+                                td {
+                                    @if indicated {
+                                        input type="checkbox" checked disabled;
+                                    } @else {
+                                        input type="checkbox" disabled;
+                                    }
+                                }
+                                td {
+                                    form method="post"
+                                         action=(format!("/tournaments/{}/rounds/{}/update_judge_availability", self.tournament_id, round.id)) {
+                                        input type="text" hidden value=(judge.id) name="judge";
+                                        div style="display: inline-block; position: relative;" {
+                                            @if actual {
+                                                input type="checkbox" checked name="available";
+                                            } @else {
+                                                input type="checkbox" name="available";
+                                            }
+                                            input type="submit" value=""
+                                                style="left: 0; height: 100%; opacity: 0; position: absolute; top: 0; width: 100%";
                                         }
-                                        input type="submit" value=""
-                                            style="left: 0; height: 100%; opacity: 0; position: absolute; top: 0; width: 100%";
                                     }
                                 }
                             }
@@ -162,7 +164,7 @@ pub async fn view_judge_availability(
             case_when(
                 tournament_judge_stated_eligibility::available
                     .nullable()
-                    .is_null(),
+                    .is_not_null(),
                 tournament_judge_stated_eligibility::available
                     .nullable()
                     .assume_not_null(),
@@ -171,7 +173,7 @@ pub async fn view_judge_availability(
             case_when(
                 tournament_judge_availability::available
                     .nullable()
-                    .is_null(),
+                    .is_not_null(),
                 tournament_judge_availability::available
                     .nullable()
                     .assume_not_null(),
@@ -387,7 +389,7 @@ pub struct JudgeAvailabilityForm {
 }
 
 #[post(
-    "/tournaments/<tournament_id>/rounds/<round_id>/update_judge_eligibility",
+    "/tournaments/<tournament_id>/rounds/<round_id>/update_judge_availability",
     data = "<form>"
 )]
 pub async fn update_judge_availability(
@@ -404,7 +406,7 @@ pub async fn update_judge_availability(
     let round = match tournament_rounds::table
         .filter(
             tournament_rounds::tournament_id
-                .eq(&round_id)
+                .eq(&tournament.id)
                 .and(tournament_rounds::id.eq(round_id)),
         )
         .first::<Round>(&mut *conn)
@@ -457,6 +459,10 @@ pub async fn update_judge_availability(
                                 tournament_rounds::seq
                                     .eq(round.seq)
                                     .and(tournament_rounds::id.ne(&round.id)),
+                            )
+                            .and(
+                                tournament_judge_availability::round_id
+                                    .eq(tournament_rounds::id),
                             ),
                     ),
                 ),

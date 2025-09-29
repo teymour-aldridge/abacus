@@ -24,8 +24,11 @@ use crate::{
     tournaments::{Tournament, participants::TournamentParticipants},
 };
 
+pub mod create_judge;
 pub mod create_speaker;
 pub mod create_team;
+pub mod institution_selector;
+pub mod manage_judge;
 pub mod manage_team;
 
 pub struct ParticipantsTable(Tournament, TournamentParticipants);
@@ -36,99 +39,164 @@ impl Renderable for ParticipantsTable {
         buffer: &mut hypertext::Buffer<hypertext::context::Node>,
     ) {
         maud! {
-            table class="table table-striped table-bordered" id="participantsTable"
-                  hx-ext="ws" hx-swap-oob="morphdom"
-                  "ws-connect"=(format!("/tournaments/{}/participants?channel", self.0.id))
-            {
-                thead {
-                    th scope="col" {
-                        "#"
+            div class="row" hx-ext="ws" hx-swap-oob="morphdom"
+            "ws-connect"=(format!("/tournaments/{}/participants?channel", self.0.id)) {
+                div class="col-md-4" {
+                    h3 {
+                        "Judges"
                     }
-                    th scope="col" {
-                        "Name"
-                    }
-                    th scope="col" {
-                        "Institution"
-                    }
-                    th scope="col" {
-                        "Actions"
-                    }
-                }
-                tbody class="table-group-divider" {
-                    @for team in self.1.teams.values() {
-                        tr {
-                            th scope="row" {
-                                (team.number)
+                    Actions options=(&[
+                        (format!("/tournaments/{}/judges/create", self.0.id).as_str(), "Add judge")
+                    ]);
+
+                    table class = "table table-striped table-bordered" id="judgesTable" {
+                        thead {
+                            th scope="col" {
+                                "Name"
                             }
-                            td {
-                                (team.name)
+                            th scope="col" {
+                                "Email"
                             }
-                            td {
-                               @if let Some(inst) = &team.institution_id {
-                                   (self.1.institutions[inst.as_str()].name)
-                               } @else {
-                                   "None"
-                               }
+                            th scope="col" {
+                                "Institution"
                             }
-                            td {
-                                a href=(format!(
-                                    "/tournaments/{}/teams/{}/edit",
-                                    self.0.id,
-                                    team.id
-                                  ))
-                                  class="m-2" {
-                                    "Edit"
-                                }
-                                a href=(format!(
-                                    "/tournaments/{}/teams/{}/speakers/create",
-                                    self.0.id,
-                                    team.id
-                                  )) class="m-2" {
-                                    "Add speaker"
+                            th scope="col" {
+                                "Actions"
+                            }
+                        }
+                        tbody {
+                            @for judge in self.1.judges.values() {
+                                tr {
+                                    th scope="col" {
+                                        (judge.name)
+                                    }
+                                    td {
+                                        (judge.email)
+                                    }
+                                    td {
+                                        @if let Some(inst) = &judge.institution_id {
+                                            (self.1.institutions.get(inst.as_str()).unwrap().name)
+                                        } @else {
+                                            "None"
+                                        }
+                                    }
+                                    td {
+                                        a href=(format!(
+                                            "/tournaments/{}/judges/{}/edit",
+                                            self.0.id,
+                                            judge.id
+                                            ))
+                                            class="m-2" {
+                                            "Edit"
+                                        }
+                                    }
                                 }
                             }
                         }
+                    }
 
-                        tr {
-                            td colspan="4" class="p-3" {
-                                p {
-                                    b {
-                                        "Speakers"
+                }
+                div class="col" {
+                    h3 {
+                        "Teams"
+                    }
+                    Actions options=(&[
+                        (format!("/tournaments/{}/teams/create", self.0.id).as_str(), "Add team")
+                    ]);
+
+                    table class="table table-striped table-bordered" id="teamsTable"
+                    {
+                        thead {
+                            th scope="col" {
+                                "#"
+                            }
+                            th scope="col" {
+                                "Name"
+                            }
+                            th scope="col" {
+                                "Institution"
+                            }
+                            th scope="col" {
+                                "Actions"
+                            }
+                        }
+                        tbody class="table-group-divider" {
+                            @for team in self.1.teams.values() {
+                                tr {
+                                    th scope="row" {
+                                        (team.number)
+                                    }
+                                    td {
+                                        (team.name)
+                                    }
+                                    td {
+                                       @if let Some(inst) = &team.institution_id {
+                                           (self.1.institutions[inst.as_str()].name)
+                                       } @else {
+                                           "None"
+                                       }
+                                    }
+                                    td {
+                                        a href=(format!(
+                                            "/tournaments/{}/teams/{}/edit",
+                                            self.0.id,
+                                            team.id
+                                          ))
+                                          class="m-2" {
+                                            "Edit"
+                                        }
+                                        a href=(format!(
+                                            "/tournaments/{}/teams/{}/speakers/create",
+                                            self.0.id,
+                                            team.id
+                                          )) class="m-2" {
+                                            "Add speaker"
+                                        }
                                     }
                                 }
-                                table class="table table-bordered mb-0" {
-                                    thead {
-                                        th scope="col" {
-                                            "#"
+
+                                tr {
+                                    td colspan="4" class="px-4 py-4" {
+                                        p {
+                                            b {
+                                                "Speakers"
+                                            }
                                         }
-                                        th scope="col" {
-                                            "Name"
-                                        }
-                                        th scope="col" {
-                                            "Email"
-                                        }
-                                        th scope="col" {
-                                            "Actions"
-                                        }
-                                    }
-                                    tbody {
-                                        @for (i, speaker) in self.1.team_speakers.get(&team.id).unwrap_or(&HashSet::default()).iter().sorted_by_key(|speaker| {
-                                            self.1.speakers.get(speaker.as_str()).unwrap().name.clone()
-                                        }).enumerate() {
-                                            @let speaker = self.1.speakers.get(speaker.as_str()).unwrap();
-                                            tr {
+                                        table class="table table-bordered mb-0" {
+                                            thead {
                                                 th scope="col" {
-                                                    (i)
+                                                    "#"
                                                 }
-                                                td {
-                                                    (speaker.name)
+                                                th scope="col" {
+                                                    "Name"
                                                 }
-                                                td {
-                                                    (speaker.email)
+                                                th scope="col" {
+                                                    "Email"
                                                 }
-                                                td {
-                                                    a href=(format!("/tournaments/{}/teams/{}/edit", self.0.id, team.id)) {
-                                                        "Edit speaker"
+                                                th scope="col" {
+                                                    "Actions"
+                                                }
+                                            }
+                                            tbody {
+                                                @for (i, speaker) in self.1.team_speakers.get(&team.id).unwrap_or(&HashSet::default()).iter().sorted_by_key(|speaker| {
+                                                    self.1.speakers.get(speaker.as_str()).unwrap().name.clone()
+                                                }).enumerate() {
+                                                    @let speaker = self.1.speakers.get(speaker.as_str()).unwrap();
+                                                    tr {
+                                                        th scope="col" {
+                                                            (i)
+                                                        }
+                                                        td {
+                                                            (speaker.name)
+                                                        }
+                                                        td {
+                                                            (speaker.email)
+                                                        }
+                                                        td {
+                                                            a href=(format!("/tournaments/{}/teams/{}/edit", self.0.id, team.id)) {
+                                                                "Edit speaker"
+                                                            }
+                                                        }
                                                     }
                                                 }
                                             }
@@ -137,9 +205,9 @@ impl Renderable for ParticipantsTable {
                                 }
                             }
                         }
+
                     }
                 }
-
             }
         }.render_to(buffer);
     }
@@ -177,10 +245,6 @@ pub async fn manage_tournament_participants(
                     h1 {
                         "Participants"
                     }
-
-                    Actions options=(&[
-                        (format!("/tournaments/{tid}/teams/create").as_str(), "Add team")
-                    ]);
 
                     (table)
                 })

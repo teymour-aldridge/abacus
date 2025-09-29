@@ -64,7 +64,7 @@ pub struct CreateSpeakerForm {
     email: String,
 }
 
-fn get_unique_private_url(
+pub fn get_unique_private_url(
     tournament_id: &str,
     conn: &mut impl LoadConnection<Backend = Sqlite>,
 ) -> String {

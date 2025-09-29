@@ -19,6 +19,7 @@ pub mod manage;
 pub struct Speaker {
     pub id: String,
     pub tournament_id: String,
+    // todo: this should be optional
     pub name: String,
     pub email: String,
     pub participant_id: String,
@@ -31,6 +32,8 @@ pub struct Judge {
     pub id: String,
     pub tournament_id: String,
     pub name: String,
+    // todo: this should be optional
+    pub email: String,
     pub institution_id: Option<String>,
     pub participant_id: String,
     pub number: i64,
@@ -63,6 +66,7 @@ pub struct BaseParticipant {
 pub struct TournamentParticipants {
     pub teams: IndexMap<String, Team>,
     pub speakers: IndexMap<String, Speaker>,
+    pub judges: IndexMap<String, Judge>,
     pub team_speakers: IndexMap<String, HashSet<String>>,
     pub institutions: IndexMap<String, Institution>,
     pub base_participants: IndexMap<String, BaseParticipant>,
@@ -119,6 +123,15 @@ impl TournamentParticipants {
             teams
         };
 
+        let judges = tournament_judges::table
+            .filter(tournament_judges::tournament_id.eq(&tid))
+            .order_by(tournament_judges::name.asc())
+            .load::<Judge>(conn)
+            .unwrap()
+            .into_iter()
+            .map(|j| (j.id.clone(), j))
+            .collect();
+
         let institutions = tournament_institutions::table
             .filter(tournament_institutions::tournament_id.eq(&tid))
             .load::<Institution>(conn)
@@ -139,6 +152,7 @@ impl TournamentParticipants {
             teams,
             speakers,
             team_speakers,
+            judges,
             institutions,
             base_participants,
         }

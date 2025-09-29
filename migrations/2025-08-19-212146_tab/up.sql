@@ -146,6 +146,7 @@ create table if not exists tournament_judges (
     id text primary key not null,
     tournament_id text not null references tournaments (id),
     name text not null,
+    email text not null,
     institution_id text references tournament_institutions (id),
     participant_id text not null references tournament_participants(id),
     number integer not null check (number >= 0),

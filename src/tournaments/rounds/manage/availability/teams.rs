@@ -77,11 +77,15 @@ impl<'r> Renderable for ManageAvailabilityTable<'r> {
                                     form method="post"
                                          action=(format!("/tournaments/{}/rounds/{}/update_team_eligibility", self.tournament_id, round.id)) {
                                         input type="text" hidden value=(team.id) name="team";
+                                        @if *available {
+                                        } @else {
+                                            input type="text" hidden value="true" name="available";
+                                        }
                                         div style="display: inline-block; position: relative;" {
                                             @if *available {
-                                                input type="checkbox" checked name="available";
+                                                input type="checkbox" checked;
                                             } @else {
-                                                input type="checkbox" name="available";
+                                                input type="checkbox";
                                             }
                                             input type="submit" value=""
                                                 style="left: 0; height: 100%; opacity: 0; position: absolute; top: 0; width: 100%";
@@ -382,14 +386,14 @@ pub async fn update_team_eligibility(
             tournament_team_availability::id.eq(Uuid::now_v7().to_string()),
             tournament_team_availability::round_id.eq(&round.id),
             tournament_team_availability::team_id.eq(&team.id),
-            tournament_team_availability::available.eq(!form.available),
+            tournament_team_availability::available.eq(form.available),
         ))
         .on_conflict((
             tournament_team_availability::round_id,
             tournament_team_availability::team_id,
         ))
         .do_update()
-        .set(tournament_team_availability::available.eq(!form.available))
+        .set(tournament_team_availability::available.eq(form.available))
         .execute(&mut *conn)
         .unwrap();
     assert_eq!(n, 1);
@@ -405,6 +409,10 @@ pub async fn update_team_eligibility(
                                 tournament_rounds::seq
                                     .eq(round.seq)
                                     .and(tournament_rounds::id.ne(&round.id)),
+                            )
+                            .and(
+                                tournament_team_availability::round_id
+                                    .eq(tournament_rounds::id),
                             ),
                     ),
                 ),

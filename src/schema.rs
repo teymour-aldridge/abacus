@@ -165,6 +165,7 @@ diesel::table! {
         id -> Text,
         tournament_id -> Text,
         name -> Text,
+        email -> Text,
         institution_id -> Nullable<Text>,
         participant_id -> Text,
         number -> BigInt,

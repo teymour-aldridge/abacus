@@ -34,14 +34,7 @@ use crate::{
         },
         rounds::{
             draws::{
-                manage::{
-                    create::{do_generate_draw, generate_draw_page},
-                    edit::{
-                        draw_updates, edit_draw_page_tab_dir,
-                        submit_cmd_tab_dir,
-                    },
-                    view::view_draw,
-                },
+                manage::create::{do_generate_draw, generate_draw_page},
                 public::view::view_active_draw_page,
             },
             manage::{
@@ -60,6 +53,7 @@ use crate::{
                     create_new_round_of_specific_category_page,
                     do_create_new_round_of_specific_category,
                 },
+                draw_edit::{draw_updates, edit_draw_page, submit_cmd},
                 edit::{do_edit_round, edit_round_page},
                 manage_rounds_page,
                 view::view_tournament_round_page,
@@ -150,32 +144,6 @@ pub fn home(
     }
 }
 
-// #[derive(Debug)]
-// struct Customizer;
-
-// impl<C, E> CustomizeConnection<C, E> for Customizer
-// where
-//     C: Connection,
-// {
-//     fn on_acquire(&self, conn: &mut C) -> Result<(), E> {
-//         conn.set_instrumentation(SimpleInstrument);
-
-//         Ok(())
-//     }
-
-//     fn on_release(&self, conn: C) {}
-// }
-
-// struct SimpleInstrument;
-
-// impl Instrumentation for SimpleInstrument {
-//     fn on_connection_event(
-//         &mut self,
-//         event: diesel::connection::InstrumentationEvent<'_>,
-//     ) {
-//     }
-// }
-
 pub fn make_rocket() -> Rocket<Build> {
     let figment = rocket::Config::figment();
 
@@ -243,11 +211,10 @@ pub fn make_rocket() -> Rocket<Build> {
                 tournament_participant_updates,
                 generate_draw_page,
                 do_generate_draw,
-                view_draw,
                 view_active_draw_page,
-                edit_draw_page_tab_dir,
+                edit_draw_page,
                 draw_updates,
-                submit_cmd_tab_dir,
+                submit_cmd,
                 create_new_round,
                 create_new_round_of_specific_category_page,
                 edit_round_page,

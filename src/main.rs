@@ -1,9 +1,12 @@
 #![allow(clippy::let_unit_value)]
 
 use diesel_migrations::EmbeddedMigrations;
+use lalrpop_util::lalrpop_mod;
 use rocket::launch;
 
 use crate::config::make_rocket;
+
+lalrpop_mod!(pub cmd);
 
 pub const MIGRATIONS: EmbeddedMigrations =
     diesel_migrations::embed_migrations!("migrations");

@@ -73,20 +73,9 @@ diesel::table! {
     tournament_debates (id) {
         id -> Text,
         tournament_id -> Text,
-        draw_id -> Text,
+        round_id -> Text,
         room_id -> Nullable<Text>,
         number -> BigInt,
-    }
-}
-
-diesel::table! {
-    tournament_draws (id) {
-        id -> Text,
-        tournament_id -> Text,
-        round_id -> Text,
-        status -> Text,
-        released_at -> Nullable<Timestamp>,
-        version -> BigInt,
     }
 }
 
@@ -223,6 +212,8 @@ diesel::table! {
         kind -> Text,
         break_category -> Nullable<Text>,
         completed -> Bool,
+        draw_status -> Text,
+        draw_released_at -> Nullable<Timestamp>,
     }
 }
 
@@ -376,11 +367,9 @@ diesel::joinable!(tournament_debate_team_results -> tournament_debates (debate_i
 diesel::joinable!(tournament_debate_team_results -> tournament_teams (team_id));
 diesel::joinable!(tournament_debate_teams -> tournament_debates (debate_id));
 diesel::joinable!(tournament_debate_teams -> tournament_teams (team_id));
-diesel::joinable!(tournament_debates -> tournament_draws (draw_id));
 diesel::joinable!(tournament_debates -> tournament_rooms (room_id));
+diesel::joinable!(tournament_debates -> tournament_rounds (round_id));
 diesel::joinable!(tournament_debates -> tournaments (tournament_id));
-diesel::joinable!(tournament_draws -> tournament_rounds (round_id));
-diesel::joinable!(tournament_draws -> tournaments (tournament_id));
 diesel::joinable!(tournament_group_members -> tournament_groups (group_id));
 diesel::joinable!(tournament_group_members -> tournament_members (member_id));
 diesel::joinable!(tournament_group_permissions -> tournament_groups (group_id));
@@ -434,7 +423,6 @@ diesel::allow_tables_to_appear_in_same_query!(
     tournament_debate_team_results,
     tournament_debate_teams,
     tournament_debates,
-    tournament_draws,
     tournament_group_members,
     tournament_group_permissions,
     tournament_groups,

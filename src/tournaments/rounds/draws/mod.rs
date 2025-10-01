@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
+use super::Round;
 use crate::schema::tournament_ballots;
 use crate::schema::tournament_debate_judges;
 use crate::schema::tournament_debate_teams;
 use crate::schema::tournament_debates;
-use crate::schema::tournament_draws;
 use crate::schema::tournament_judges;
 use crate::schema::tournament_rooms;
 use crate::schema::tournament_speakers;
@@ -27,16 +27,6 @@ use serde::{Deserialize, Serialize};
 pub mod manage;
 pub mod public;
 
-#[derive(Queryable, Serialize, Deserialize)]
-pub struct Draw {
-    id: String,
-    tournament_id: String,
-    round_id: String,
-    status: String,
-    pub released_at: Option<NaiveDateTime>,
-    pub version: i64,
-}
-
 #[derive(Queryable, Serialize, Deserialize, Debug, Clone)]
 pub struct Room {
     id: String,
@@ -46,44 +36,22 @@ pub struct Room {
     priority: i64,
 }
 
-impl Draw {
-    pub fn status(&self) -> DrawStatus {
-        match self.status.as_str() {
-            "D" => DrawStatus::Draft,
-            "C" => DrawStatus::Confirmed,
-            "R" => DrawStatus::Released,
-            _ => unreachable!(),
-        }
-    }
-}
-
-pub struct DrawRepr {
-    pub draw: Draw,
+pub struct RoundDrawRepr {
+    pub round: Round,
     pub debates: Vec<DebateRepr>,
 }
 
-impl DrawRepr {
-    pub fn of_id(
-        draw: &str,
+impl RoundDrawRepr {
+    pub fn of_round(
+        round: Round,
         conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Self {
-        let draw = tournament_draws::table
-            .find(draw)
-            .first::<Draw>(conn)
-            .unwrap();
-        Self::of_draw(draw, conn)
-    }
-
-    pub fn of_draw(
-        draw: Draw,
-        conn: &mut impl LoadConnection<Backend = Sqlite>,
-    ) -> Self {
-        let id = draw.id.clone();
-        DrawRepr {
-            draw,
+        let id = round.id.clone();
+        RoundDrawRepr {
+            round,
             debates: {
                 tournament_debates::table
-                    .filter(tournament_debates::draw_id.eq(id))
+                    .filter(tournament_debates::round_id.eq(id))
                     // todo: assign integer ID to debates?
                     .order_by(tournament_debates::id.asc())
                     .select(tournament_debates::id)
@@ -261,7 +229,7 @@ pub enum DrawStatus {
 pub struct Debate {
     pub id: String,
     pub tournament_id: String,
-    pub draw_id: String,
+    pub round_id: String,
     pub room_id: Option<String>,
     pub number: i64,
 }

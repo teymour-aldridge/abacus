@@ -4,7 +4,7 @@ use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    schema::{tournament_draws, tournament_round_motions, tournament_rounds},
+    schema::{tournament_round_motions, tournament_rounds},
     util_resp::{FailureResponse, err_not_found},
 };
 
@@ -22,6 +22,8 @@ pub struct Round {
     kind: String,
     break_cat: Option<String>,
     completed: bool,
+    pub draw_status: String,
+    pub draw_released_at: Option<chrono::NaiveDateTime>,
 }
 
 pub enum RoundStatus {
@@ -140,63 +142,20 @@ impl TournamentRounds {
 
         let is_prelim_round = |round: &Round| round.kind == "P";
 
-        let round_status = {
-            let (max_draw_released_at, draw_released_at_subquery) = diesel::alias!(
-                crate::schema::tournament_draws as max_draw,
-                crate::schema::tournament_draws as draws_subquery
-            );
-
-            tournament_rounds::table
-                .filter(tournament_rounds::tournament_id.eq(tid))
-                .left_outer_join(
-                    max_draw_released_at.on(max_draw_released_at
-                        .field(tournament_draws::round_id)
-                        .eq(tournament_rounds::id)
-                        .and({
-                            max_draw_released_at
-                                .field(tournament_draws::released_at)
-                                .ge(draw_released_at_subquery
-                                    .filter(
-                                        draw_released_at_subquery
-                                            .field(tournament_draws::round_id)
-                                            .eq(tournament_rounds::id),
-                                    )
-                                    .select(diesel::dsl::max(
-                                        draw_released_at_subquery.field(
-                                            tournament_draws::released_at,
-                                        ),
-                                    ))
-                                    .single_value())
-                        })),
-                )
-                .select((
-                    tournament_rounds::id,
-                    tournament_rounds::completed,
-                    max_draw_released_at
-                        .field(tournament_draws::released_at)
-                        .nullable(),
-                    diesel::dsl::exists(tournament_draws::table.filter(
-                        tournament_draws::round_id.eq(tournament_rounds::id),
-                    )),
-                ))
-                .load::<(String, bool, Option<chrono::NaiveDateTime>, bool)>(
-                    conn,
-                )
-                .unwrap()
-                .into_iter()
-                .map(|(round, completed, draw_released_at, draw_exists)| {
-                    if completed {
-                        (round, RoundStatus::Completed)
-                    } else if draw_exists && draw_released_at.is_some() {
-                        (round, RoundStatus::InProgress)
-                    } else if draw_exists && draw_released_at.is_none() {
-                        (round, RoundStatus::Draft)
-                    } else {
-                        (round, RoundStatus::NotStarted)
-                    }
-                })
-                .collect::<HashMap<_, _>>()
-        };
+        let round_status = rounds
+            .iter()
+            .map(|round| {
+                if round.completed {
+                    (round.id.clone(), RoundStatus::Completed)
+                } else if round.draw_status == "R" {
+                    (round.id.clone(), RoundStatus::InProgress)
+                } else if round.draw_status == "C" {
+                    (round.id.clone(), RoundStatus::Draft)
+                } else {
+                    (round.id.clone(), RoundStatus::NotStarted)
+                }
+            })
+            .collect::<HashMap<_, _>>();
 
         Ok(TournamentRounds {
             prelim: rounds

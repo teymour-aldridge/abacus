@@ -10,8 +10,8 @@ use rand::SeedableRng;
 use uuid::Uuid;
 
 use crate::schema::{
-    tournament_debate_teams, tournament_debates, tournament_draws,
-    tournament_round_tickets, tournament_team_availability,
+    tournament_debate_teams, tournament_debates, tournament_round_tickets,
+    tournament_rounds, tournament_team_availability,
 };
 use crate::tournaments::rounds::draws::manage::drawalgs::general::TeamsOfRoom;
 use crate::tournaments::snapshots::take_snapshot;
@@ -214,35 +214,17 @@ pub fn do_draw(
                 .unwrap();
 
             let response = if !exists_active_ticket_with_higher_seq {
-                let draw_id = Uuid::now_v7().to_string();
-                diesel::insert_into(tournament_draws::table)
-                    .values((
-                        tournament_draws::id.eq(&draw_id),
-                        tournament_draws::tournament_id.eq(&tournament.id),
-                        tournament_draws::round_id.eq(&round.id),
-                        tournament_draws::status.eq("D"),
-                        tournament_draws::released_at.eq(None::<NaiveDateTime>),
-                        tournament_draws::version.eq({
-                            let sq = diesel::alias!(tournament_draws as sq);
-                            let max = sq
-                                .filter(
-                                    sq.field(tournament_draws::round_id)
-                                        .eq(&round.id),
-                                )
-                                .select(diesel::dsl::max(
-                                    sq.field(tournament_draws::version),
-                                ))
-                                .single_value()
-                                .nullable();
-                            case_when(
-                                max.is_not_null(),
-                                max.assume_not_null() + 1.into_sql::<BigInt>(),
-                            )
-                            .otherwise(0.into_sql::<BigInt>())
-                        }),
-                    ))
-                    .execute(conn)
-                    .unwrap();
+                diesel::update(
+                    tournament_rounds::table
+                        .filter(tournament_rounds::id.eq(&round.id)),
+                )
+                .set((
+                    tournament_rounds::draw_status.eq("D"),
+                    tournament_rounds::draw_released_at
+                        .eq(None::<NaiveDateTime>),
+                ))
+                .execute(conn)
+                .unwrap();
 
                 let mut debates = Vec::new();
                 let mut debate_teams = Vec::new();
@@ -253,7 +235,7 @@ pub fn do_draw(
                     debates.push((
                         tournament_debates::id.eq(debate_id.clone()),
                         tournament_debates::tournament_id.eq(&tournament.id),
-                        tournament_debates::draw_id.eq(&draw_id),
+                        tournament_debates::round_id.eq(&round.id),
                         tournament_debates::room_id.eq(None::<String>),
                         tournament_debates::number.eq({
                             let ret = debate_no;
@@ -307,7 +289,7 @@ pub fn do_draw(
                 .execute(conn)
                 .unwrap();
 
-                Ok(Ok(draw_id))
+                Ok(Ok(round.id.clone()))
             } else {
                 Ok(Err(MakeDrawError::TicketExpired))
             };

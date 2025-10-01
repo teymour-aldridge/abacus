@@ -6,7 +6,7 @@ use crate::{
     auth::User,
     schema::{
         tournament_debate_judges, tournament_debate_teams, tournament_debates,
-        tournament_draws, tournament_team_speakers,
+        tournament_team_speakers,
     },
     state::Conn,
     template::Page,
@@ -74,31 +74,15 @@ fn private_url_page_of_speaker(
                 ),
             )
             .filter(tournament_debate_teams::debate_id.eq_any({
-                let (main, sq) = diesel::alias!(
-                    tournament_draws as main,
-                    tournament_draws as sq
-                );
-
                 tournament_debates::table
-                    .inner_join(
-                        main.on(main.field(tournament_draws::round_id).eq_any(
+                    .filter(
+                        tournament_debates::round_id.eq_any(
                             current_rounds
                                 .iter()
                                 .map(|round| round.id.clone())
                                 .collect::<Vec<_>>(),
-                        )),
+                        ),
                     )
-                    .filter(main.field(tournament_draws::version).eq({
-                        sq.filter(
-                            sq.field(tournament_draws::round_id)
-                                .eq(main.field(tournament_draws::round_id)),
-                        )
-                        .select(diesel::dsl::max(
-                            sq.field(tournament_draws::version),
-                        ))
-                        .single_value()
-                        .assume_not_null()
-                    }))
                     .select(tournament_debates::id)
             }))
             // .select(tournament_debate_teams::all_columns)
@@ -165,31 +149,15 @@ fn private_url_page_of_judge(
         let judge_debate = tournament_debate_judges::table
             .filter(tournament_debate_judges::judge_id.eq(&judge.id))
             .filter(tournament_debate_judges::debate_id.eq_any({
-                let (main, sq) = diesel::alias!(
-                    tournament_draws as main,
-                    tournament_draws as sq
-                );
-
                 tournament_debates::table
-                    .inner_join(
-                        main.on(main.field(tournament_draws::round_id).eq_any(
+                    .filter(
+                        tournament_debates::round_id.eq_any(
                             current_rounds
                                 .iter()
                                 .map(|round| round.id.clone())
                                 .collect::<Vec<_>>(),
-                        )),
+                        ),
                     )
-                    .filter(main.field(tournament_draws::version).eq({
-                        sq.filter(
-                            sq.field(tournament_draws::round_id)
-                                .eq(main.field(tournament_draws::round_id)),
-                        )
-                        .select(diesel::dsl::max(
-                            sq.field(tournament_draws::version),
-                        ))
-                        .single_value()
-                        .assume_not_null()
-                    }))
                     .select(tournament_debates::id)
             }))
             .select((
@@ -209,7 +177,7 @@ fn private_url_page_of_judge(
                         h5 class="card-title" {
                             "You are judging "
                             @if status == "C" {
-                                "as Chair"
+                                "as a Chair"
                             } @else if status == "P" {
                                 "as a Panelist"
                             } @else if status == "T" {

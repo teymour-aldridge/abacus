@@ -1,5 +1,5 @@
 use std::str::FromStr;
-use crate::tournaments::rounds::draws::manage::edit::Cmd;
+use crate::tournaments::rounds::manage::draw_edit::Cmd;
 
 grammar;
 

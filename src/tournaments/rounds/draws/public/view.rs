@@ -6,12 +6,12 @@ use rocket::get;
 
 use crate::{
     auth::User,
-    schema::{tournament_draws, tournament_teams},
+    schema::tournament_teams,
     state::Conn,
     template::Page,
     tournaments::{
         Tournament,
-        rounds::{Round, draws::DrawRepr},
+        rounds::{Round, draws::RoundDrawRepr},
         teams::Team,
     },
     util_resp::{StandardResponse, success},
@@ -27,16 +27,10 @@ pub async fn view_active_draw_page(
 
     let rounds = Round::current_rounds(tournament_id, &mut *conn);
 
-    let draws = tournament_draws::table
-        .filter(
-            tournament_draws::round_id
-                .eq_any(rounds.iter().map(|r| r.id.clone())),
-        )
-        .select(tournament_draws::id)
-        .load::<String>(&mut *conn)
-        .unwrap()
+    let draws = rounds
         .into_iter()
-        .map(|draw_id| DrawRepr::of_id(&draw_id, &mut *conn))
+        .filter(|r| r.draw_status == "R")
+        .map(|round| RoundDrawRepr::of_round(round, &mut *conn))
         .collect::<Vec<_>>();
 
     let teams = tournament_teams::table
@@ -59,13 +53,9 @@ pub async fn view_active_draw_page(
                 }
 
                 @for draw in &draws {
-                    @if draw.draw.released_at.is_some() {
+                    @if draw.round.draw_released_at.is_some() {
                         h3 {
-                            (rounds
-                                .iter()
-                                .find(|round| round.id == draw.draw.id)
-                                .unwrap()
-                                .name)
+                            (draw.round.name)
                         }
                         table {
                             thead {

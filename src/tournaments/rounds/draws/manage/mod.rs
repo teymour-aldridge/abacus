@@ -4,19 +4,17 @@ use hypertext::prelude::*;
 
 use crate::tournaments::{
     Tournament,
-    rounds::draws::{DebateRepr, DrawRepr},
+    rounds::draws::{DebateRepr, RoundDrawRepr},
     teams::Team,
 };
 
 pub mod create;
 pub mod drawalgs;
-pub mod edit;
-pub mod view;
 
 /// Renders the provided draw as a table.
 pub struct DrawTableRenderer<'a, F> {
     pub tournament: &'a Tournament,
-    pub repr: &'a DrawRepr,
+    pub repr: &'a RoundDrawRepr,
     pub actions: F,
     pub teams: &'a HashMap<String, Team>,
 }

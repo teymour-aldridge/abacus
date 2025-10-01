@@ -2,7 +2,7 @@ use diesel::prelude::*;
 
 use crate::schema::{
     tournament_debate_team_results, tournament_debate_teams,
-    tournament_debates, tournament_draws, tournament_rounds, tournament_teams,
+    tournament_debates, tournament_rounds, tournament_teams,
 };
 use crate::tournaments::standings::compute::metrics::{
     Metric, MetricValue, completed_preliminary_rounds,
@@ -81,25 +81,9 @@ impl Metric<MetricValue> for TeamPointsComputer {
                 .eq(tid.to_string())),
         )
         .inner_join(completed_preliminary_rounds())
-        .inner_join({
-            let draws_subquery = diesel::alias!(tournament_draws as draws);
-
-            tournament_draws::table.on(tournament_draws::released_at.ge(
-                draws_subquery
-                    .filter(
-                        draws_subquery
-                            .field(tournament_draws::round_id)
-                            .eq(tournament_rounds::id),
-                    )
-                    .select(diesel::dsl::max(
-                        draws_subquery.field(tournament_draws::released_at),
-                    ))
-                    .single_value(),
-            ))
-        })
         .inner_join(
-            tournament_debates::table.on(tournament_debates::draw_id
-                .eq(tournament_draws::id)
+            tournament_debates::table.on(tournament_debates::round_id
+                .eq(tournament_rounds::id)
                 .and(team_is_in_this_debate)
                 .and(other_team_is_in_this_debate)),
         )

@@ -21,6 +21,7 @@ use crate::{
 
 pub mod availability;
 pub mod create;
+pub mod draw_edit;
 pub mod edit;
 pub mod view;
 

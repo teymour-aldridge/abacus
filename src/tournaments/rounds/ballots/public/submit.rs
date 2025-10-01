@@ -15,7 +15,7 @@ use crate::{
     auth::User,
     schema::{
         tournament_ballots, tournament_debate_judges, tournament_debates,
-        tournament_draws, tournament_judges, tournament_round_motions,
+        tournament_judges, tournament_round_motions, tournament_rounds,
         tournament_speaker_score_entries,
     },
     state::Conn,
@@ -25,7 +25,7 @@ use crate::{
         participants::{Judge, Speaker},
         rounds::{
             Motion, Round,
-            draws::{Debate, DebateRepr, Draw},
+            draws::{Debate, DebateRepr},
         },
     },
     util_resp::{
@@ -62,26 +62,17 @@ pub async fn submit_ballot_page(
 
     let round = Round::fetch(round_id, &mut *conn)?;
 
-    match tournament_draws::table
-        .filter(tournament_draws::round_id.eq(&round.id))
-        .order_by(tournament_draws::version.desc())
-        .first::<Draw>(&mut *conn)
-        .optional()
-        .unwrap()
-    {
-        Some(draw) => draw,
-        None => {
-            return bad_request(
-                Page::new()
-                    .tournament(tournament.clone())
-                    .user_opt(user)
-                    .body(maud! {
-                        ErrorAlert msg = "Error: draw not released.";
-                    })
-                    .render(),
-            );
-        }
-    };
+    if round.draw_status != "R" {
+        return bad_request(
+            Page::new()
+                .tournament(tournament.clone())
+                .user_opt(user)
+                .body(maud! {
+                    ErrorAlert msg = "Error: draw not released.";
+                })
+                .render(),
+        );
+    }
 
     let debate = debate_of_judge_in_round(&judge.id, &round.id, &mut *conn)?;
 
@@ -249,26 +240,17 @@ pub async fn do_submit_ballot(
         None => return err_not_found(),
     };
     let round = Round::fetch(round_id, &mut *conn)?;
-    match tournament_draws::table
-        .filter(tournament_draws::round_id.eq(&round.id))
-        .order_by(tournament_draws::released_at.desc())
-        .first::<Draw>(&mut *conn)
-        .optional()
-        .unwrap()
-    {
-        Some(draw) => draw,
-        None => {
-            return bad_request(
-                Page::new()
-                    .tournament(tournament.clone())
-                    .user_opt(user)
-                    .body(maud! {
-                        ErrorAlert msg = "Error: draw not released.";
-                    })
-                    .render(),
-            );
-        }
-    };
+    if round.draw_status != "R" {
+        return bad_request(
+            Page::new()
+                .tournament(tournament.clone())
+                .user_opt(user)
+                .body(maud! {
+                    ErrorAlert msg = "Error: draw not released.";
+                })
+                .render(),
+        );
+    }
     let debate = debate_of_judge_in_round(&judge.id, &round.id, &mut *conn)?;
     let debate_repr = DebateRepr::fetch(&debate.id, &mut *conn);
 
@@ -505,31 +487,21 @@ fn debate_of_judge_in_round(
     round_id: &str,
     conn: &mut impl LoadConnection<Backend = Sqlite>,
 ) -> Result<Debate, FailureResponse> {
-    match tournament_draws::table
-        .filter({
-            let draws_subquery = diesel::alias!(tournament_draws as draws);
-
-            tournament_draws::released_at.ge(draws_subquery
-                .filter(
-                    draws_subquery
-                        .field(tournament_draws::round_id)
-                        .eq(&round_id),
-                )
-                .select(diesel::dsl::max(
-                    draws_subquery.field(tournament_draws::released_at),
-                ))
-                .single_value())
-        })
+    match tournament_debates::table
         .inner_join(
-            tournament_debates::table.on(diesel::dsl::exists(
-                tournament_debate_judges::table
-                    .filter(tournament_debate_judges::judge_id.eq(&judge_id))
-                    .filter(
-                        tournament_debate_judges::debate_id
-                            .eq(tournament_debates::id),
-                    ),
-            )),
+            tournament_rounds::table
+                .on(tournament_rounds::id.eq(tournament_debates::round_id)),
         )
+        .filter(tournament_rounds::id.eq(round_id))
+        .filter(tournament_rounds::draw_status.eq("R"))
+        .filter(diesel::dsl::exists(
+            tournament_debate_judges::table
+                .filter(tournament_debate_judges::judge_id.eq(judge_id))
+                .filter(
+                    tournament_debate_judges::debate_id
+                        .eq(tournament_debates::id),
+                ),
+        ))
         .select(tournament_debates::all_columns)
         .first::<Debate>(conn)
         .optional()

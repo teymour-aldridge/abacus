@@ -5,17 +5,14 @@ use tokio::task::spawn_blocking;
 
 use crate::{
     auth::User,
-    schema::{tournament_draws, tournament_rounds},
+    schema::{tournament_debates, tournament_rounds},
     state::{Conn, DbPool},
     template::Page,
     tournaments::{
         Tournament,
         rounds::{
             Round,
-            draws::{
-                Draw,
-                manage::drawalgs::{self, MakeDrawError, do_draw},
-            },
+            draws::manage::drawalgs::{self, MakeDrawError, do_draw},
         },
     },
     util_resp::{
@@ -48,18 +45,19 @@ pub async fn generate_draw_page(
         None => return err_not_found(),
     };
 
-    let draw = tournament_draws::table
-        .filter(tournament_draws::round_id.eq(&round.id))
-        .first::<Draw>(&mut *conn)
-        .optional()
-        .unwrap();
+    let debates_exist = diesel::select(diesel::dsl::exists(
+        tournament_debates::table
+            .filter(tournament_debates::round_id.eq(&round.id)),
+    ))
+    .get_result::<bool>(&mut *conn)
+    .unwrap();
 
     success(
         Page::new()
             .tournament(tournament)
             .user(user)
             .body(maud! {
-                @if draw.is_some() {
+                @if debates_exist {
                     ErrorAlert
                         msg = "Warning: a draw already exists for this round. Creating
                          a new draw will delete the old draw!";
@@ -112,8 +110,8 @@ pub async fn do_generate_draw(
         );
 
         match draw_result {
-            Ok(draw_id) => see_other_ok(Redirect::to(format!(
-                "/tournaments/{tournament_id}/rounds/{round_id}/draws/{draw_id}",
+            Ok(returned_round_id) => see_other_ok(Redirect::to(format!(
+                "/tournaments/{tournament_id}/rounds/{returned_round_id}",
             ))),
             Err(e) => {
                 let msg = match e {

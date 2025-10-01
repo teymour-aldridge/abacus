@@ -4,8 +4,8 @@ use diesel::prelude::*;
 
 use crate::{
     schema::{
-        tournament_debate_teams, tournament_debates, tournament_draws,
-        tournament_rounds, tournament_teams,
+        tournament_debate_teams, tournament_debates, tournament_rounds,
+        tournament_teams,
     },
     tournaments::standings::compute::metrics::{
         Metric, MetricValue, completed_preliminary_rounds,
@@ -39,28 +39,10 @@ impl<const FLOAT_METRIC: bool> Metric<MetricValue>
         let teams_and_debated_against = team
             .filter(team.field(tournament_teams::id).eq(tid))
             .inner_join(completed_preliminary_rounds())
-            .inner_join({
-                // todo: surely there has to be a way to extract this into a
-                // function that can be re-used across all the metrics
-                let draws_subquery = diesel::alias!(tournament_draws as draws);
-
-                tournament_draws::table.on(tournament_draws::released_at.ge(
-                    draws_subquery
-                        .filter(
-                            draws_subquery
-                                .field(tournament_draws::round_id)
-                                .eq(tournament_rounds::id),
-                        )
-                        .select(diesel::dsl::max(
-                            draws_subquery.field(tournament_draws::released_at),
-                        ))
-                        .single_value(),
-                ))
-            })
             // get all debates in which this team participated
             .inner_join(
-                tournament_debates::table.on(tournament_debates::draw_id
-                    .eq(tournament_draws::id)
+                tournament_debates::table.on(tournament_debates::round_id
+                    .eq(tournament_rounds::id)
                     .and(diesel::dsl::exists(
                         tournament_debate_teams::table.filter(
                             tournament_debate_teams::debate_id

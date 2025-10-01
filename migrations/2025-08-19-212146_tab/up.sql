@@ -188,6 +188,8 @@ create table if not exists tournament_rounds (
     kind text not null check (kind in ('E', 'P')),
     break_category text references tournament_break_categories (id),
     completed boolean not null,
+    draw_status text not null default 'D' check (draw_status in ('D', 'C', 'R')),
+    draw_released_at timestamp,
     unique (tournament_id, name)
 );
 
@@ -197,16 +199,6 @@ create table if not exists tournament_round_motions (
     round_id text not null references tournament_rounds(id),
     infoslide text,
     motion text not null
-);
-
-create table if not exists tournament_draws (
-    id text primary key not null,
-    tournament_id text not null references tournaments (id),
-    round_id text not null references tournament_rounds(id),
-    status text not null default 'D' check (status in ('D', 'C', 'R')),
-    released_at timestamp,
-    version integer not null,
-    unique (round_id, version)
 );
 
 -- When generating draws, we have a ticketing system. This allows us to avoid
@@ -260,11 +252,11 @@ create table if not exists tournament_judge_availability (
 create table if not exists tournament_debates (
     id text primary key not null,
     tournament_id text not null references tournaments (id),
-    draw_id text not null references tournament_draws(id),
+    round_id text not null references tournament_rounds(id),
     room_id text references tournament_rooms(id),
     -- unique ID (starting from zero) assigned to each debate
     number integer not null check (number >= 0),
-    unique (tournament_id, draw_id, number)
+    unique (tournament_id, round_id, number)
 );
 
 create table if not exists tournament_debate_teams (

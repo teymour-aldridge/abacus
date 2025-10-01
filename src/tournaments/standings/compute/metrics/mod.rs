@@ -23,7 +23,8 @@ pub trait Metric<V> {
 pub fn completed_preliminary_rounds() -> _ {
     tournament_rounds::table.on(tournament_rounds::kind
         .eq("P")
-        .and(tournament_rounds::completed.eq(true)))
+        .and(tournament_rounds::completed.eq(true))
+        .and(tournament_rounds::draw_status.eq("R")))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Ord, Eq)]

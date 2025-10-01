@@ -187,7 +187,7 @@ diesel::table! {
         id -> Text,
         tournament_id -> Text,
         name -> Text,
-        url -> Text,
+        url -> Nullable<Text>,
         priority -> BigInt,
     }
 }

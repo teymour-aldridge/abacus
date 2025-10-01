@@ -11,6 +11,7 @@ use crate::{
 pub mod ballots;
 pub mod draws;
 pub mod manage;
+pub mod side_names;
 
 #[derive(Serialize, Deserialize, Queryable, Clone)]
 pub struct Round {

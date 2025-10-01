@@ -167,7 +167,7 @@ create table if not exists tournament_rooms (
     id text primary key not null,
     tournament_id text not null references tournaments (id),
     name text not null,
-    url text not null,
+    url text,
     priority integer not null check (priority >= 0),
     unique (tournament_id, name)
 );

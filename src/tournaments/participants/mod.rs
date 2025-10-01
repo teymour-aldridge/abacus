@@ -10,9 +10,53 @@ use crate::{
         tournament_speakers, tournament_team_speakers, tournament_teams,
     },
     tournaments::teams::Team,
+    util_resp::FailureResponse,
 };
 
 pub mod manage;
+
+pub enum Participant {
+    Speaker(Speaker),
+    Judge(Judge),
+}
+
+impl Participant {
+    pub fn of_private_url_and_tournament(
+        tournament_id: &str,
+        private_url: &str,
+        conn: &mut impl LoadConnection<Backend = Sqlite>,
+    ) -> Result<Self, FailureResponse> {
+        let judge = tournament_judges::table
+            .filter(
+                tournament_judges::tournament_id
+                    .eq(&tournament_id)
+                    .and(tournament_judges::private_url.eq(&private_url)),
+            )
+            .first::<Judge>(conn)
+            .optional()
+            .unwrap();
+
+        if let Some(judge) = judge {
+            return Ok(Self::Judge(judge));
+        }
+
+        let speaker = tournament_speakers::table
+            .filter(
+                tournament_speakers::tournament_id
+                    .eq(&tournament_id)
+                    .and(tournament_speakers::private_url.eq(&private_url)),
+            )
+            .first::<Speaker>(conn)
+            .optional()
+            .unwrap();
+
+        if let Some(speaker) = speaker {
+            return Ok(Self::Speaker(speaker));
+        } else {
+            return Err(FailureResponse::NotFound(()));
+        }
+    }
+}
 
 #[derive(Queryable, Serialize, Deserialize, Clone, Debug, Hash)]
 pub struct Speaker {
@@ -21,7 +65,7 @@ pub struct Speaker {
     // todo: this should be optional
     pub name: String,
     pub email: String,
-    pub participant_id: String,
+    pub private_url: String,
 }
 
 #[derive(Queryable, QueryableByName, Serialize, Deserialize, Clone, Debug)]

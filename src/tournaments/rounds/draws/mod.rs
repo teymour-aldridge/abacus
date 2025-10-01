@@ -6,6 +6,7 @@ use crate::schema::tournament_debate_teams;
 use crate::schema::tournament_debates;
 use crate::schema::tournament_draws;
 use crate::schema::tournament_judges;
+use crate::schema::tournament_rooms;
 use crate::schema::tournament_speakers;
 use crate::schema::tournament_team_speakers;
 use crate::schema::tournament_teams;
@@ -34,6 +35,15 @@ pub struct Draw {
     status: String,
     pub released_at: Option<NaiveDateTime>,
     pub version: i64,
+}
+
+#[derive(Queryable, Serialize, Deserialize, Debug, Clone)]
+pub struct Room {
+    id: String,
+    tournament_id: String,
+    pub name: String,
+    pub url: Option<String>,
+    priority: i64,
 }
 
 impl Draw {
@@ -90,6 +100,7 @@ impl DrawRepr {
 #[derive(Clone, Debug)]
 pub struct DebateRepr {
     pub debate: Debate,
+    pub room: Option<Room>,
     pub teams_of_debate: Vec<DebateTeam>,
     // todo: teams and speakers should be placed in a separate struct (we can
     // also load the private URLs as part of this struct)
@@ -108,6 +119,16 @@ impl DebateRepr {
             .filter(tournament_debates::id.eq(&id))
             .first::<Debate>(conn)
             .unwrap();
+
+        let room = match &debate.room_id {
+            Some(room_id) => Some(
+                tournament_rooms::table
+                    .filter(tournament_rooms::id.eq(room_id))
+                    .first::<Room>(conn)
+                    .unwrap(),
+            ),
+            None => None,
+        };
 
         let debate_teams: Vec<DebateTeam> = tournament_debate_teams::table
             .filter(tournament_debate_teams::debate_id.eq(&debate.id))
@@ -187,6 +208,7 @@ impl DebateRepr {
 
         Self {
             debate,
+            room,
             teams_of_debate: debate_teams,
             teams: teams
                 .into_iter()

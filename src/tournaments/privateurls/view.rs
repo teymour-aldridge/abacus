@@ -5,8 +5,8 @@ use rocket::get;
 use crate::{
     auth::User,
     schema::{
-        tournament_debate_teams, tournament_debates, tournament_draws,
-        tournament_team_speakers,
+        tournament_debate_judges, tournament_debate_teams, tournament_debates,
+        tournament_draws, tournament_team_speakers,
     },
     state::Conn,
     template::Page,
@@ -159,5 +159,91 @@ fn private_url_page_of_judge(
     user: Option<User<true>>,
     conn: &mut impl LoadConnection<Backend = Sqlite>,
 ) -> StandardResponse {
-    todo!()
+    let current_rounds = Round::current_rounds(&tournament.id, conn);
+
+    let current_debate_info = if !current_rounds.is_empty() {
+        let judge_debate = tournament_debate_judges::table
+            .filter(tournament_debate_judges::judge_id.eq(&judge.id))
+            .filter(tournament_debate_judges::debate_id.eq_any({
+                let (main, sq) = diesel::alias!(
+                    tournament_draws as main,
+                    tournament_draws as sq
+                );
+
+                tournament_debates::table
+                    .inner_join(
+                        main.on(main.field(tournament_draws::round_id).eq_any(
+                            current_rounds
+                                .iter()
+                                .map(|round| round.id.clone())
+                                .collect::<Vec<_>>(),
+                        )),
+                    )
+                    .filter(main.field(tournament_draws::version).eq({
+                        sq.filter(
+                            sq.field(tournament_draws::round_id)
+                                .eq(main.field(tournament_draws::round_id)),
+                        )
+                        .select(diesel::dsl::max(
+                            sq.field(tournament_draws::version),
+                        ))
+                        .single_value()
+                        .assume_not_null()
+                    }))
+                    .select(tournament_debates::id)
+            }))
+            .select((
+                tournament_debate_judges::debate_id,
+                tournament_debate_judges::status,
+            ))
+            .first::<(String, String)>(conn)
+            .optional()
+            .unwrap();
+
+        if let Some((debate_id, status)) = judge_debate {
+            let debate = DebateRepr::fetch(&debate_id, conn);
+
+            Some(maud! {
+                div class="card" {
+                    div class="card-body" {
+                        h5 class="card-title" {
+                            "You are judging "
+                            @if status == "C" {
+                                "as Chair"
+                            } @else if status == "P" {
+                                "as a Panelist"
+                            } @else if status == "T" {
+                                "as a Trainee"
+                            }
+                            @match &debate.room {
+                                Some(room) => {
+                                    @if let Some(url) = &room.url {
+                                        " in " a href=(url) { (room.name) }
+                                    } @else {
+                                        " in " (room.name)
+                                    }
+                                }
+                                None => " (note: no room assigned)"
+                            }
+                        }
+                    }
+                }
+            })
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    success(
+        Page::new()
+            .user_opt(user)
+            .tournament(tournament.clone())
+            .body(maud! {
+                // todo: layout with columns
+                (current_debate_info)
+            })
+            .render(),
+    )
 }

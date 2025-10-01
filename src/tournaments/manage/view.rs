@@ -64,11 +64,13 @@ pub async fn admin_view_tournament(
                                         format!("/tournaments/{tid}/rounds/{}/draws/create", round.id)
                                     },
                                     crate::tournaments::rounds::RoundStatus::InProgress => {
-                                        format!("/tournaments/{tid}/rounds/{}/draws/view", round.id)
+                                        format!("/tournaments/{tid}/rounds/{}", round.id)
                                     },
-                                    crate::tournaments::rounds::RoundStatus::Completed => unreachable!(),
+                                    crate::tournaments::rounds::RoundStatus::Completed => {
+                                        format!("/tournaments/{tid}/rounds/{}", round.id)
+                                    },
                                     crate::tournaments::rounds::RoundStatus::Draft => {
-                                        format!("/tournaments/{tid}/rounds/{}/draws/view", round.id)
+                                        format!("/tournaments/{tid}/rounds/{}", round.id)
                                     },
                                 }) class="btn btn-primary" {
                                     @match status {
@@ -79,7 +81,7 @@ pub async fn admin_view_tournament(
                                             "View draw"
                                         },
                                         crate::tournaments::rounds::RoundStatus::Completed => {
-                                            "Unreachable"
+                                            "View round"
                                         },
                                         crate::tournaments::rounds::RoundStatus::Draft => {
                                             "View draw"

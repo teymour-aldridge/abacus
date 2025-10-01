@@ -10,7 +10,7 @@ use crate::{
         Metric, MetricValue, completed_preliminary_rounds,
     },
 };
-use diesel::{dsl, prelude::*};
+use diesel::prelude::*;
 use rust_decimal::prelude::FromPrimitive;
 
 pub struct AverageTotalSpeakerScoreComputer(pub HashMap<String, MetricValue>);

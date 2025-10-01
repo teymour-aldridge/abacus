@@ -149,14 +149,13 @@ impl TournamentRounds {
                     (round.id.clone(), RoundStatus::Completed)
                 } else if round.draw_status == "R" {
                     (round.id.clone(), RoundStatus::InProgress)
-                } else if round.draw_status == "C" {
+                } else if round.draw_status == "D" || round.draw_status == "C" {
                     (round.id.clone(), RoundStatus::Draft)
                 } else {
                     (round.id.clone(), RoundStatus::NotStarted)
                 }
             })
             .collect::<HashMap<_, _>>();
-
         Ok(TournamentRounds {
             prelim: rounds
                 .clone()

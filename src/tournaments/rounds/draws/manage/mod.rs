@@ -1,11 +1,9 @@
-use std::collections::HashMap;
-
 use hypertext::prelude::*;
 
 use crate::tournaments::{
     Tournament,
+    participants::TournamentParticipants,
     rounds::draws::{DebateRepr, RoundDrawRepr},
-    teams::Team,
 };
 
 pub mod create;
@@ -16,7 +14,7 @@ pub struct DrawTableRenderer<'a, F> {
     pub tournament: &'a Tournament,
     pub repr: &'a RoundDrawRepr,
     pub actions: F,
-    pub teams: &'a HashMap<String, Team>,
+    pub participants: &'a TournamentParticipants,
 }
 
 impl<'a, F, R> Renderable for DrawTableRenderer<'a, F>
@@ -60,7 +58,7 @@ where
                             @for debate_team in &debate.teams_of_debate {
                                 td {
                                     a href = (format!("/tournaments/{}/teams/{}", &self.tournament.id, debate_team.team_id)) {
-                                        (self.teams.get(&debate_team.team_id).unwrap().name)
+                                        (self.participants.teams.get(&debate_team.team_id).unwrap().name)
                                     }
                                 }
                             }

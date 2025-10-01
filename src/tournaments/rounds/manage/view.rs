@@ -1,21 +1,19 @@
 use diesel::prelude::*;
 use hypertext::{Renderable, maud, prelude::*};
 use rocket::get;
-use std::collections::HashMap;
 
 use crate::{
     auth::User,
-    schema::{tournament_rounds, tournament_teams},
+    schema::tournament_rounds,
     state::Conn,
     template::Page,
     tournaments::{
         Tournament,
+        participants::TournamentParticipants,
         rounds::{
             Round,
-            draws::manage::DrawTableRenderer,
-            draws::{DebateRepr, RoundDrawRepr},
+            draws::{DebateRepr, RoundDrawRepr, manage::DrawTableRenderer},
         },
-        teams::Team,
     },
     util_resp::{StandardResponse, err_not_found, success},
 };
@@ -44,16 +42,13 @@ pub async fn view_tournament_round_page(
         None => return err_not_found(),
     };
 
-    let (repr, teams) = if round.draw_status != "D" {
+    let (repr, participants) = if round.draw_status != "N" {
         let repr = RoundDrawRepr::of_round(round.clone(), &mut *conn);
-        let teams = tournament_teams::table
-            .filter(tournament_teams::tournament_id.eq(&tournament.id))
-            .load::<Team>(&mut *conn)
-            .unwrap()
-            .into_iter()
-            .map(|c| (c.id.clone(), c))
-            .collect::<HashMap<_, _>>();
-        (Some(repr), Some(teams))
+
+        let participants =
+            TournamentParticipants::load(&tournament.id, &mut *conn);
+
+        (Some(repr), Some(participants))
     } else {
         (None, None)
     };
@@ -76,15 +71,26 @@ pub async fn view_tournament_round_page(
                             "Edit round details"
                         }
                     }
+                    @if round.draw_status == "D" {
+                        li class="list-group-item" {
+                            a href=(format!("/tournaments/{}/rounds/{}/draw/edit",
+                                    tournament.id,
+                                    round.id))
+                            {
+                                "Edit draw"
+                            }
+                        }
+                    }
                 }
-                @if round.draw_status != "D" {
+
+                @if round.draw_status != "N" {
                     @let renderer = DrawTableRenderer {
                         tournament: &tournament,
                         repr: &repr.as_ref().unwrap(),
                         actions: |_: &DebateRepr| maud! {
                             "TODO"
                         },
-                        teams: &teams.as_ref().unwrap(),
+                        participants: &participants.as_ref().unwrap()
                     };
                     (renderer)
                 } @else {

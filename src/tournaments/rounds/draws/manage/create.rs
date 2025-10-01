@@ -5,7 +5,7 @@ use tokio::task::spawn_blocking;
 
 use crate::{
     auth::User,
-    schema::{tournament_debates, tournament_rounds},
+    schema::tournament_rounds,
     state::{Conn, DbPool},
     template::Page,
     tournaments::{
@@ -45,12 +45,7 @@ pub async fn generate_draw_page(
         None => return err_not_found(),
     };
 
-    let debates_exist = diesel::select(diesel::dsl::exists(
-        tournament_debates::table
-            .filter(tournament_debates::round_id.eq(&round.id)),
-    ))
-    .get_result::<bool>(&mut *conn)
-    .unwrap();
+    let debates_exist = round.draw_status != "N";
 
     success(
         Page::new()
@@ -61,11 +56,17 @@ pub async fn generate_draw_page(
                     ErrorAlert
                         msg = "Warning: a draw already exists for this round. Creating
                          a new draw will delete the old draw!";
-                }
 
-                form method="post" {
-                    button type="submit" class="btn btn-primary" {
-                        "Generate draw"
+                    form method="post" action=(format!("/tournaments/{}/rounds/{}/draws/create?force=true", tournament_id, round_id)) {
+                        button type="submit" class="btn btn-danger" {
+                            "Delete existing draw and generate a new one"
+                        }
+                    }
+                } @else {
+                    form method="post" {
+                        button type="submit" class="btn btn-primary" {
+                            "Generate draw"
+                        }
                     }
                 }
             })
@@ -73,16 +74,19 @@ pub async fn generate_draw_page(
     )
 }
 
-#[post("/tournaments/<tournament_id>/rounds/<round_id>/draws/create")]
+#[post("/tournaments/<tournament_id>/rounds/<round_id>/draws/create?<force>")]
 pub async fn do_generate_draw(
     tournament_id: &str,
     round_id: &str,
     user: User<false>,
     pool: &State<DbPool>,
+    force: Option<bool>,
 ) -> StandardResponse {
     let pool: DbPool = pool.inner().clone();
     let round_id = round_id.to_string();
     let tournament_id = tournament_id.to_string();
+    let force = force.unwrap_or(false);
+
     spawn_blocking(move || {
         let mut conn = pool.get().unwrap();
 
@@ -106,7 +110,7 @@ pub async fn do_generate_draw(
             round,
             Box::new(drawalgs::general::make_draw),
             &mut conn,
-            false,
+            force,
         );
 
         match draw_result {
@@ -122,8 +126,22 @@ pub async fn do_generate_draw(
                         format!("Wrong number of teams: {str}")
                     }
                     MakeDrawError::AlreadyInProgress => {
-                        // todo: offer option to cancel this
-                        "Draw generation already in progress".to_string()
+                        return bad_request(
+                            Page::new()
+                                .user(user)
+                                .tournament(tournament)
+                                .body(maud! {
+                                    p {
+                                        "Draw generation already in progress."
+                                    }
+                                    form method="post" action=(format!("/tournaments/{}/rounds/{}/draws/create?force=true", tournament_id, round_id)) {
+                                        button type="submit" class="btn btn-danger" {
+                                            "Override and generate new draw"
+                                        }
+                                    }
+                                })
+                                .render(),
+                        );
                     }
                     MakeDrawError::TicketExpired => {
                         "Draw generation was cancelled.".to_string()

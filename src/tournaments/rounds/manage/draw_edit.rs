@@ -1,10 +1,13 @@
-use std::{collections::HashMap, fmt::Write};
+use std::fmt::Write;
 
 use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
 use hypertext::prelude::*;
-use lalrpop_util::lalrpop_mod;
+use itertools::Either;
 use rocket::{
-    FromForm, Responder, State, form::Form, futures::SinkExt, get, post,
+    FromForm, Responder, State,
+    form::Form,
+    futures::{SinkExt, StreamExt},
+    get, post,
 };
 use tokio::{sync::broadcast::Receiver, task::spawn_blocking};
 
@@ -13,20 +16,19 @@ use crate::{
     msg::{Msg, MsgContents},
     schema::{
         tournament_debate_judges, tournament_debates, tournament_judges,
-        tournament_rounds, tournament_teams,
+        tournament_rounds,
     },
     state::{Conn, DbPool},
     template::Page,
     tournaments::{
-        Tournament, WEBSOCKET_SCHEME,
-        participants::{DebateJudge, Judge},
+        Tournament,
+        participants::{DebateJudge, Judge, TournamentParticipants},
         rounds::{
             Round,
             draws::{
                 Debate, DebateRepr, RoundDrawRepr, manage::DrawTableRenderer,
             },
         },
-        teams::Team,
     },
     util_resp::{StandardResponse, bad_request, err_not_found, success},
     widgets::alert::ErrorAlert,
@@ -55,19 +57,13 @@ pub async fn edit_draw_page(
 
     let repr = RoundDrawRepr::of_round(round.clone(), &mut *conn);
 
-    let teams = tournament_teams::table
-        .filter(tournament_teams::tournament_id.eq(tournament_id))
-        .load::<Team>(&mut *conn)
-        .unwrap()
-        .into_iter()
-        .map(|t| (t.id.clone(), t))
-        .collect();
+    let participants = TournamentParticipants::load(&tournament_id, &mut *conn);
 
     let table = DrawTableRenderer {
         tournament: &tournament,
         repr: &repr,
         actions: |_: &DebateRepr| maud! {"None"},
-        teams: &teams,
+        participants: &participants,
     };
 
     if table_only {
@@ -83,13 +79,6 @@ pub async fn edit_draw_page(
 
                     h1 {
                         "Edit draw for " (round.name)
-                    }
-
-                    div id="tableContainer"
-                        hx-get = (format!("/tournaments/{tournament_id}/rounds/{round_id}/draw/edit?table_only=true"))
-                        hx-trigger = "refreshDraw"
-                    {
-                        (table)
                     }
 
                     div id="cmdBar" {
@@ -108,17 +97,15 @@ pub async fn edit_draw_page(
                                   "Enter a command to modify the draw."
                               }
                             }
+                            button type="submit" class="btn btn-primary" { "Submit" }
                         }
                     }
 
-                    script {
-                        (format!(r#"
-                            const ws = new WebSocket(`{WEBSOCKET_SCHEME}${{window.location.host}}/tournaments/{tournament_id}/rounds/{round_id}/draw/edit?channel`);
-
-                            socket.onmessage = function(event) {{
-                                htmx.trigger('#tableContainer', 'refreshDraw');
-                            }};
-                            "#))
+                    div id="tableContainer"
+                        hx-swap-oob="morphdom"
+                        "ws-connect"=(format!("/tournaments/{tournament_id}/rounds/{round_id}/draw/edit?channel"))
+                    {
+                        (table)
                     }
                 })
                 .render(),
@@ -141,47 +128,111 @@ pub async fn draw_updates(
 ) -> Option<rocket_ws::Channel<'static>> {
     let pool: DbPool = pool.inner().clone();
 
-    let round_id = round_id.to_string();
-    let tournament_id = tournament_id.to_string();
-
     let pool1 = pool.clone();
-    let (tournament, round) = match spawn_blocking(move || {
-        let mut conn = pool1.get().unwrap();
+    let (tournament, round) = {
+        let round_id = round_id.to_string();
+        let tournament_id = tournament_id.to_string();
 
-        let tournament = Tournament::fetch(&tournament_id, &mut conn).ok()?;
-        tournament
-            .check_user_is_superuser(&user.id, &mut conn)
-            .ok()?;
+        match spawn_blocking(move || {
+            let mut conn = pool1.get().unwrap();
 
-        let round = tournament_rounds::table
-            .filter(tournament_rounds::id.eq(&round_id))
-            .first::<Round>(&mut conn)
-            .optional()
-            .unwrap();
+            let tournament =
+                Tournament::fetch(&tournament_id, &mut conn).ok()?;
+            tournament
+                .check_user_is_superuser(&user.id, &mut conn)
+                .ok()?;
 
-        round.map(|r| (tournament, r))
-    })
-    .await
-    .unwrap()
-    {
-        Some(t) => t,
-        None => return None,
+            let round = tournament_rounds::table
+                .filter(tournament_rounds::id.eq(&round_id))
+                .first::<Round>(&mut conn)
+                .optional()
+                .unwrap();
+
+            round.map(|r| (tournament, r))
+        })
+        .await
+        .unwrap()
+        {
+            Some(t) => t,
+            None => return None,
+        }
     };
 
     let mut rx: Receiver<Msg> = rx.inner().resubscribe();
 
+    let tournament_id = tournament.id.clone();
+    let round_id: String = round_id.to_string();
     Some(ws.channel(move |mut stream| {
         Box::pin(async move {
             loop {
-                let msg = rx.recv().await.unwrap();
+                let msg = {
+                    let msg = tokio::select! {
+                        msg = rx.recv() => Either::Left(msg.unwrap()),
+                        msg = stream.next() => Either::Right(msg.unwrap()),
+                    };
+                    let msg = match msg {
+                        Either::Left(left) => left,
+                        Either::Right(close) => {
+                            let close = close?;
+                            if matches!(close, rocket_ws::Message::Close(_)) {
+                                return Ok(());
+                            } else {
+                                continue;
+                            }
+                        }
+                    };
+
+                    if msg.tournament.id == tournament.id
+                        && let MsgContents::DrawUpdated(updated_round_id) =
+                            &msg.inner
+                        && updated_round_id == &round.id
+                    {
+                        msg
+                    } else {
+                        continue;
+                    }
+                };
 
                 if msg.tournament.id == tournament.id
                     && let MsgContents::DrawUpdated(updated_round_id) =
                         msg.inner
                     && updated_round_id == round.id
                 {
+                    let pool1 = pool.clone();
+                    let tournament = tournament.clone();
+                    let round_id = round_id.clone();
+                    let round = round.clone();
+                    let tournament_id = tournament_id.clone();
+                    let rendered = spawn_blocking(move || {
+                        let mut conn = pool1.get().unwrap();
+
+                        let repr =
+                            RoundDrawRepr::of_round(round.clone(), &mut *conn);
+
+                        let participants = TournamentParticipants::load(&tournament_id, &mut *conn);
+
+                        let table = DrawTableRenderer {
+                            tournament: &tournament,
+                            repr: &repr,
+                            actions: |_: &DebateRepr| maud! {"None"},
+                            participants: &participants
+                        };
+
+                        maud! {
+                            div id="tableContainer"
+                                hx-swap-oob="morphdom"
+                                "ws-connect"=(format!("/tournaments/{tournament_id}/rounds/{round_id}/draw/edit?channel"))
+                            {
+                                (table)
+                            }
+                        }
+                        .render()
+                        .into_inner()
+                    })
+                    .await.unwrap();
+
                     let _ = stream
-                        .send(rocket_ws::Message::Text(updated_round_id))
+                        .send(rocket_ws::Message::Text(rendered))
                         .await;
                 }
             }
@@ -211,9 +262,9 @@ pub enum FallibleResponse {
 pub async fn submit_cmd(
     tournament_id: &str,
     round_id: &str,
-    mut conn: Conn<true>,
     form: Form<EditDrawForm>,
     user: User<true>,
+    mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
@@ -248,23 +299,14 @@ pub async fn submit_cmd(
 
     let apply_move = apply_move(judge_no, debate_no, role, &round, &mut *conn);
     match apply_move {
-        Ok(()) => success({
-            let repr = RoundDrawRepr::of_round(round, &mut *conn);
-            let teams = tournament_teams::table
-                .filter(tournament_teams::tournament_id.eq(&tournament.id))
-                .load::<Team>(&mut *conn)
-                .unwrap()
-                .into_iter()
-                .map(|t| (t.id.clone(), t))
-                .collect::<HashMap<_, _>>();
-            let table = DrawTableRenderer {
-                tournament: &tournament,
-                repr: &repr,
-                actions: |_: &DebateRepr| maud! {"None"},
-                teams: &teams,
-            };
-            table.render()
-        }),
+        Ok(()) => success(
+            maud! {
+                p {
+                    "Applied move."
+                }
+            }
+            .render(),
+        ),
         Err(e) => bad_request(
             ErrorAlert {
                 msg: format!("Error evaluating command: {e}"),

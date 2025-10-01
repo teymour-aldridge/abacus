@@ -188,7 +188,7 @@ create table if not exists tournament_rounds (
     kind text not null check (kind in ('E', 'P')),
     break_category text references tournament_break_categories (id),
     completed boolean not null,
-    draw_status text not null default 'D' check (draw_status in ('D', 'C', 'R')),
+    draw_status text not null default 'N' check (draw_status in ('D', 'C', 'R', 'N')),
     draw_released_at timestamp,
     unique (tournament_id, name)
 );

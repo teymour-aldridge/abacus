@@ -16,7 +16,6 @@ use crate::tournaments::participants::Speaker;
 use crate::tournaments::rounds::ballots::BallotRepr;
 use crate::tournaments::teams::Team;
 
-use chrono::NaiveDateTime;
 use diesel::connection::LoadConnection;
 use diesel::prelude::*;
 use diesel::sql_types::BigInt;

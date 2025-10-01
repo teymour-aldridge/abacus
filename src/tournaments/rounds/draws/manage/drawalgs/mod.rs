@@ -2,16 +2,14 @@ use std::collections::HashMap;
 use std::panic::{UnwindSafe, catch_unwind};
 
 use chrono::NaiveDateTime;
-use diesel::dsl::case_when;
 use diesel::prelude::*;
-use diesel::sql_types::BigInt;
 use diesel::{connection::LoadConnection, sqlite::Sqlite};
 use rand::SeedableRng;
 use uuid::Uuid;
 
 use crate::schema::{
-    tournament_debate_teams, tournament_debates, tournament_round_tickets,
-    tournament_rounds, tournament_team_availability,
+    tournament_debate_judges, tournament_debate_teams, tournament_debates,
+    tournament_round_tickets, tournament_rounds, tournament_team_availability,
 };
 use crate::tournaments::rounds::draws::manage::drawalgs::general::TeamsOfRoom;
 use crate::tournaments::snapshots::take_snapshot;
@@ -61,7 +59,7 @@ pub fn do_draw(
             + UnwindSafe,
     >,
     conn: &mut impl LoadConnection<Backend = Sqlite>,
-    override_prior_ticket: bool,
+    force: bool,
 ) -> Result<String, MakeDrawError> {
     let ticket_id = conn
         .transaction(|conn| -> Result<Result<_, _>, diesel::result::Error> {
@@ -84,7 +82,7 @@ pub fn do_draw(
                 .unwrap();
 
             if let Some(previous_ticket_seq) = previous_ticket_seq
-                && override_prior_ticket
+                && force
             {
                 let id = Uuid::now_v7().to_string();
                 diesel::insert_into(tournament_round_tickets::table)
@@ -100,7 +98,7 @@ pub fn do_draw(
                     .execute(conn)
                     .unwrap();
                 Ok(Ok(id))
-            } else if previous_ticket_seq.is_some() && !override_prior_ticket {
+            } else if previous_ticket_seq.is_some() && !force {
                 return Ok(Err(MakeDrawError::AlreadyInProgress));
             } else {
                 let id = Uuid::now_v7().to_string();
@@ -214,6 +212,43 @@ pub fn do_draw(
                 .unwrap();
 
             let response = if !exists_active_ticket_with_higher_seq {
+                if force {
+                    diesel::delete(
+                        tournament_debate_judges::table.filter(
+                            tournament_debate_judges::debate_id.eq_any(
+                                tournament_debates::table
+                                    .filter(
+                                        tournament_debates::round_id
+                                            .eq(&round.id),
+                                    )
+                                    .select(tournament_debates::id),
+                            ),
+                        ),
+                    )
+                    .execute(conn)
+                    .unwrap();
+                    diesel::delete(
+                        tournament_debate_teams::table.filter(
+                            tournament_debate_teams::debate_id.eq_any(
+                                tournament_debates::table
+                                    .filter(
+                                        tournament_debates::round_id
+                                            .eq(&round.id),
+                                    )
+                                    .select(tournament_debates::id),
+                            ),
+                        ),
+                    )
+                    .execute(conn)
+                    .unwrap();
+                    diesel::delete(
+                        tournament_debates::table
+                            .filter(tournament_debates::round_id.eq(&round.id)),
+                    )
+                    .execute(conn)
+                    .unwrap();
+                }
+
                 diesel::update(
                     tournament_rounds::table
                         .filter(tournament_rounds::id.eq(&round.id)),

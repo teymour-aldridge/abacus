@@ -1,4 +1,4 @@
-use diesel::{dsl, prelude::*};
+use diesel::prelude::*;
 
 use crate::{
     schema::{

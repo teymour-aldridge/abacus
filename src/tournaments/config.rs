@@ -6,7 +6,7 @@ pub enum PullupMetric {
     LowestRank,
     #[serde(rename = "highest_rank")]
     HighestRank,
-    #[serde(rename = "randon")]
+    #[serde(rename = "random")]
     Random,
     #[serde(rename = "fewer_previous_pullups")]
     FewerPreviousPullups,

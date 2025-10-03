@@ -40,8 +40,8 @@ create table if not exists tournaments (
     elim_ballots_require_speaks boolean not null,
 
     -- DRAW RULES
-    institution_penalty integer,
-    history_penalty integer,
+    institution_penalty integer not null,
+    history_penalty integer not null,
     pullup_metrics text not null
         check(json_valid(pullup_metrics) = 1
             and json_type(pullup_metrics) = 'array'),

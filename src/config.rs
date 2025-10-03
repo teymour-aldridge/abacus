@@ -22,6 +22,9 @@ use crate::{
     tournaments::{
         Tournament,
         create::{create_tournament_page, do_create_tournament},
+        manage::config::{
+            update_tournament_configuration, view_tournament_configuration,
+        },
         participants::manage::{
             create_judge::{create_judge_page, do_create_judge},
             create_speaker::{create_speaker_page, do_create_speaker},
@@ -235,6 +238,8 @@ pub fn make_rocket() -> Rocket<Build> {
                 do_create_judge,
                 edit_judge_details_page,
                 do_edit_judge_details,
+                view_tournament_configuration,
+                update_tournament_configuration
             ],
         )
 }

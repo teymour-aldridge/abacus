@@ -115,8 +115,8 @@ pub async fn do_create_tournament(
             tournaments::pool_ballot_setup.eq("consensus"),
             tournaments::elim_ballot_setup.eq("consensus"),
             tournaments::elim_ballots_require_speaks.eq(false),
-            tournaments::institution_penalty.eq(None::<i64>),
-            tournaments::history_penalty.eq(None::<i64>),
+            tournaments::institution_penalty.eq(0),
+            tournaments::history_penalty.eq(0),
             tournaments::team_standings_metrics.eq(serde_json::to_string(&[
                 RankableTeamMetric::Wins,
                 RankableTeamMetric::NTimesAchieved(3),

@@ -1,4 +1,9 @@
-use serde::{Deserialize, Serialize};
+use std::fmt;
+
+use serde::{
+    Deserialize, Deserializer, Serialize, Serializer,
+    de::{self, Visitor},
+};
 
 #[derive(Serialize, Deserialize)]
 pub enum PullupMetric {
@@ -30,32 +35,141 @@ impl std::fmt::Display for PullupMetric {
     }
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 /// A metric upon which teams can be ranked. Note that some metrics _cannot_ be
 /// used to rank teams (for example, draw strength by rank) as this turns into a
 /// recursive mess.
 pub enum RankableTeamMetric {
-    #[serde(rename = "wins")]
     Wins,
     /// The total number of ballots in favour of this team.
-    #[serde(rename = "ballots")]
     Ballots,
     /// The total number of points the teams this team has debated against have
     /// achieved.
-    #[serde(rename = "draw_strength_by_wins")]
     DrawStrengthByWins,
     /// The sum of speaks of all the teams that the given team has faced.
-    #[serde(rename = "draw_strength_by_speaks")]
     DrawStrengthBySpeaks,
     /// The total number of times a team has achieved this many points.
-    #[serde(rename = "n_times_achieved")]
     NTimesAchieved(u8),
     /// The total speaker score of all the speakers on the team.
-    #[serde(rename = "total_speaker_score")]
     TotalSpeakerScore,
     /// The average total speaker score.
-    #[serde(rename = "avg_total_speaker_score")]
     AverageTotalSpeakerScore,
+}
+
+impl Serialize for RankableTeamMetric {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            RankableTeamMetric::Wins => serializer.serialize_str("wins"),
+            RankableTeamMetric::Ballots => serializer.serialize_str("ballots"),
+            RankableTeamMetric::DrawStrengthByWins => {
+                serializer.serialize_str("draw_strength_by_wins")
+            }
+            RankableTeamMetric::DrawStrengthBySpeaks => {
+                serializer.serialize_str("draw_strength_by_speaks")
+            }
+            RankableTeamMetric::NTimesAchieved(n) => {
+                // Dynamically create the string here
+                let s = format!("n_times_achieved_{}", n);
+                serializer.serialize_str(&s)
+            }
+            RankableTeamMetric::TotalSpeakerScore => {
+                serializer.serialize_str("total_speaker_score")
+            }
+            RankableTeamMetric::AverageTotalSpeakerScore => {
+                serializer.serialize_str("avg_total_speaker_score")
+            }
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for RankableTeamMetric {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct RankableTeamMetricVisitor;
+
+        impl<'de> Visitor<'de> for RankableTeamMetricVisitor {
+            type Value = RankableTeamMetric;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter
+                    .write_str("a string representing a RankableTeamMetric")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<RankableTeamMetric, E>
+            where
+                E: de::Error,
+            {
+                match value {
+                    "wins" => Ok(RankableTeamMetric::Wins),
+                    "ballots" => Ok(RankableTeamMetric::Ballots),
+                    "draw_strength_by_wins" => {
+                        Ok(RankableTeamMetric::DrawStrengthByWins)
+                    }
+                    "draw_strength_by_speaks" => {
+                        Ok(RankableTeamMetric::DrawStrengthBySpeaks)
+                    }
+                    "total_speaker_score" => {
+                        Ok(RankableTeamMetric::TotalSpeakerScore)
+                    }
+                    "avg_total_speaker_score" => {
+                        Ok(RankableTeamMetric::AverageTotalSpeakerScore)
+                    }
+                    s if s.starts_with("n_times_achieved_") => {
+                        // Parse the number from the end of the string
+                        let num_str = s.trim_start_matches("n_times_achieved_");
+                        match num_str.parse::<u8>() {
+                            Ok(n) => Ok(RankableTeamMetric::NTimesAchieved(n)),
+                            Err(_) => Err(E::custom(format!(
+                                "invalid number in metric: {}",
+                                s
+                            ))),
+                        }
+                    }
+                    _ => Err(E::unknown_variant(
+                        value,
+                        &["wins", "ballots", "n_times_achieved_..."],
+                    )),
+                }
+            }
+        }
+        deserializer.deserialize_str(RankableTeamMetricVisitor)
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn test_all_variants_roundtrip() {
+    let metrics_to_test = vec![
+        RankableTeamMetric::Wins,
+        RankableTeamMetric::Ballots,
+        RankableTeamMetric::DrawStrengthByWins,
+        RankableTeamMetric::DrawStrengthBySpeaks,
+        RankableTeamMetric::NTimesAchieved(0),
+        RankableTeamMetric::NTimesAchieved(3),
+        RankableTeamMetric::NTimesAchieved(255), // Max u8 value
+        RankableTeamMetric::TotalSpeakerScore,
+        RankableTeamMetric::AverageTotalSpeakerScore,
+    ];
+
+    for original_metric in metrics_to_test {
+        let serialized_metric = serde_json::to_string(&original_metric)
+            .expect("Failed to serialize metric");
+
+        let deserialized_metric: RankableTeamMetric =
+            serde_json::from_str(&serialized_metric)
+                .expect("Failed to deserialize metric");
+
+        assert_eq!(
+            original_metric, deserialized_metric,
+            "Round trip failed for {:?}",
+            original_metric
+        );
+    }
 }
 
 impl std::fmt::Display for RankableTeamMetric {

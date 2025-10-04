@@ -138,8 +138,11 @@ impl TournamentParticipants {
 
         let team_speakers = {
             let list = tournament_team_speakers::table
-                .inner_join(tournament_teams::table)
-                .filter(tournament_teams::tournament_id.eq(&tid))
+                // .inner_join(tournament_teams::table)
+                .filter(diesel::dsl::exists(
+                    tournament_speakers::table
+                        .filter(tournament_speakers::tournament_id.eq(&tid)),
+                ))
                 .select((
                     tournament_team_speakers::team_id,
                     tournament_team_speakers::speaker_id,

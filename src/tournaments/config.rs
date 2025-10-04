@@ -150,8 +150,9 @@ fn test_all_variants_roundtrip() {
         RankableTeamMetric::DrawStrengthByWins,
         RankableTeamMetric::DrawStrengthBySpeaks,
         RankableTeamMetric::NTimesAchieved(0),
+        RankableTeamMetric::NTimesAchieved(1),
+        RankableTeamMetric::NTimesAchieved(2),
         RankableTeamMetric::NTimesAchieved(3),
-        RankableTeamMetric::NTimesAchieved(255), // Max u8 value
         RankableTeamMetric::TotalSpeakerScore,
         RankableTeamMetric::AverageTotalSpeakerScore,
     ];

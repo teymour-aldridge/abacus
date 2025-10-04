@@ -26,8 +26,13 @@ use crate::{
     },
     state::{Conn, DbPool},
     template::Page,
-    tournaments::{Tournament, rounds::Round, teams::Team},
-    util_resp::{StandardResponse, err_not_found, see_other_ok, success},
+    tournaments::{
+        Tournament, participants::TournamentParticipants, rounds::Round,
+        teams::Team,
+    },
+    util_resp::{
+        StandardResponse, bad_request, err_not_found, see_other_ok, success,
+    },
 };
 
 pub struct ManageAvailabilityTable<'r> {
@@ -194,6 +199,24 @@ pub async fn view_team_availability(
                         (round.name)
                     }
                 }
+                div class = "row mt-3 mb-3" {
+                    @for round in &rounds {
+                        div class="col-md-auto" {
+                            form method="post" action=(format!("/tournaments/{tournament_id}/rounds/{}/availability/teams/all?check=in", round.id)) {
+                                button type="submit" class="btn btn-primary" {
+                                    "Check in all for " (round.name)
+                                }
+                            }
+                        }
+                        div class="col-md-auto" {
+                            form method="post" action=(format!("/tournaments/{tournament_id}/rounds/{}/availability/teams/all?check=out", round.id)) {
+                                button type="submit" class="btn btn-primary" {
+                                    "Check out all for " (round.name)
+                                }
+                            }
+                        }
+                    }
+                }
                 (table)
             })
             .render(),
@@ -334,6 +357,102 @@ pub async fn team_availability_updates(
 pub struct UpdateTeamAvailabilityForm {
     available: bool,
     team: String,
+}
+
+#[post(
+    "/tournaments/<tournament_id>/rounds/<round_id>/availability/teams/all?<check>"
+)]
+pub async fn update_eligibility_for_all(
+    tournament_id: &str,
+    round_id: &str,
+    user: User<true>,
+    mut conn: Conn<true>,
+    tx: &rocket::State<Sender<Msg>>,
+    check: &str,
+) -> StandardResponse {
+    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
+    tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+
+    let round = Round::fetch(&round_id, &mut *conn)?;
+
+    match check {
+        "in" => {
+            // todo: there is a more efficient way to do this
+            let participants =
+                TournamentParticipants::load(&tournament.id, &mut *conn);
+
+            for (_, team) in participants.teams {
+                let n =
+                    diesel::insert_into(tournament_team_availability::table)
+                        .values((
+                            tournament_team_availability::id
+                                .eq(Uuid::now_v7().to_string()),
+                            tournament_team_availability::round_id
+                                .eq(&round.id),
+                            tournament_team_availability::team_id.eq(&team.id),
+                            tournament_team_availability::available.eq(true),
+                        ))
+                        .on_conflict((
+                            tournament_team_availability::round_id,
+                            tournament_team_availability::team_id,
+                        ))
+                        .do_update()
+                        .set(tournament_team_availability::available.eq(true))
+                        .execute(&mut *conn)
+                        .unwrap();
+                assert_eq!(n, 1);
+            }
+
+            diesel::update(
+                tournament_team_availability::table.filter(
+                    tournament_team_availability::round_id.eq_any(
+                        tournament_rounds::table
+                            .filter(
+                                tournament_rounds::tournament_id
+                                    .eq(&round.tournament_id)
+                                    .and(tournament_rounds::seq.eq(round.seq))
+                                    // don't want to mark unavailable for
+                                    // current round
+                                    .and(tournament_rounds::id.ne(&round.id)),
+                            )
+                            .select(tournament_rounds::id),
+                    ),
+                ),
+            )
+            .set(tournament_team_availability::available.eq(false))
+            .execute(&mut *conn)
+            .unwrap();
+        }
+        "out" => {
+            diesel::update(
+                tournament_team_availability::table.filter(
+                    tournament_team_availability::round_id.eq(&round.id),
+                ),
+            )
+            .set(tournament_team_availability::available.eq(false))
+            .execute(&mut *conn)
+            .unwrap();
+        }
+        _ => {
+            // todo: proper page (but should not be encountered in standard use)
+            return bad_request(
+                maud! {
+                    "Invalid check-in option."
+                }
+                .render(),
+            );
+        }
+    }
+
+    let _ = tx.send(Msg {
+        tournament,
+        inner: MsgContents::TeamAvailabilityUpdate,
+    });
+
+    see_other_ok(Redirect::to(format!(
+        "/tournaments/{}/rounds/{}/availability/teams",
+        tournament_id, round.seq
+    )))
 }
 
 #[post(

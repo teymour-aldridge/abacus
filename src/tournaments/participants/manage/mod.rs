@@ -42,7 +42,7 @@ impl Renderable for ParticipantsTable {
         maud! {
             div class="row" hx-ext="ws" hx-swap-oob="morphdom"
             "ws-connect"=(format!("/tournaments/{}/participants?channel", self.0.id)) {
-                div class="col-md-4" {
+                div class="col" {
                     h3 {
                         "Judges"
                     }
@@ -194,7 +194,8 @@ impl Renderable for ParticipantsTable {
                                                             (speaker.email)
                                                         }
                                                         td {
-                                                            a href=(format!("/tournaments/{}/teams/{}/edit", self.0.id, team.id)) {
+                                                            // todo: edit speaker page
+                                                            a href=(format!("/tournaments/{}/teams/{}/speakers/{}/edit", self.0.id, team.id, speaker.id)) {
                                                                 "Edit speaker"
                                                             }
                                                         }

@@ -47,8 +47,8 @@ use crate::{
                     },
                     manage_round_availability,
                     teams::{
-                        team_availability_updates, update_team_eligibility,
-                        view_team_availability,
+                        team_availability_updates, update_eligibility_for_all,
+                        update_team_eligibility, view_team_availability,
                     },
                 },
                 create::{
@@ -239,7 +239,8 @@ pub fn make_rocket() -> Rocket<Build> {
                 edit_judge_details_page,
                 do_edit_judge_details,
                 view_tournament_configuration,
-                update_tournament_configuration
+                update_tournament_configuration,
+                update_eligibility_for_all
             ],
         )
 }

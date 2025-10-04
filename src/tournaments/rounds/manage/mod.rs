@@ -143,7 +143,7 @@ pub async fn manage_rounds_page(
 
                 @if let Some(min_outround_seq) = min_outround_seq {
                     @let max_outround_seq = max_outround_seq.unwrap();
-                    @for i in min_outround_seq..max_outround_seq {
+                    @for i in min_outround_seq..=max_outround_seq {
                         div class = "row" {
                             @for (_, rounds) in categories2rounds.iter().sorted_by_key(
                                 |(cat_id, _)| {

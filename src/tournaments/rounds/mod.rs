@@ -13,7 +13,7 @@ pub mod draws;
 pub mod manage;
 pub mod side_names;
 
-#[derive(Serialize, Deserialize, Queryable, Clone)]
+#[derive(Serialize, Deserialize, Queryable, Clone, Debug)]
 pub struct Round {
     pub id: String,
     pub tournament_id: String,
@@ -129,16 +129,28 @@ impl TournamentRounds {
 
         // check ordering of the rounds, and that elimination and preliminary
         // rounds are well separated
-        assert!(rounds.iter().fold(true, |prelim, next| {
-            match next.kind.as_str() {
-                "P" => {
-                    assert!(prelim);
-                    true
+        enum State {
+            P,
+            E,
+        }
+
+        rounds.iter().fold(State::P, |state, next| {
+            match (state, next.kind.as_str()) {
+                (State::P, "P") => {
+                    State::P
                 }
-                "E" => false,
-                _ => unreachable!("invalid round type `{}`", next.kind),
+                (State::P, "E") => {
+                    State::E
+                }
+                (State::E, "E") => {
+                    State::E
+                },
+                (State::E, "P") => {
+                    panic!("preliminary rounds must come before elimination rounds {next:?}");
+                }
+                _ => unreachable!()
             }
-        }));
+        });
 
         let is_prelim_round = |round: &Round| round.kind == "P";
 
@@ -170,11 +182,19 @@ impl TournamentRounds {
     pub fn categories(&self) -> HashMap<String, Vec<Round>> {
         let mut ret = HashMap::new();
         for round in &self.elim {
-            ret.entry(round.id.clone())
-                .and_modify(|list: &mut Vec<Round>| {
-                    list.push(round.clone());
-                })
-                .or_insert(vec![round.clone()]);
+            ret.entry(
+                round
+                    .break_cat
+                    .as_ref()
+                    .expect(
+                        "all elimination rounds should have a break category",
+                    )
+                    .clone(),
+            )
+            .and_modify(|list: &mut Vec<Round>| {
+                list.push(round.clone());
+            })
+            .or_insert(vec![round.clone()]);
         }
         ret
     }

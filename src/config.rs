@@ -35,6 +35,7 @@ use crate::{
             },
             manage_tournament_participants, tournament_participant_updates,
         },
+        privateurls::view::private_url_page,
         rounds::{
             draws::{
                 manage::create::{do_generate_draw, generate_draw_page},
@@ -240,7 +241,8 @@ pub fn make_rocket() -> Rocket<Build> {
                 do_edit_judge_details,
                 view_tournament_configuration,
                 update_tournament_configuration,
-                update_eligibility_for_all
+                update_eligibility_for_all,
+                private_url_page
             ],
         )
 }

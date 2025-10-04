@@ -209,7 +209,16 @@ fn private_url_page_of_judge(
             .user_opt(user)
             .tournament(tournament.clone())
             .body(maud! {
-                // todo: layout with columns
+                div class="row" {
+                    div class="card" {
+                        div class="card-body" {
+                            h5 class="card-title" {
+                                "Private URL for " (judge.name)
+                            }
+                            // todo: options to submit feedback
+                        }
+                    }
+                }
                 (current_debate_info)
             })
             .render(),

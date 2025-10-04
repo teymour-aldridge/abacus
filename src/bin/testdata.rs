@@ -1,7 +1,9 @@
 use std::fs::File;
 
+use abacus::MIGRATIONS;
 use abacus::schema::{
-    tournament_institutions, tournament_judges, tournament_members,
+    tournament_break_categories, tournament_institutions, tournament_judges,
+    tournament_members, tournament_round_tickets, tournament_rounds,
     tournament_speakers, tournament_team_speakers, tournament_teams,
     tournaments, users,
 };
@@ -12,11 +14,12 @@ use argon2::Argon2;
 use argon2::PasswordHasher;
 use argon2::password_hash::SaltString;
 use argon2::password_hash::rand_core::OsRng;
-use chrono::Utc;
+use chrono::{NaiveDateTime, Utc};
 use clap::Parser;
 use diesel::dsl::now;
 use diesel::prelude::*;
 use diesel::{Connection, QueryDsl, RunQueryDsl};
+use diesel_migrations::MigrationHarness;
 use uuid::Uuid;
 
 use crate::tabbycat_cli_copied::{JudgeRow, TeamRow};
@@ -28,6 +31,8 @@ pub struct Import {
     teams: bool,
     #[clap(long, short, action)]
     judges: bool,
+    #[clap(long, short, action)]
+    rounds: bool,
 }
 
 fn main() {
@@ -41,6 +46,8 @@ fn main() {
     };
 
     let mut conn = diesel::SqliteConnection::establish(&db_url).unwrap();
+
+    conn.run_pending_migrations(MIGRATIONS).unwrap();
 
     let user_id = if users::table
         .filter(users::username.eq("admin"))
@@ -222,6 +229,50 @@ fn main() {
                     tournament_judges::private_url
                         .eq(Uuid::new_v4().to_string()),
                     tournament_judges::number.eq(i as i64),
+                ))
+                .execute(&mut conn)
+                .unwrap();
+        }
+    }
+
+    if args.rounds {
+        let open = Uuid::now_v7().to_string();
+        diesel::insert_into(tournament_break_categories::table)
+            .values((
+                tournament_break_categories::id.eq(&open),
+                tournament_break_categories::tournament_id.eq(&tournament_id),
+                tournament_break_categories::name.eq("Open"),
+                tournament_break_categories::priority.eq(0),
+            ))
+            .execute(&mut conn)
+            .unwrap();
+
+        let rounds = [
+            (1, "Round 1A", "P", None::<String>),
+            (1, "Round 1B", "P", None::<String>),
+            (2, "Round 2", "P", None::<String>),
+            (3, "Round 3", "P", None::<String>),
+            (4, "Round 4", "P", None::<String>),
+            (5, "Round 5", "P", None::<String>),
+            (6, "Round 6", "P", None::<String>),
+            (7, "Quarterfinals", "E", Some(open.clone())),
+            (8, "Semi-finals", "E", Some(open.clone())),
+            (9, "Finals", "E", Some(open)),
+        ];
+
+        for round in rounds {
+            diesel::insert_into(tournament_rounds::table)
+                .values((
+                    tournament_rounds::id.eq(Uuid::now_v7().to_string()),
+                    tournament_rounds::tournament_id.eq(&tournament_id),
+                    tournament_rounds::seq.eq(round.0),
+                    tournament_rounds::name.eq(round.1),
+                    tournament_rounds::kind.eq(round.2),
+                    tournament_rounds::break_category.eq(round.3),
+                    tournament_rounds::completed.eq(false),
+                    tournament_rounds::draw_status.eq("N"),
+                    tournament_rounds::draw_released_at
+                        .eq(None::<NaiveDateTime>),
                 ))
                 .execute(&mut conn)
                 .unwrap();

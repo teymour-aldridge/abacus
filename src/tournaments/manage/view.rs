@@ -57,36 +57,33 @@ pub async fn admin_view_tournament(
                         div class = "col" {
                             div class="card" {
                                 div class="card-body" {
-                                    (round.name)
+                                    h5 class="card-title" {
+                                        (round.name)
+                                    }
                                 }
-                                @let status = &rounds.statuses[&round.id];
-                                a href=(match status {
-                                    crate::tournaments::rounds::RoundStatus::NotStarted => {
-                                        format!("/tournaments/{tid}/rounds/{}/draws/create", round.id)
-                                    },
-                                    crate::tournaments::rounds::RoundStatus::InProgress => {
-                                        format!("/tournaments/{tid}/rounds/{}", round.id)
-                                    },
-                                    crate::tournaments::rounds::RoundStatus::Completed => {
-                                        format!("/tournaments/{tid}/rounds/{}", round.id)
-                                    },
-                                    crate::tournaments::rounds::RoundStatus::Draft => {
-                                        format!("/tournaments/{tid}/rounds/{}", round.id)
-                                    },
-                                }) class="btn btn-primary" {
+                                div class="card-body" {
+                                    @let status = &rounds.statuses[&round.id];
                                     @match status {
                                         crate::tournaments::rounds::RoundStatus::NotStarted => {
-                                            "Generate draw"
+                                            a class="btn btn-primary" href = (format!("/tournaments/{tid}/rounds/{}/draws/create", round.id)) {
+                                                "Create draw"
+                                            }
                                         },
                                         crate::tournaments::rounds::RoundStatus::InProgress => {
-                                            "View draw"
+                                            a class="btn btn-primary" href = (format!("/tournaments/{tid}/rounds/{}", round.id)) {
+                                                "View draw"
+                                            }
                                         },
                                         crate::tournaments::rounds::RoundStatus::Completed => {
-                                            "View round"
+                                            a class="btn btn-primary" href = (format!("/tournaments/{tid}/rounds/{}/draws/create", round.id)) {
+                                                "View draw"
+                                            }
                                         },
                                         crate::tournaments::rounds::RoundStatus::Draft => {
-                                            "View draw"
-                                        }
+                                            a class="btn btn-primary" href = (format!("/tournaments/{tid}/rounds/{}/draw/edit", round.id)) {
+                                                "Edit draw"
+                                            }
+                                        },
                                     }
                                 }
                             }

@@ -8,6 +8,7 @@ use rocket::{
     form::Form,
     futures::{SinkExt, StreamExt},
     get, post,
+    response::Redirect,
 };
 use tokio::{sync::broadcast::Receiver, task::spawn_blocking};
 
@@ -30,17 +31,23 @@ use crate::{
             },
         },
     },
-    util_resp::{StandardResponse, bad_request, err_not_found, success},
+    util_resp::{
+        StandardResponse, bad_request, err_not_found, see_other_ok, success,
+    },
     widgets::alert::ErrorAlert,
 };
 
-#[get("/tournaments/<tournament_id>/rounds/<round_id>/draw/edit?<table_only>")]
+#[get("/tournaments/<tournament_id>/rounds/<round_id>/draw/edit")]
+/// Provides an interface to edit the draw.
+// TODO:
+// (1) it will probably be necessary to implement a drag and drop interface
+//     (might be quite doable with sortable.js and HTMX)
+// (2) allow allocating concurrent rounds
 pub async fn edit_draw_page(
     tournament_id: &str,
     round_id: &str,
     user: User<true>,
     mut conn: Conn<true>,
-    table_only: bool,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
@@ -66,51 +73,45 @@ pub async fn edit_draw_page(
         participants: &participants,
     };
 
-    if table_only {
-        success(table.render())
-    } else {
-        success(
-            Page::new()
-                .tournament(tournament.clone())
-                .user(user)
-                .body(maud! {
-                    script src="https://cdn.jsdelivr.net/npm/htmx-ext-response-targets@2.0.2" integrity="sha384-T41oglUPvXLGBVyRdZsVRxNWnOOqCynaPubjUVjxhsjFTKrFJGEMm3/0KGmNQ+Pg" crossorigin="anonymous" {
-                    }
+    success(
+        Page::new()
+            .tournament(tournament.clone())
+            .user(user)
+            .body(maud! {
+                script src="https://cdn.jsdelivr.net/npm/htmx-ext-response-targets@2.0.2" {
+                }
 
-                    h1 {
-                        "Edit draw for " (round.name)
-                    }
+                h1 {
+                    "Edit draw for " (round.name)
+                }
 
-                    div id="cmdBar" {
-                        div id = "cmdErrMsg" {}
-                        form hx-post=(format!("/tournaments/{tournament_id}/rounds/{round_id}/draw/edit"))
-                             hx-target="#tableContainer"
-                             "hx-target-4*"="cmdErrMsg" {
-                            div class="mb-3" {
-                              label for="cmd" class="form-label" { "Enter a command" }
-                              input type="text"
-                                    class="form-control"
-                                    id="cmd"
-                                    aria-describedby="cmdHelp"
-                                    name="cmd";
-                              div id="cmdHelp" class="form-text" {
-                                  "Enter a command to modify the draw."
-                              }
-                            }
-                            button type="submit" class="btn btn-primary" { "Submit" }
+                div id="cmdBar" hx-ext="response-targets" {
+                    div id = "cmdErrMsg" {}
+                    form method="post" action=(format!("/tournaments/{tournament_id}/rounds/{round_id}/draw/edit")) {
+                        div class="mb-3" {
+                          label for="cmd" class="form-label" { "Enter a command" }
+                          input type="text"
+                                class="form-control"
+                                id="cmd"
+                                aria-describedby="cmdHelp"
+                                name="cmd";
+                          div id="cmdHelp" class="form-text" {
+                              "Enter a command to modify the draw."
+                          }
                         }
+                        button type="submit" class="btn btn-primary" { "Submit" }
                     }
+                }
 
-                    div id="tableContainer"
-                        hx-swap-oob="morphdom"
-                        "ws-connect"=(format!("/tournaments/{tournament_id}/rounds/{round_id}/draw/edit?channel"))
-                    {
-                        (table)
-                    }
-                })
-                .render(),
-        )
-    }
+                div id="tableContainer"
+                    hx-swap-oob="morphdom"
+                    "ws-connect"=(format!("/tournaments/{tournament_id}/rounds/{round_id}/draw/edit?channel"))
+                {
+                    (table)
+                }
+            })
+            .render(),
+    )
 }
 
 #[get("/tournaments/<tournament_id>/rounds/<round_id>/draw/edit?channel")]
@@ -299,14 +300,9 @@ pub async fn submit_cmd(
 
     let apply_move = apply_move(judge_no, debate_no, role, &round, &mut *conn);
     match apply_move {
-        Ok(()) => success(
-            maud! {
-                p {
-                    "Applied move."
-                }
-            }
-            .render(),
-        ),
+        Ok(()) => see_other_ok(Redirect::to(format!(
+            "/tournaments/{tournament_id}/rounds/{round_id}/draw/edit"
+        ))),
         Err(e) => bad_request(
             ErrorAlert {
                 msg: format!("Error evaluating command: {e}"),
@@ -323,8 +319,18 @@ fn apply_move(
     round: &Round,
     conn: &mut impl LoadConnection<Backend = Sqlite>,
 ) -> Result<(), String> {
+    let judge = match tournament_judges::table
+        .filter(tournament_judges::number.eq(judge_no as i64))
+        .first::<Judge>(&mut *conn)
+        .optional()
+        .unwrap()
+    {
+        Some(judge) => judge,
+        None => return Err(format!("No such judge with numnber j{judge_no}")),
+    };
+
     let existing_alloc =
-        match tournament_judges::table
+        tournament_judges::table
             .filter(tournament_judges::number.eq(judge_no as i64))
             .inner_join(tournament_debate_judges::table)
             .inner_join(tournament_debates::table.on(
@@ -332,15 +338,7 @@ fn apply_move(
             ))
             .first::<(Judge, DebateJudge, Debate)>(conn)
             .optional()
-        {
-            Ok(Some(a)) => a,
-            Ok(None) => {
-                return Err(format!("No such judge with number {judge_no}"));
-            }
-            Err(e) => {
-                return Err(format!("Invalid command: {e}"));
-            }
-        };
+            .unwrap();
 
     let debate_to_alloc_to = if let Some(debate_no) = debate_no {
         match tournament_debates::table
@@ -364,32 +362,35 @@ fn apply_move(
         None
     };
 
-    let set = match debate_to_alloc_to {
-        Some(debate) => (
-            tournament_debate_judges::status.eq(role.to_string()),
-            tournament_debate_judges::debate_id.eq(debate.id),
-        ),
-        None => (
-            tournament_debate_judges::status.eq(role.to_string()),
-            tournament_debate_judges::debate_id
-                .eq(existing_alloc.1.debate_id.clone()),
-        ),
+    let _delete_existing_alloc = {
+        if let Some(alloc) = existing_alloc {
+            diesel::delete(
+                tournament_debate_judges::table.filter(
+                    tournament_debate_judges::debate_id
+                        .eq(alloc.1.debate_id)
+                        .and(
+                            tournament_debate_judges::judge_id
+                                .eq(alloc.1.judge_id),
+                        ),
+                ),
+            )
+            .execute(&mut *conn)
+            .unwrap();
+        }
     };
 
-    let n = diesel::update(
-        tournament_debate_judges::table.filter(
-            tournament_debate_judges::debate_id
-                .eq(&existing_alloc.1.debate_id)
-                .and(
-                    tournament_debate_judges::judge_id
-                        .eq(&existing_alloc.1.judge_id),
-                ),
-        ),
-    )
-    .set(set)
-    .execute(conn)
-    .unwrap();
-    assert_eq!(n, 1);
+    let _create_new_alloc = {
+        if let Some(alloc) = debate_to_alloc_to {
+            diesel::insert_into(tournament_debate_judges::table)
+                .values((
+                    tournament_debate_judges::debate_id.eq(alloc.id),
+                    tournament_debate_judges::judge_id.eq(judge.id),
+                    tournament_debate_judges::status.eq(role.to_string()),
+                ))
+                .execute(&mut *conn)
+                .unwrap();
+        }
+    };
 
     Ok(())
 }

@@ -27,6 +27,27 @@ where
         buffer: &mut hypertext::Buffer<hypertext::context::Node>,
     ) {
         maud! {
+            h3 {
+                "Unallocated judges"
+            }
+            div class="row" {
+                @for judge in self.participants.judges.values().filter(|judge| {
+                    // todo: could do this using SQLite
+                    let allocated_on_draw =
+                        self.repr.debates.iter().any(|debate| {
+                            debate.judges_of_debate.iter().any(|debate_judge| {
+                                debate_judge.judge_id == judge.id
+                            })
+                        });
+                    !allocated_on_draw
+                }) {
+                    div class="col" {
+                        p {
+                            (judge.name) "(j" (judge.number) ")"
+                        }
+                    }
+                }
+            }
             table class = "table" {
                 thead {
                     tr {
@@ -50,10 +71,10 @@ where
                     }
                 }
                 tbody {
-                    @for (i, debate) in self.repr.debates.iter().enumerate() {
+                    @for debate in self.repr.debates.iter() {
                         tr {
                             th scope="row" {
-                                (i)
+                                (debate.debate.number)
                             }
                             @for debate_team in &debate.teams_of_debate {
                                 td {
@@ -65,7 +86,13 @@ where
                             td {
                                 @for debate_judge in &debate.judges_of_debate {
                                     @let judge = &debate.judges.get(&debate_judge.judge_id).unwrap();
-                                    (judge.name)
+                                    div class="card m-1" {
+                                        div class="card-body" {
+                                            p class="card-text" {
+                                                (judge.name) " (" (debate_judge.status) ", " "j" (judge.number) ")"
+                                            }
+                                        }
+                                    }
                                 }
                             }
                             td {

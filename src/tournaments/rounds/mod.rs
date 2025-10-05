@@ -26,6 +26,7 @@ pub struct Round {
     pub draw_released_at: Option<chrono::NaiveDateTime>,
 }
 
+#[derive(Debug, Copy, Clone)]
 pub enum RoundStatus {
     NotStarted,
     InProgress,
@@ -111,9 +112,10 @@ impl Round {
     }
 }
 
+#[derive(Clone)]
 pub struct TournamentRounds {
-    prelim: Vec<Round>,
-    elim: Vec<Round>,
+    pub prelim: Vec<Round>,
+    pub elim: Vec<Round>,
     pub statuses: HashMap<String, RoundStatus>,
 }
 
@@ -125,7 +127,8 @@ impl TournamentRounds {
         let rounds = tournament_rounds::table
             .filter(tournament_rounds::tournament_id.eq(tid))
             .order_by((tournament_rounds::seq.asc(),))
-            .load::<Round>(conn)?;
+            .load::<Round>(conn)
+            .unwrap();
 
         // check ordering of the rounds, and that elimination and preliminary
         // rounds are well separated
@@ -177,6 +180,24 @@ impl TournamentRounds {
             elim: rounds.into_iter().skip_while(is_prelim_round).collect(),
             statuses: { round_status },
         })
+    }
+
+    pub fn group_by_seq(&self) -> Vec<Vec<Round>> {
+        use itertools::Itertools;
+
+        let grouped_iterator = self
+            .prelim
+            .iter()
+            .chain(self.elim.iter())
+            .sorted_by_key(|round| round.seq)
+            .chunk_by(|round| round.seq);
+
+        grouped_iterator
+            .into_iter()
+            .map(|(_, rounds)| {
+                rounds.into_iter().map(Clone::clone).collect::<Vec<_>>()
+            })
+            .collect()
     }
 
     pub fn categories(&self) -> HashMap<String, Vec<Round>> {

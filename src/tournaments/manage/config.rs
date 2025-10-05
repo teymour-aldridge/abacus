@@ -8,7 +8,9 @@ use crate::{
     schema::tournaments,
     state::Conn,
     template::Page,
-    tournaments::Tournament,
+    tournaments::{
+        Tournament, manage::sidebar::SidebarWrapper, rounds::TournamentRounds,
+    },
     util_resp::{StandardResponse, bad_request, see_other_ok, success},
 };
 
@@ -68,23 +70,27 @@ pub async fn view_tournament_configuration(
 
     let config = toml::to_string(&config_of_tournament(&tournament)).unwrap();
 
+    let rounds = TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
+
     success(
         Page::new()
             .user(user)
             .tournament(tournament.clone())
             .body(maud! {
-                h1 {
-                    "Edit configuration for " (tournament.name)
-                }
-
-                form method="post" {
-                    div class="mb-3" {
-                        textarea name="config" style="resize: both;" rows="25" cols="80" {
-                            (config)
-                        }
+                SidebarWrapper tournament=(&tournament) rounds=(&rounds) {
+                    h1 {
+                        "Edit configuration for " (tournament.name)
                     }
-                    button type="submit" class="btn btn-primary" {
-                        "Submit"
+
+                    form method="post" {
+                        div class="mb-3" {
+                            textarea name="config" style="resize: both;" rows="25" cols="80" {
+                                (config)
+                            }
+                        }
+                        button type="submit" class="btn btn-primary" {
+                            "Submit"
+                        }
                     }
                 }
             })

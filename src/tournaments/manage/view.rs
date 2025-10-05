@@ -6,6 +6,7 @@ use crate::{
     template::Page,
     tournaments::{
         Tournament,
+        manage::sidebar::SidebarWrapper,
         rounds::{Round, TournamentRounds},
     },
     util_resp::{StandardResponse, success},
@@ -31,59 +32,61 @@ pub async fn admin_view_tournament(
         .user(user)
         .tournament(tournament.clone())
         .body(maud! {
-            h1 {
-                "Overview"
-            }
-
-            Actions options=(&[
-                (format!("/tournaments/{}/configuration", tournament.id).as_str(), "Configure tournament"),
-                (format!("/tournaments/{}/participants", tournament.id).as_str(), "Manage participants"),
-                (format!("/tournaments/{}/rounds", tournament.id).as_str(), "Manage rounds")
-            ]);
-
-            @if active_rounds.is_empty() {
-                p {
-                    "Currently, there are no active rounds"
-                }
-            } @else {
+            SidebarWrapper tournament=(&tournament) rounds=(&rounds) {
                 h1 {
-                    "Currently active rounds"
+                    "Overview"
                 }
+
                 Actions options=(&[
-                    (format!("/tournaments/{}/rounds/{}/availability", tournament.id, active_rounds[0].seq).as_str(), "Manage availability for current rounds"),
+                    (format!("/tournaments/{}/configuration", tournament.id).as_str(), "Configure tournament"),
+                    (format!("/tournaments/{}/participants", tournament.id).as_str(), "Manage participants"),
+                    (format!("/tournaments/{}/rounds", tournament.id).as_str(), "Manage rounds")
                 ]);
-                div class = "row" {
-                    @for round in &active_rounds {
-                        div class = "col" {
-                            div class="card" {
-                                div class="card-body" {
-                                    h5 class="card-title" {
-                                        (round.name)
+
+                @if active_rounds.is_empty() {
+                    p {
+                        "Currently, there are no active rounds"
+                    }
+                } @else {
+                    h1 {
+                        "Currently active rounds"
+                    }
+                    Actions options=(&[
+                        (format!("/tournaments/{}/rounds/{}/availability", &tournament.id, active_rounds[0].seq).as_str(), "Manage availability for current rounds"),
+                    ]);
+                    div class = "row" {
+                        @for round in &active_rounds {
+                            div class = "col" {
+                                div class="card" {
+                                    div class="card-body" {
+                                        h5 class="card-title" {
+                                            (round.name)
+                                        }
                                     }
-                                }
-                                div class="card-body" {
-                                    @let status = &rounds.statuses[&round.id];
-                                    @match status {
-                                        crate::tournaments::rounds::RoundStatus::NotStarted => {
-                                            a class="btn btn-primary" href = (format!("/tournaments/{tid}/rounds/{}/draws/create", round.id)) {
-                                                "Create draw"
-                                            }
-                                        },
-                                        crate::tournaments::rounds::RoundStatus::InProgress => {
-                                            a class="btn btn-primary" href = (format!("/tournaments/{tid}/rounds/{}", round.id)) {
-                                                "View draw"
-                                            }
-                                        },
-                                        crate::tournaments::rounds::RoundStatus::Completed => {
-                                            a class="btn btn-primary" href = (format!("/tournaments/{tid}/rounds/{}/draws/create", round.id)) {
-                                                "View draw"
-                                            }
-                                        },
-                                        crate::tournaments::rounds::RoundStatus::Draft => {
-                                            a class="btn btn-primary" href = (format!("/tournaments/{tid}/rounds/{}/draw/edit", round.id)) {
-                                                "Edit draw"
-                                            }
-                                        },
+                                    div class="card-body" {
+                                        @let status = &rounds.statuses[&round.id];
+                                        @match status {
+                                            crate::tournaments::rounds::RoundStatus::NotStarted => {
+                                                a class="btn btn-primary" href = (format!("/tournaments/{tid}/rounds/{}/draws/create", round.id)) {
+                                                    "Create draw"
+                                                }
+                                            },
+                                            crate::tournaments::rounds::RoundStatus::InProgress => {
+                                                a class="btn btn-primary" href = (format!("/tournaments/{tid}/rounds/{}", round.id)) {
+                                                    "View draw"
+                                                }
+                                            },
+                                            crate::tournaments::rounds::RoundStatus::Completed => {
+                                                a class="btn btn-primary" href = (format!("/tournaments/{tid}/rounds/{}/draws/create", round.id)) {
+                                                    "View draw"
+                                                }
+                                            },
+                                            crate::tournaments::rounds::RoundStatus::Draft => {
+                                                a class="btn btn-primary" href = (format!("/tournaments/{tid}/rounds/{}/draw/edit", round.id)) {
+                                                    "Edit draw"
+                                                }
+                                            },
+                                        }
                                     }
                                 }
                             }

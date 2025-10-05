@@ -168,7 +168,7 @@ impl TeamStandings {
         teams.sort_by_cached_key(f);
 
         let binding = teams.clone().into_iter().chunk_by(f);
-        let grouped = binding
+        let teams_grouped_by_rank = binding
             .into_iter()
             .map(|(_key, chunk)| chunk.into_iter().collect::<Vec<_>>())
             .collect::<Vec<_>>();
@@ -194,8 +194,8 @@ impl TeamStandings {
 
             let mut n = 1;
 
-            for rank in &grouped {
-                for team in rank {
+            for teams_of_rank in &teams_grouped_by_rank {
+                for team in teams_of_rank {
                     map.insert(team.id.clone(), n as i64);
                 }
 
@@ -210,7 +210,7 @@ impl TeamStandings {
                 // =1 : t1, t2
                 // =3 : t3, t4
                 // =5 : t5, t6, t7
-                n += rank.len();
+                n += teams_of_rank.len();
             }
 
             map
@@ -219,7 +219,7 @@ impl TeamStandings {
         Self {
             metrics,
             ranked_metrics_of_team,
-            teams_in_rank_order: grouped,
+            teams_in_rank_order: teams_grouped_by_rank,
             pullup_metrics,
             rank_of_team,
         }

@@ -116,11 +116,7 @@ impl<R1: Renderable, R2: Renderable, const TX: bool> Renderable
                         }
                     }
                     @if let Some(body) = &self.body {
-                        div class="container" {
-                            div class="mt-4" {
-                                (body)
-                            }
-                        }
+                        (body)
                     }
                 }
             }

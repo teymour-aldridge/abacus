@@ -3,9 +3,8 @@ use std::fs::File;
 use abacus::MIGRATIONS;
 use abacus::schema::{
     tournament_break_categories, tournament_institutions, tournament_judges,
-    tournament_members, tournament_round_tickets, tournament_rounds,
-    tournament_speakers, tournament_team_speakers, tournament_teams,
-    tournaments, users,
+    tournament_members, tournament_rounds, tournament_speakers,
+    tournament_team_speakers, tournament_teams, tournaments, users,
 };
 use abacus::tournaments::config::{
     PullupMetric, RankableTeamMetric, SpeakerMetric,

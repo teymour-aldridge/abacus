@@ -27,7 +27,10 @@ use crate::{
     state::{Conn, DbPool},
     template::Page,
     tournaments::{
-        Tournament, participants::TournamentParticipants, rounds::Round,
+        Tournament,
+        manage::sidebar::SidebarWrapper,
+        participants::TournamentParticipants,
+        rounds::{Round, TournamentRounds},
         teams::Team,
     },
     util_resp::{
@@ -152,15 +155,8 @@ pub async fn view_team_availability(
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
-    let rounds = tournament_rounds::table
-        .filter(
-            tournament_rounds::tournament_id
-                .eq(&tournament_id)
-                .and(tournament_rounds::seq.eq(round_seq as i64)),
-        )
-        .order_by(tournament_rounds::id.asc())
-        .load::<Round>(&mut *conn)
-        .unwrap();
+    let rounds = TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
+    let current_rounds = Round::current_rounds(&tournament.id, &mut *conn);
 
     let teams = tournament_teams::table
         .filter(tournament_teams::tournament_id.eq(tournament_id))
@@ -170,13 +166,6 @@ pub async fn view_team_availability(
 
     let teams_and_availability =
         get_teams_and_availability(tournament_id, round_seq, &mut *conn);
-
-    let table = ManageAvailabilityTable {
-        tournament_id,
-        rounds: &rounds.clone(),
-        teams: &teams,
-        teams_and_availability: &teams_and_availability,
-    };
 
     success(
         Page::default()
@@ -188,36 +177,42 @@ pub async fn view_team_availability(
                 }
             )
             .user(user)
-            .tournament(tournament)
+            .tournament(tournament.clone())
             .body(maud! {
-                h1 {
-                    "Manage availabilities for rounds "
-                    @for (i, round) in rounds.iter().enumerate() {
-                        @if i > 0 {
-                            ", "
+                SidebarWrapper rounds=(&rounds) tournament=(&tournament) {
+                    h1 {
+                        "Manage availabilities for rounds "
+                        @for (i, round) in current_rounds.iter().enumerate() {
+                            @if i > 0 {
+                                ", "
+                            }
+                            (round.name)
                         }
-                        (round.name)
                     }
-                }
-                div class = "row mt-3 mb-3" {
-                    @for round in &rounds {
-                        div class="col-md-auto" {
-                            form method="post" action=(format!("/tournaments/{tournament_id}/rounds/{}/availability/teams/all?check=in", round.id)) {
-                                button type="submit" class="btn btn-primary" {
-                                    "Check in all for " (round.name)
+                    div class = "row mt-3 mb-3" {
+                        @for round in &current_rounds {
+                            div class="col-md-auto" {
+                                form method="post" action=(format!("/tournaments/{tournament_id}/rounds/{}/availability/teams/all?check=in", round.id)) {
+                                    button type="submit" class="btn btn-primary" {
+                                        "Check in all for " (round.name)
+                                    }
+                                }
+                            }
+                            div class="col-md-auto" {
+                                form method="post" action=(format!("/tournaments/{tournament_id}/rounds/{}/availability/teams/all?check=out", round.id)) {
+                                    button type="submit" class="btn btn-primary" {
+                                        "Check out all for " (round.name)
+                                    }
                                 }
                             }
                         }
-                        div class="col-md-auto" {
-                            form method="post" action=(format!("/tournaments/{tournament_id}/rounds/{}/availability/teams/all?check=out", round.id)) {
-                                button type="submit" class="btn btn-primary" {
-                                    "Check out all for " (round.name)
-                                }
-                            }
-                        }
                     }
+                    ManageAvailabilityTable
+                        tournament_id=(tournament_id)
+                        rounds=(&current_rounds)
+                        teams=(&teams)
+                        teams_and_availability=(&teams_and_availability);
                 }
-                (table)
             })
             .render(),
     )

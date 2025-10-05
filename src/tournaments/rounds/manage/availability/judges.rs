@@ -15,6 +15,8 @@ use uuid::Uuid;
 use crate::msg::{Msg, MsgContents};
 use crate::state::DbPool;
 use crate::template::Page;
+use crate::tournaments::manage::sidebar::SidebarWrapper;
+use crate::tournaments::rounds::TournamentRounds;
 use crate::util_resp::{see_other_ok, success};
 use crate::{
     auth::User,
@@ -118,9 +120,10 @@ pub async fn view_judge_availability(
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
-    let rounds = Round::of_seq(round_seq, &tournament.id, &mut *conn);
+    let current_rounds = Round::of_seq(round_seq, &tournament.id, &mut *conn);
+    let rounds = TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
 
-    if rounds.is_empty() {
+    if current_rounds.is_empty() {
         return err_not_found();
     }
 
@@ -191,25 +194,27 @@ pub async fn view_judge_availability(
     let table = JudgeAvailabilityTable {
         tournament_id: &tournament_id,
         judges: &tournament_judges,
-        rounds: &rounds.clone(),
+        rounds: &current_rounds.clone(),
         judge_availability: &judge_availability,
     };
 
     success(
         Page::new()
             .user(user)
-            .tournament(tournament)
+            .tournament(tournament.clone())
             .body(maud! {
-                h1 {
-                    "Manage judge availability for rounds "
-                    @for (i, round) in rounds.iter().enumerate() {
-                        @if i > 0 {
-                            ", "
+                SidebarWrapper tournament=(&tournament) rounds=(&rounds) {
+                    h1 {
+                        "Manage judge availability for rounds "
+                        @for (i, round) in current_rounds.iter().enumerate() {
+                            @if i > 0 {
+                                ", "
+                            }
+                            (round.name)
                         }
-                        (round.name)
                     }
+                    (table)
                 }
-                (table)
             })
             .render(),
     )

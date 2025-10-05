@@ -91,7 +91,7 @@ pub struct DebateJudge {
     pub status: String,
 }
 
-#[derive(Queryable, Serialize, Deserialize, Clone)]
+#[derive(Queryable, Serialize, Deserialize, Clone, Debug)]
 pub struct Institution {
     id: String,
     tournament_id: String,
@@ -106,6 +106,7 @@ pub struct BaseParticipant {
     private_url: String,
 }
 
+#[derive(Debug, Clone)]
 pub struct TournamentParticipants {
     pub teams: IndexMap<String, Team>,
     pub speakers: IndexMap<String, Speaker>,

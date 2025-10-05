@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use crate::{
     state::Conn,
+    tournaments::{manage::sidebar::SidebarWrapper, rounds::TournamentRounds},
     util_resp::{StandardResponse, success},
     widgets::actions::Actions,
 };
@@ -224,13 +225,11 @@ pub async fn manage_tournament_participants(
     table_only: bool,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(tid, &mut *conn)?;
+    tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
-    let table = {
-        let tournament = tournament.clone();
-        let participants = TournamentParticipants::load(tid, &mut *conn);
-
-        ParticipantsTable(tournament, participants)
-    };
+    let participants = TournamentParticipants::load(tid, &mut *conn);
+    let rounds = TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
+    let table = ParticipantsTable(tournament.clone(), participants.clone());
 
     if table_only {
         success(table.render())
@@ -244,11 +243,13 @@ pub async fn manage_tournament_participants(
                     }
                 })
                 .body(maud! {
-                    h1 {
-                        "Participants"
-                    }
+                    SidebarWrapper tournament=(&tournament) rounds=(&rounds) {
+                        h1 {
+                            "Participants"
+                        }
 
-                    (table)
+                        (table)
+                    }
                 })
                 .render(),
         )

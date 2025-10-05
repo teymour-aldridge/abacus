@@ -16,7 +16,10 @@ use crate::{
     schema::{tournament_break_categories, tournament_rounds},
     state::Conn,
     template::Page,
-    tournaments::{Tournament, categories::BreakCategory},
+    tournaments::{
+        Tournament, categories::BreakCategory, manage::sidebar::SidebarWrapper,
+        rounds::TournamentRounds,
+    },
     util_resp::{StandardResponse, err_not_found, see_other_ok, success},
 };
 
@@ -29,6 +32,8 @@ pub async fn create_new_round(
     let tournament = Tournament::fetch(tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
+    let rounds = TournamentRounds::fetch(&tid, &mut *conn).unwrap();
+
     let cats = tournament_break_categories::table
         .filter(tournament_break_categories::tournament_id.eq(&tournament.id))
         .order_by(tournament_break_categories::priority.asc())
@@ -36,22 +41,37 @@ pub async fn create_new_round(
         .unwrap();
 
     success(Page::new()
-        .tournament(tournament)
+        .tournament(tournament.clone())
         .user(user)
         .body(maud! {
-            h1 {
-                "Please select a category in which to create this round"
-            }
-
-            ul {
-                li {
-                    a href=(format!("/tournaments/{tid}/rounds/in_round/create")) {
-                        "In round"
-                    }
+            SidebarWrapper tournament=(&tournament) rounds=(&rounds) {
+                h1 {
+                    "Please select a category in which to create this round"
                 }
-                @for cat in &cats {
-                    a href=(format!("/tournaments/{tid}/rounds/{}/create", cat.id)) {
-                        (cat.name)
+
+                ul class="list-group" {
+                    li class="list-group-item" {
+                        a href=(format!("/tournaments/{tid}/rounds/in_round/create")) {
+                            "In round"
+                        }
+                    }
+                    @if !cats.is_empty() {
+                        @for cat in &cats {
+                            li class="list-group-item" {
+                                a href=(format!("/tournaments/{tid}/rounds/{}/create", cat.id)) {
+                                    (cat.name)
+                                }
+                            }
+                        }
+                    } @else {
+                        li class="list-group-item" {
+                            p {
+                                "To create elimination rounds, please first set up break categories"
+                                " (e.g. open, esl, etc)"
+                                // todo: link to these break categories (also
+                                // always link to "create new" break category)
+                            }
+                        }
                     }
                 }
             }
@@ -68,6 +88,8 @@ pub async fn create_new_round_of_specific_category_page(
 ) -> StandardResponse {
     let tournament = Tournament::fetch(tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+
+    let rounds = TournamentRounds::fetch(&tid, &mut *conn).unwrap();
 
     let () = {
         if category_id == "in_round" {
@@ -89,39 +111,41 @@ pub async fn create_new_round_of_specific_category_page(
 
     success(
         Page::new()
-            .tournament(tournament)
+            .tournament(tournament.clone())
             .user(user)
             .body(maud! {
-                form method="post" {
-                    div class="mb-3" {
-                        label for="roundName" class="form-label" {
-                            "Round name"
+                SidebarWrapper tournament=(&tournament) rounds=(&rounds)  {
+                    form method="post" {
+                        div class="mb-3" {
+                            label for="roundName" class="form-label" {
+                                "Round name"
+                            }
+                            input type="text"
+                                  name="name"
+                                  class="form-control"
+                                  id="roundName"
+                                  aria-describedby="roundNameHelp";
+                            div id="roundHelp" class="form-text" {
+                                "A human-readable description of the round, for"
+                                " example 'Round 1', or 'Grand final'"
+                            }
                         }
-                        input type="text"
-                              name="name"
-                              class="form-control"
-                              id="roundName"
-                              aria-describedby="roundNameHelp";
-                        div id="roundHelp" class="form-text" {
-                            "A human-readable description of the round, for"
-                            " example 'Round 1', or 'Grand final'"
+                        div class="mb-3" {
+                            label for="roundSeq" class="form-label" {
+                                "Round sequence"
+                            }
+                            input type="integer"
+                                  name="seq"
+                                  class="form-control"
+                                  id="roundSeq"
+                                  aria-describedby="roundNameHelp";
+                            div id="roundSeq" class="form-text" {
+                                "The sequence number of the round."
+                            }
                         }
+                        button type="submit" class="btn btn-primary" { "Submit" }
+                        // todo: break categories
                     }
-                    div class="mb-3" {
-                        label for="roundSeq" class="form-label" {
-                            "Round sequence"
-                        }
-                        input type="integer"
-                              name="seq"
-                              class="form-control"
-                              id="roundSeq"
-                              aria-describedby="roundNameHelp";
-                        div id="roundSeq" class="form-text" {
-                            "The sequence number of the round."
-                        }
-                    }
-                    button type="submit" class="btn btn-primary" { "Submit" }
-                    // todo: break categories
                 }
             })
             .render(),

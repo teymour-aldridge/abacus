@@ -7,7 +7,12 @@ use crate::{
     schema::tournament_rounds,
     state::Conn,
     template::Page,
-    tournaments::{Tournament, rounds::Round, snapshots::take_snapshot},
+    tournaments::{
+        Tournament,
+        manage::sidebar::SidebarWrapper,
+        rounds::{Round, TournamentRounds},
+        snapshots::take_snapshot,
+    },
     util_resp::{
         FailureResponse, StandardResponse, SuccessResponse, err_not_found,
         see_other_ok,
@@ -35,45 +40,50 @@ pub async fn edit_round_page(
         None => return Err(FailureResponse::NotFound(())),
     };
 
+    let rounds = TournamentRounds::fetch(tid, &mut *conn).unwrap();
+
     Ok(SuccessResponse::Success(
         Page::new()
-            .tournament(tournament)
+            .tournament(tournament.clone())
             .user(user)
             .body(maud! {
-                form method="post" {
-                    div class="mb-3" {
-                        label for="roundName" class="form-label" {
-                            "Round name"
+                SidebarWrapper rounds=(&rounds) tournament=(&tournament) {
+                    form method="post" {
+                        div class="mb-3" {
+                            label for="roundName" class="form-label" {
+                                "Round name"
+                            }
+                            input type="text"
+                                  name="name"
+                                  class="form-control"
+                                  id="roundName"
+                                  aria-describedby="roundNameHelp"
+                                  value=(round.name);
+                            div id="roundHelp" class="form-text" {
+                                "A human-readable description of the round, for"
+                                " example 'Round 1', or 'Grand final'"
+                            }
                         }
-                        input type="text"
-                              name="name"
-                              class="form-control"
-                              id="roundName"
-                              aria-describedby="roundNameHelp"
-                              value=(round.name);
-                        div id="roundHelp" class="form-text" {
-                            "A human-readable description of the round, for"
-                            " example 'Round 1', or 'Grand final'"
+                        div class="mb-3" {
+                            label for="roundSeq" class="form-label" {
+                                "Round sequence"
+                            }
+                            input type="integer"
+                                  name="seq"
+                                  class="form-control"
+                                  id="roundSeq"
+                                  aria-describedby="roundNameHelp"
+                                  value=(round.seq);
+                            div id="roundSeq" class="form-text" {
+                                "A human-readable description of the round, for"
+                                " example 'Round 1', or 'Grand final'"
+                            }
                         }
+                        button type="submit" class="btn btn-primary" { "Submit" }
+                        // todo: break categories
                     }
-                    div class="mb-3" {
-                        label for="roundSeq" class="form-label" {
-                            "Round sequence"
-                        }
-                        input type="integer"
-                              name="seq"
-                              class="form-control"
-                              id="roundSeq"
-                              aria-describedby="roundNameHelp"
-                              value=(round.seq);
-                        div id="roundSeq" class="form-text" {
-                            "A human-readable description of the round, for"
-                            " example 'Round 1', or 'Grand final'"
-                        }
-                    }
-                    button type="submit" class="btn btn-primary" { "Submit" }
-                    // todo: break categories
                 }
+
             })
             .render(),
     ))

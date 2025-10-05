@@ -131,8 +131,10 @@ pub fn home(
             Page::new()
                 .user(user)
                 .body(maud! {
-                    Actions options=(&[("/tournaments/create", "Create tournament")]);
-                    (tournaments)
+                    div class="p-3" {
+                        Actions options=(&[("/tournaments/create", "Create tournament")]);
+                        (tournaments)
+                    }
                 })
                 .render(),
         )

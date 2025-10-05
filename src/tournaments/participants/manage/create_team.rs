@@ -45,6 +45,9 @@ pub async fn create_teams_page(
         .tournament(tournament)
         .body(maud! {
             form method="post" {
+              h1 {
+                  "Create new team"
+              }
               div class="mb-3" {
                 label for="teamName" class="form-label" { "Name of new team" }
                 input

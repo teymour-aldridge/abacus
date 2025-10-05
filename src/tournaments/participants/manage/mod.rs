@@ -43,7 +43,7 @@ impl Renderable for ParticipantsTable {
         maud! {
             div class="row" hx-ext="ws" hx-swap-oob="morphdom"
             "ws-connect"=(format!("/tournaments/{}/participants?channel", self.0.id)) {
-                div class="col" {
+                div class="col mb-3 col-md-6" {
                     h3 {
                         "Judges"
                     }
@@ -51,7 +51,7 @@ impl Renderable for ParticipantsTable {
                         (format!("/tournaments/{}/judges/create", self.0.id).as_str(), "Add judge")
                     ]);
 
-                    table class = "table table-striped table-bordered" id="judgesTable" {
+                    table class = "table  table-striped table-bordered" id="judgesTable" {
                         thead {
                             th scope="col" {
                                 "Name"
@@ -72,7 +72,7 @@ impl Renderable for ParticipantsTable {
                                     th scope="col" {
                                         (judge.name)
                                     }
-                                    td {
+                                    td style="word-wrap: break-word;min-width: 160px;max-width: 160px;" {
                                         (judge.email)
                                     }
                                     td {
@@ -98,7 +98,7 @@ impl Renderable for ParticipantsTable {
                     }
 
                 }
-                div class="col" {
+                div class="col mb-3 col-md-6" {
                     h3 {
                         "Teams"
                     }
@@ -158,13 +158,13 @@ impl Renderable for ParticipantsTable {
                                 }
 
                                 tr {
-                                    td colspan="4" class="px-4 py-4" {
+                                    td colspan="4" {
                                         p {
                                             b {
                                                 "Speakers"
                                             }
                                         }
-                                        table class="table table-bordered mb-0" {
+                                        table class="table  table-bordered mb-0" {
                                             thead {
                                                 th scope="col" {
                                                     "#"
@@ -191,7 +191,7 @@ impl Renderable for ParticipantsTable {
                                                         td {
                                                             (speaker.name)
                                                         }
-                                                        td {
+                                                        td style="word-wrap: break-word;min-width: 160px;max-width: 160px;" {
                                                             (speaker.email)
                                                         }
                                                         td {

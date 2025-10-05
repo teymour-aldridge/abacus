@@ -10,9 +10,11 @@ use crate::{
     template::Page,
     tournaments::{
         Tournament,
+        manage::sidebar::SidebarWrapper,
         participants::{
             Institution, manage::gen_private_url::get_unique_private_url,
         },
+        rounds::TournamentRounds,
     },
     util_resp::{StandardResponse, bad_request, see_other_ok, success},
     validation::is_valid_email,
@@ -36,48 +38,56 @@ pub async fn create_judge_page(
         .load::<Institution>(&mut *conn)
         .unwrap();
 
+    let rounds = TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
+
     success(Page::new()
         .user(user)
-        .tournament(tournament)
+        .tournament(tournament.clone())
         .body(maud! {
-            form method="post" {
-              div class="mb-3" {
-                label for="judgeName" class="form-label" { "Name of the judge" }
-                input
-                    type="text"
-                    class="form-control"
-                    id="judgeName"
-                    name="name"
-                    required;
-              }
-              div class="mb-3" {
-                label for="judgeEmail" class="form-label" { "Email of the judge" }
-                input
-                    type="text"
-                    class="form-control"
-                    id="judgeEmail"
-                    aria-describedby="emailHelp"
-                    name="email"
-                    required;
-                div id="emailHelp" class="form-text" {
-                    "The email of this judge."
-                }
-              }
-
-              div class="mb-3" {
-                label for="institution" { "Institution" }
-                select name="institution_id" id="institution" {
-                    option value = "-----" {
-                        "No institution"
+            SidebarWrapper rounds=(&rounds) tournament=(&tournament) {
+                form method="post" {
+                    h1 {
+                        "Create new judge"
                     }
-                    @for institution in &institutions {
-                        option value = (institution.id) {
-                            (institution.name)
+
+                    div class="mb-3" {
+                        label for="judgeName" class="form-label" { "Name of the judge" }
+                        input
+                            type="text"
+                            class="form-control"
+                            id="judgeName"
+                            name="name"
+                            required;
+                    }
+                    div class="mb-3" {
+                        label for="judgeEmail" class="form-label" { "Email of the judge" }
+                        input
+                            type="text"
+                            class="form-control"
+                            id="judgeEmail"
+                            aria-describedby="emailHelp"
+                            name="email"
+                            required;
+                        div id="emailHelp" class="form-text" {
+                            "The email of this judge."
                         }
                     }
+
+                    div class="mb-3" {
+                        label for="institution" { "Institution" }
+                        select name="institution_id" id="institution" {
+                            option value = "-----" {
+                                "No institution"
+                            }
+                            @for institution in &institutions {
+                                option value = (institution.id) {
+                                    (institution.name)
+                                }
+                            }
+                        }
+                    }
+                    button type="submit" class="btn btn-primary" { "Create team" }
                 }
-              }
-              button type="submit" class="btn btn-primary" { "Create team" }
             }
         })
         .render())

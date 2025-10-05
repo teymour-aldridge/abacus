@@ -9,9 +9,9 @@ use crate::{
     state::Conn,
     template::Page,
     tournaments::{
-        Tournament,
+        Tournament, manage::sidebar::SidebarWrapper,
         participants::manage::gen_private_url::get_unique_private_url,
-        teams::Team,
+        rounds::TournamentRounds, teams::Team,
     },
     util_resp::{StandardResponse, see_other_ok, success},
     validation::is_valid_email,
@@ -32,24 +32,28 @@ pub async fn create_speaker_page(
 
     let team = Team::fetch(team_id, tournament_id, &mut *conn)?;
 
+    let rounds = TournamentRounds::fetch(&tournament_id, &mut *conn).unwrap();
+
     success(
         Page::new()
             .user(user)
-            .tournament(tournament)
+            .tournament(tournament.clone())
             .body(maud! {
-                h1 {
-                    "Add speaker to " (team.name)
-                }
-                form method="post" class="mt-4" {
-                    div class="mb-3" {
-                        label for="name" class="form-label" { "Name" }
-                        input type="text" class="form-control" id="name" name="name";
+                SidebarWrapper rounds=(&rounds) tournament=(&tournament) {
+                    h1 {
+                        "Add speaker to " (team.name)
                     }
-                    div class="mb-3" {
-                        label for="email" class="form-label" { "Email" }
-                        input type="email" class="form-control" id="email" name="email";
+                    form method="post" class="mt-4" {
+                        div class="mb-3" {
+                            label for="name" class="form-label" { "Name" }
+                            input type="text" class="form-control" id="name" name="name";
+                        }
+                        div class="mb-3" {
+                            label for="email" class="form-label" { "Email" }
+                            input type="email" class="form-control" id="email" name="email";
+                        }
+                        button type="submit" class="btn btn-primary" { "Register" }
                     }
-                    button type="submit" class="btn btn-primary" { "Register" }
                 }
             })
             .render(),

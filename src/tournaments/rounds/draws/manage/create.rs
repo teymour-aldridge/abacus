@@ -10,8 +10,9 @@ use crate::{
     template::Page,
     tournaments::{
         Tournament,
+        manage::sidebar::SidebarWrapper,
         rounds::{
-            Round,
+            Round, TournamentRounds,
             draws::manage::drawalgs::{self, MakeDrawError, do_draw},
         },
     },
@@ -47,25 +48,29 @@ pub async fn generate_draw_page(
 
     let debates_exist = round.draw_status != "N";
 
+    let rounds = TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
+
     success(
         Page::new()
-            .tournament(tournament)
+            .tournament(tournament.clone())
             .user(user)
             .body(maud! {
-                @if debates_exist {
-                    ErrorAlert
-                        msg = "Warning: a draw already exists for this round. Creating
-                         a new draw will delete the old draw!";
+                SidebarWrapper tournament=(&tournament) rounds=(&rounds) {
+                    @if debates_exist {
+                        ErrorAlert
+                            msg = "Warning: a draw already exists for this round. Creating
+                             a new draw will delete the old draw!";
 
-                    form method="post" action=(format!("/tournaments/{}/rounds/{}/draws/create?force=true", tournament_id, round_id)) {
-                        button type="submit" class="btn btn-danger" {
-                            "Delete existing draw and generate a new one"
+                        form method="post" action=(format!("/tournaments/{}/rounds/{}/draws/create?force=true", tournament_id, round_id)) {
+                            button type="submit" class="btn btn-danger" {
+                                "Delete existing draw and generate a new one"
+                            }
                         }
-                    }
-                } @else {
-                    form method="post" {
-                        button type="submit" class="btn btn-primary" {
-                            "Generate draw"
+                    } @else {
+                        form method="post" {
+                            button type="submit" class="btn btn-primary" {
+                                "Generate draw"
+                            }
                         }
                     }
                 }
@@ -107,15 +112,15 @@ pub async fn do_generate_draw(
 
         let draw_result = do_draw(
             tournament.clone(),
-            round,
+            &round,
             Box::new(drawalgs::general::make_draw),
             &mut conn,
             force,
         );
 
         match draw_result {
-            Ok(returned_round_id) => see_other_ok(Redirect::to(format!(
-                "/tournaments/{tournament_id}/rounds/{returned_round_id}",
+            Ok(()) => see_other_ok(Redirect::to(format!(
+                "/tournaments/{tournament_id}/rounds/{}", round.seq
             ))),
             Err(e) => {
                 let msg = match e {

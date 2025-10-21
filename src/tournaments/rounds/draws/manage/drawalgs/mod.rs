@@ -53,14 +53,14 @@ pub struct DrawInput {
 /// on a background thread (i.e. not the async executor).
 pub fn do_draw(
     tournament: Tournament,
-    round: Round,
+    round: &Round,
     draw_generator: Box<
         dyn Fn(DrawInput) -> Result<Vec<TeamsOfRoom>, MakeDrawError>
             + UnwindSafe,
     >,
     conn: &mut impl LoadConnection<Backend = Sqlite>,
     force: bool,
-) -> Result<String, MakeDrawError> {
+) -> Result<(), MakeDrawError> {
     let ticket_id = conn
         .transaction(|conn| -> Result<Result<_, _>, diesel::result::Error> {
             diesel::delete(
@@ -176,7 +176,7 @@ pub fn do_draw(
     };
 
     conn.transaction(
-        |conn| -> Result<Result<String, MakeDrawError>, diesel::result::Error> {
+        |conn| -> Result<Result<(), MakeDrawError>, diesel::result::Error> {
             let (tickets1, tickets2) = diesel::alias!(
                 tournament_round_tickets as tickets1,
                 tournament_round_tickets as tickets2
@@ -324,7 +324,7 @@ pub fn do_draw(
                 .execute(conn)
                 .unwrap();
 
-                Ok(Ok(round.id.clone()))
+                Ok(Ok(()))
             } else {
                 Ok(Err(MakeDrawError::TicketExpired))
             };

@@ -1,8 +1,13 @@
+//! Code to edit the draw.
+//!
+//! TODO: at some point it will be necessary to create a proper user interface
+//! for draw editing
+
 use std::fmt::Write;
 
 use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
 use hypertext::prelude::*;
-use itertools::Either;
+use itertools::{Either, Itertools};
 use rocket::{
     FromForm, Responder, State,
     form::Form,
@@ -27,7 +32,8 @@ use crate::{
         rounds::{
             Round,
             draws::{
-                Debate, DebateRepr, RoundDrawRepr, manage::DrawTableRenderer,
+                Debate, DebateRepr, RoundDrawRepr,
+                manage::{DrawTableHeaders, RoomsOfRoundTable},
             },
         },
     },
@@ -37,41 +43,32 @@ use crate::{
     widgets::alert::ErrorAlert,
 };
 
-#[get("/tournaments/<tournament_id>/rounds/<round_id>/draw/edit")]
-/// Provides an interface to edit the draw.
-// TODO:
-// (1) it will probably be necessary to implement a drag and drop interface
-//     (might be quite doable with sortable.js and HTMX)
-// (2) allow allocating concurrent rounds
-pub async fn edit_draw_page(
+#[get("/tournaments/<tournament_id>/rounds/draws/edit?<rounds>")]
+pub async fn edit_multiple_draws_page(
     tournament_id: &str,
-    round_id: &str,
+    rounds: Vec<String>,
     user: User<true>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
-    let round = match tournament_rounds::table
-        .filter(tournament_rounds::id.eq(round_id))
-        .first::<Round>(&mut *conn)
+    let rounds2edit = match tournament_rounds::table
+        .filter(tournament_rounds::id.eq_any(&rounds))
+        .load::<Round>(&mut *conn)
         .optional()
         .unwrap()
     {
-        Some(t) => t,
-        None => return err_not_found(),
+        Some(t) if t.len() == rounds.len() => t,
+        Some(_) | None => return err_not_found(),
     };
 
-    let repr = RoundDrawRepr::of_round(round.clone(), &mut *conn);
+    let reprs = rounds2edit
+        .into_iter()
+        .map(|round| RoundDrawRepr::of_round(round.clone(), &mut *conn))
+        .collect::<Vec<_>>();
 
     let participants = TournamentParticipants::load(&tournament_id, &mut *conn);
-
-    let table = DrawTableRenderer {
-        tournament: &tournament,
-        repr: &repr,
-        actions: |_: &DebateRepr| maud! {"None"},
-        participants: &participants,
-    };
 
     success(
         Page::new()
@@ -82,46 +79,103 @@ pub async fn edit_draw_page(
                 }
 
                 h1 {
-                    "Edit draw for " (round.name)
-                }
-
-                div id="cmdBar" hx-ext="response-targets" {
-                    div id = "cmdErrMsg" {}
-                    form method="post" action=(format!("/tournaments/{tournament_id}/rounds/{round_id}/draw/edit")) {
-                        div class="mb-3" {
-                          label for="cmd" class="form-label" { "Enter a command" }
-                          input type="text"
-                                class="form-control"
-                                id="cmd"
-                                aria-describedby="cmdHelp"
-                                name="cmd";
-                          div id="cmdHelp" class="form-text" {
-                              "Enter a command to modify the draw."
-                          }
+                    "Edit draw for rounds "
+                    @for (i, repr) in reprs.iter().enumerate() {
+                        @if i > 0 {
+                            ", "
                         }
-                        button type="submit" class="btn btn-primary" { "Submit" }
+                        (repr.round.name)
                     }
                 }
 
-                div id="tableContainer"
-                    hx-swap-oob="morphdom"
-                    "ws-connect"=(format!("/tournaments/{tournament_id}/rounds/{round_id}/draw/edit?channel"))
-                {
-                    (table)
-                }
+                (renderer_of_command_bar(&tournament, &reprs))
+
+                (get_refreshable_part(&tournament, &reprs, &participants))
             })
             .render(),
     )
 }
 
-#[get("/tournaments/<tournament_id>/rounds/<round_id>/draw/edit?channel")]
+fn renderer_of_command_bar(
+    tournament: &Tournament,
+    rounds: &[RoundDrawRepr],
+) -> impl Renderable {
+    maud! {
+        div id="cmdBar" hx-ext="response-targets" {
+            div id = "cmdErrMsg" {}
+            form method="post"
+                action=(
+                    format!("/tournaments/{}/rounds/draws/edit?rounds={}",
+                        tournament.id,
+                        rounds.iter().map(|repr| repr.round.id.clone()).join(",")
+                    )
+                ) {
+                div class="mb-3" {
+                  label for="cmd" class="form-label" { "Enter a command" }
+                  input type="text"
+                        class="form-control"
+                        id="cmd"
+                        aria-describedby="cmdHelp"
+                        name="cmd";
+                  div id="cmdHelp" class="form-text" {
+                      "Enter a command to modify the draw."
+                  }
+                }
+                button type="submit" class="btn btn-primary" { "Submit" }
+            }
+        }
+    }
+}
+
+/// Returns an item that returns the part that is "refreshable"
+fn get_refreshable_part(
+    tournament: &Tournament,
+    reprs: &[RoundDrawRepr],
+    participants: &TournamentParticipants,
+) -> impl Renderable {
+    maud! {
+        div id="tableContainer"
+            hx-swap-oob="morphdom"
+            "ws-connect"=(
+                format!(
+                    "/tournaments/{}/rounds/draw/edit?channel&rounds={}",
+                    tournament.id,
+                    reprs.iter().map(|repr| repr.round.id.clone()).join(",")
+                )
+            )
+        {
+            table {
+                DrawTableHeaders tournament=(&tournament);
+
+                @for repr in reprs {
+                    @if repr.debates.is_empty() {
+                        div class="alert alert-warning" role="alert" {
+                            "Note: there exists no draw for " (repr.round.name)
+                        }
+                    } @else {
+                        RoomsOfRoundTable
+                            tournament=(&tournament)
+                            repr=(&repr)
+                            actions=(|_: &DebateRepr| maud! {"None"})
+                            participants=(participants)
+                            body_only=(true);
+                    }
+                }
+
+            }
+
+        }
+    }
+}
+
+#[get("/tournaments/<tournament_id>/rounds/draws/edit?<round_ids>&channel")]
 /// Provides a WebSocket channel which notifies clients when the draw has been
 /// updated. After receiving this message, the client should then reload the
 /// draw (using [`edit_draw_page_tab_dir`], with the `table_only` flag set to
 /// true).
 pub async fn draw_updates(
     tournament_id: &str,
-    round_id: &str,
+    round_ids: Vec<String>,
     pool: &State<DbPool>,
     rx: &State<Receiver<Msg>>,
     ws: rocket_ws::WebSocket,
@@ -130,9 +184,9 @@ pub async fn draw_updates(
     let pool: DbPool = pool.inner().clone();
 
     let pool1 = pool.clone();
-    let (tournament, round) = {
-        let round_id = round_id.to_string();
+    let (tournament, _) = {
         let tournament_id = tournament_id.to_string();
+        let round_ids = round_ids.clone();
 
         match spawn_blocking(move || {
             let mut conn = pool1.get().unwrap();
@@ -143,13 +197,18 @@ pub async fn draw_updates(
                 .check_user_is_superuser(&user.id, &mut conn)
                 .ok()?;
 
-            let round = tournament_rounds::table
-                .filter(tournament_rounds::id.eq(&round_id))
-                .first::<Round>(&mut conn)
+            let rounds = tournament_rounds::table
+                .filter(tournament_rounds::tournament_id.eq(&tournament.id))
+                .filter(tournament_rounds::id.eq_any(&round_ids))
+                .load::<Round>(&mut conn)
                 .optional()
                 .unwrap();
 
-            round.map(|r| (tournament, r))
+            if rounds.as_ref().unwrap_or(&vec![]).len() != round_ids.len() {
+                return None;
+            }
+
+            rounds.map(|r| (tournament, r))
         })
         .await
         .unwrap()
@@ -162,11 +221,10 @@ pub async fn draw_updates(
     let mut rx: Receiver<Msg> = rx.inner().resubscribe();
 
     let tournament_id = tournament.id.clone();
-    let round_id: String = round_id.to_string();
     Some(ws.channel(move |mut stream| {
         Box::pin(async move {
             loop {
-                let msg = {
+                let _listen_for_relevant_messages = {
                     let msg = tokio::select! {
                         msg = rx.recv() => Either::Left(msg.unwrap()),
                         msg = stream.next() => Either::Right(msg.unwrap()),
@@ -186,7 +244,7 @@ pub async fn draw_updates(
                     if msg.tournament.id == tournament.id
                         && let MsgContents::DrawUpdated(updated_round_id) =
                             &msg.inner
-                        && updated_round_id == &round.id
+                        && round_ids.contains(updated_round_id)
                     {
                         msg
                     } else {
@@ -194,48 +252,46 @@ pub async fn draw_updates(
                     }
                 };
 
-                if msg.tournament.id == tournament.id
-                    && let MsgContents::DrawUpdated(updated_round_id) =
-                        msg.inner
-                    && updated_round_id == round.id
-                {
-                    let pool1 = pool.clone();
-                    let tournament = tournament.clone();
-                    let round_id = round_id.clone();
-                    let round = round.clone();
-                    let tournament_id = tournament_id.clone();
-                    let rendered = spawn_blocking(move || {
-                        let mut conn = pool1.get().unwrap();
+                let pool1 = pool.clone();
+                let tournament = tournament.clone();
+                let tournament_id = tournament_id.clone();
+                let round_ids = round_ids.clone();
+                let rendered = spawn_blocking(move || {
+                    let mut conn = pool1.get().unwrap();
 
-                        let repr =
-                            RoundDrawRepr::of_round(round.clone(), &mut *conn);
-
-                        let participants = TournamentParticipants::load(&tournament_id, &mut *conn);
-
-                        let table = DrawTableRenderer {
-                            tournament: &tournament,
-                            repr: &repr,
-                            actions: |_: &DebateRepr| maud! {"None"},
-                            participants: &participants
+                    let rounds = match tournament_rounds::table
+                        .filter(tournament_rounds::tournament_id.eq(&tournament.id))
+                        .filter(tournament_rounds::id.eq_any(&round_ids))
+                        .load::<Round>(&mut conn)
+                        .optional()
+                        .unwrap() {
+                            Some(rounds) if rounds.len() == round_ids.len() => {
+                                rounds
+                            },
+                            Some(_) | None => {
+                                return maud! {
+                                    ErrorAlert msg=("Looks like a round was deleted. Please refresh the page!");
+                                }.render().into_inner()
+                            },
                         };
 
-                        maud! {
-                            div id="tableContainer"
-                                hx-swap-oob="morphdom"
-                                "ws-connect"=(format!("/tournaments/{tournament_id}/rounds/{round_id}/draw/edit?channel"))
-                            {
-                                (table)
-                            }
-                        }
+
+                    let reprs =
+                        rounds.into_iter().map(|round| {
+                            RoundDrawRepr::of_round(round, &mut *conn)
+                        }).collect::<Vec<_>>();
+
+                    let participants = TournamentParticipants::load(&tournament_id, &mut *conn);
+
+                    get_refreshable_part(&tournament, &reprs, &participants)
                         .render()
                         .into_inner()
-                    })
-                    .await.unwrap();
+                })
+                .await.unwrap();
 
-                    let _ = stream
-                        .send(rocket_ws::Message::Text(rendered))
-                        .await;
-                }
+                let _ = stream
+                    .send(rocket_ws::Message::Text(rendered))
+                    .await;
             }
         })
     }))
@@ -257,12 +313,12 @@ pub enum FallibleResponse {
 }
 
 #[post(
-    "/tournaments/<tournament_id>/rounds/<round_id>/draw/edit",
+    "/tournaments/<tournament_id>/rounds/draws/edit?<round_ids>",
     data = "<form>"
 )]
 pub async fn submit_cmd(
     tournament_id: &str,
-    round_id: &str,
+    round_ids: Vec<String>,
     form: Form<EditDrawForm>,
     user: User<true>,
     mut conn: Conn<true>,
@@ -271,8 +327,8 @@ pub async fn submit_cmd(
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
     let round = match tournament_rounds::table
-        .filter(tournament_rounds::id.eq(round_id))
-        .first::<Round>(&mut *conn)
+        .filter(tournament_rounds::id.eq_any(&round_ids))
+        .load::<Round>(&mut *conn)
         .optional()
         .unwrap()
     {
@@ -301,7 +357,8 @@ pub async fn submit_cmd(
     let apply_move = apply_move(judge_no, debate_no, role, &round, &mut *conn);
     match apply_move {
         Ok(()) => see_other_ok(Redirect::to(format!(
-            "/tournaments/{tournament_id}/rounds/{round_id}/draw/edit"
+            "/tournaments/{tournament_id}/rounds/draws/edit?{}",
+            round_ids.iter().join(",")
         ))),
         Err(e) => bad_request(
             ErrorAlert {
@@ -312,11 +369,54 @@ pub async fn submit_cmd(
     }
 }
 
+pub struct JudgeDebateAllocation {
+    debate: Debate,
+    debate_judge: DebateJudge,
+}
+
+impl JudgeDebateAllocation {
+    /// Find the position to which the given judge has been assigned.
+    fn find(
+        judge_no: u32,
+        rounds: &[String],
+        conn: &mut impl LoadConnection<Backend = Sqlite>,
+    ) -> Option<Self> {
+        match tournament_debates::table
+            .filter(tournament_debates::round_id.eq_any(rounds))
+            .inner_join(
+                tournament_debate_judges::table.on(
+                    tournament_debate_judges::debate_id
+                        .eq(tournament_debates::id)
+                        .and(
+                            tournament_debate_judges::judge_id.eq_any(
+                                tournament_judges::table
+                                    .filter(
+                                        tournament_judges::number
+                                            .eq(judge_no as i64),
+                                    )
+                                    .select(tournament_judges::id),
+                            ),
+                        ),
+                ),
+            )
+            .first::<(Debate, DebateJudge)>(&mut *conn)
+            .optional()
+            .unwrap()
+        {
+            Some((debate, debate_judge)) => Some(Self {
+                debate,
+                debate_judge,
+            }),
+            None => None,
+        }
+    }
+}
+
 fn apply_move(
     judge_no: u32,
     debate_no: Option<u32>,
     role: Role,
-    round: &Round,
+    rounds: &[Round],
     conn: &mut impl LoadConnection<Backend = Sqlite>,
 ) -> Result<(), String> {
     let judge = match tournament_judges::table
@@ -329,22 +429,19 @@ fn apply_move(
         None => return Err(format!("No such judge with numnber j{judge_no}")),
     };
 
+    let debate_ids = rounds
+        .iter()
+        .map(|round| round.id.clone())
+        .collect::<Vec<_>>();
+
     let existing_alloc =
-        tournament_judges::table
-            .filter(tournament_judges::number.eq(judge_no as i64))
-            .inner_join(tournament_debate_judges::table)
-            .inner_join(tournament_debates::table.on(
-                tournament_debate_judges::debate_id.eq(tournament_debates::id),
-            ))
-            .first::<(Judge, DebateJudge, Debate)>(conn)
-            .optional()
-            .unwrap();
+        JudgeDebateAllocation::find(judge_no, &debate_ids, &mut *conn);
 
     let debate_to_alloc_to = if let Some(debate_no) = debate_no {
         match tournament_debates::table
             .filter(
                 tournament_debates::round_id
-                    .eq(&round.id)
+                    .eq_any(&debate_ids)
                     .and(tournament_debates::number.eq(debate_no as i64)),
             )
             .first::<Debate>(conn)
@@ -367,10 +464,10 @@ fn apply_move(
             diesel::delete(
                 tournament_debate_judges::table.filter(
                     tournament_debate_judges::debate_id
-                        .eq(alloc.1.debate_id)
+                        .eq(alloc.debate.id)
                         .and(
                             tournament_debate_judges::judge_id
-                                .eq(alloc.1.judge_id),
+                                .eq(alloc.debate_judge.judge_id),
                         ),
                 ),
             )

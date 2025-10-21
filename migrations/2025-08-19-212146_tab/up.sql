@@ -169,7 +169,9 @@ create table if not exists tournament_rooms (
     name text not null,
     url text,
     priority integer not null check (priority >= 0),
-    unique (tournament_id, name)
+    number integer not null check (number >= 0),
+    unique (tournament_id, name),
+    unique (tournament_id, number)
 );
 
 create table if not exists tournament_break_categories (
@@ -256,7 +258,8 @@ create table if not exists tournament_debates (
     room_id text references tournament_rooms(id),
     -- unique ID (starting from zero) assigned to each debate
     number integer not null check (number >= 0),
-    unique (tournament_id, round_id, number)
+    unique (tournament_id, round_id, number),
+    unique (tournament_id, number)
 );
 
 create table if not exists tournament_debate_teams (

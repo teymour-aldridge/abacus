@@ -178,6 +178,7 @@ diesel::table! {
         name -> Text,
         url -> Nullable<Text>,
         priority -> BigInt,
+        number -> BigInt,
     }
 }
 

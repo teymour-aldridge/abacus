@@ -33,6 +33,7 @@ pub struct Room {
     pub name: String,
     pub url: Option<String>,
     priority: i64,
+    number: i64,
 }
 
 pub struct RoundDrawRepr {

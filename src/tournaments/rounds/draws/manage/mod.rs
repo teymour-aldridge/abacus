@@ -86,7 +86,10 @@ where
                     @for debate_team in &debate.teams_of_debate {
                         td {
                             a href = (format!("/tournaments/{}/teams/{}", &self.tournament.id, debate_team.team_id)) {
-                                (self.participants.teams.get(&debate_team.team_id).unwrap().name)
+                                ({
+                                    let team = self.participants.teams.get(&debate_team.team_id).unwrap();
+                                    self.participants.canonical_name_of_team(&team)
+                                })
                             }
                         }
                     }

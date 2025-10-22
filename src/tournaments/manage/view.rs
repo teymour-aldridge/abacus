@@ -1,4 +1,5 @@
 use hypertext::prelude::*;
+use itertools::Itertools;
 
 use crate::{
     auth::User,
@@ -52,7 +53,27 @@ pub async fn admin_view_tournament(
                         "Currently active rounds"
                     }
                     Actions options=(&[
-                        (format!("/tournaments/{}/rounds/{}/availability", &tournament.id, active_rounds[0].seq).as_str(), "Manage availability for current rounds"),
+                        (
+                            format!(
+                                "/tournaments/{}/rounds/{}/availability",
+                                &tournament.id,
+                                active_rounds[0].seq
+                            )
+                            .as_str(),
+                            "Manage availability for current rounds"
+                        ),
+                        (
+                            format!(
+                                "/tournaments/{}/rounds/draws/edit?rounds={}",
+                                &tournament.id,
+                                active_rounds
+                                    .iter()
+                                    .map(|r| &r.id)
+                                    .join("&rounds=")
+                            )
+                            .as_str(),
+                            "Edit draws for all active rounds concurrently."
+                        )
                     ]);
                     div class = "row" {
                         @for round in &active_rounds {
@@ -82,7 +103,7 @@ pub async fn admin_view_tournament(
                                                 }
                                             },
                                             crate::tournaments::rounds::RoundStatus::Draft => {
-                                                a class="btn btn-primary" href = (format!("/tournaments/{tid}/rounds/{}/draw/edit", round.id)) {
+                                                a class="btn btn-primary" href = (format!("/tournaments/{tid}/rounds/draws/edit?rounds={}", round.id)) {
                                                     "Edit draw"
                                                 }
                                             },

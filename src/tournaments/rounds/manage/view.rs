@@ -90,7 +90,7 @@ pub async fn view_tournament_rounds_page(
                             }
                             @if round.draw_status == "D" {
                                 li class="list-group-item" {
-                                    a href=(format!("/tournaments/{}/rounds/{}/draw/edit",
+                                    a href=(format!("/tournaments/{}/rounds/draws/edit?rounds={}",
                                             tournament.id,
                                             round.id))
                                     {

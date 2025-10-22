@@ -28,9 +28,10 @@ use crate::{
     template::Page,
     tournaments::{
         Tournament,
+        manage::sidebar::SidebarWrapper,
         participants::{DebateJudge, Judge, TournamentParticipants},
         rounds::{
-            Round,
+            Round, TournamentRounds,
             draws::{
                 Debate, DebateRepr, RoundDrawRepr,
                 manage::{DrawTableHeaders, RoomsOfRoundTable},
@@ -53,6 +54,9 @@ pub async fn edit_multiple_draws_page(
     let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
+    let all_rounds =
+        TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
+
     let rounds2edit = match tournament_rounds::table
         .filter(tournament_rounds::id.eq_any(&rounds))
         .load::<Round>(&mut *conn)
@@ -60,7 +64,9 @@ pub async fn edit_multiple_draws_page(
         .unwrap()
     {
         Some(t) if t.len() == rounds.len() => t,
-        Some(_) | None => return err_not_found(),
+        Some(_) | None => {
+            return err_not_found();
+        }
     };
 
     let reprs = rounds2edit
@@ -75,22 +81,24 @@ pub async fn edit_multiple_draws_page(
             .tournament(tournament.clone())
             .user(user)
             .body(maud! {
-                script src="https://cdn.jsdelivr.net/npm/htmx-ext-response-targets@2.0.2" {
-                }
-
-                h1 {
-                    "Edit draw for rounds "
-                    @for (i, repr) in reprs.iter().enumerate() {
-                        @if i > 0 {
-                            ", "
-                        }
-                        (repr.round.name)
+                SidebarWrapper rounds=(&all_rounds) tournament=(&tournament) {
+                    script src="https://cdn.jsdelivr.net/npm/htmx-ext-response-targets@2.0.2" {
                     }
+
+                    h1 {
+                        "Edit draw for rounds "
+                        @for (i, repr) in reprs.iter().enumerate() {
+                            @if i > 0 {
+                                ", "
+                            }
+                            (repr.round.name)
+                        }
+                    }
+
+                    (renderer_of_command_bar(&tournament, &reprs))
+
+                    (get_refreshable_part(&tournament, &reprs, &participants))
                 }
-
-                (renderer_of_command_bar(&tournament, &reprs))
-
-                (get_refreshable_part(&tournament, &reprs, &participants))
             })
             .render(),
     )
@@ -107,7 +115,7 @@ fn renderer_of_command_bar(
                 action=(
                     format!("/tournaments/{}/rounds/draws/edit?rounds={}",
                         tournament.id,
-                        rounds.iter().map(|repr| repr.round.id.clone()).join(",")
+                        rounds.iter().map(|repr| repr.round.id.clone()).join("&rounds=")
                     )
                 ) {
                 div class="mb-3" {
@@ -138,13 +146,13 @@ fn get_refreshable_part(
             hx-swap-oob="morphdom"
             "ws-connect"=(
                 format!(
-                    "/tournaments/{}/rounds/draw/edit?channel&rounds={}",
+                    "/tournaments/{}/rounds/draws/edit?channel&rounds={}",
                     tournament.id,
                     reprs.iter().map(|repr| repr.round.id.clone()).join(",")
                 )
             )
         {
-            table {
+            table class="table" {
                 DrawTableHeaders tournament=(&tournament);
 
                 @for repr in reprs {

@@ -194,4 +194,14 @@ impl TournamentParticipants {
             institutions,
         }
     }
+
+    pub fn canonical_name_of_team(&self, team: &Team) -> String {
+        team.institution_id
+            .as_ref()
+            .map(|inst| {
+                let code = &self.institutions.get(inst).unwrap().code;
+                format!("{code} {}", team.name)
+            })
+            .unwrap_or_else(|| team.name.clone())
+    }
 }

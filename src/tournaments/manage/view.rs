@@ -41,6 +41,7 @@ pub async fn admin_view_tournament(
                 Actions options=(&[
                     (format!("/tournaments/{}/configuration", tournament.id).as_str(), "Configure tournament"),
                     (format!("/tournaments/{}/participants", tournament.id).as_str(), "Manage participants"),
+                    (format!("/tournaments/{}/participants/privateurls", tournament.id).as_str(), "View private URLs"),
                     (format!("/tournaments/{}/rounds", tournament.id).as_str(), "Manage rounds")
                 ]);
 

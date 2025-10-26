@@ -31,6 +31,7 @@ pub mod create_team;
 pub mod gen_private_url;
 pub mod institution_selector;
 pub mod manage_judge;
+pub mod manage_private_urls;
 pub mod manage_team;
 
 pub struct ParticipantsTable(Tournament, TournamentParticipants);

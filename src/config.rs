@@ -30,6 +30,7 @@ use crate::{
             create_speaker::{create_speaker_page, do_create_speaker},
             create_team::{create_teams_page, do_create_team},
             manage_judge::{do_edit_judge_details, edit_judge_details_page},
+            manage_private_urls::view_private_urls,
             manage_team::{
                 do_edit_team_details, edit_team_details_page, manage_team_page,
             },
@@ -246,7 +247,8 @@ pub fn make_rocket() -> Rocket<Build> {
                 view_tournament_configuration,
                 update_tournament_configuration,
                 update_eligibility_for_all,
-                private_url_page
+                private_url_page,
+                view_private_urls
             ],
         )
 }

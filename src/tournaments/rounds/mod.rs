@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -182,7 +183,22 @@ impl TournamentRounds {
         })
     }
 
-    pub fn group_by_seq(&self) -> Vec<Vec<Round>> {
+    pub fn prelims_grouped_by_seq(&self) -> Vec<Vec<Round>> {
+        let grouped_iterator = self
+            .prelim
+            .iter()
+            .sorted_by_key(|round| round.seq)
+            .chunk_by(|round| round.seq);
+
+        grouped_iterator
+            .into_iter()
+            .map(|(_, rounds)| {
+                rounds.into_iter().map(Clone::clone).collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
+    pub fn all_grouped_by_seq(&self) -> Vec<Vec<Round>> {
         use itertools::Itertools;
 
         let grouped_iterator = self

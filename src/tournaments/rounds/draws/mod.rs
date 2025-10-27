@@ -216,6 +216,13 @@ impl DebateRepr {
             .map(|id| BallotRepr::fetch(&id, conn))
             .collect()
     }
+
+    pub fn team_of_side_and_seq(&self, side: i64, seq: i64) -> &DebateTeam {
+        self.teams_of_debate
+            .iter()
+            .find(|team| team.side == side && team.seq == seq)
+            .unwrap()
+    }
 }
 
 pub enum DrawStatus {

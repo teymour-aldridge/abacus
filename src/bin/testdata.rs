@@ -3,8 +3,9 @@ use std::fs::File;
 use abacus::MIGRATIONS;
 use abacus::schema::{
     tournament_break_categories, tournament_institutions, tournament_judges,
-    tournament_members, tournament_rounds, tournament_speakers,
-    tournament_team_speakers, tournament_teams, tournaments, users,
+    tournament_members, tournament_round_motions, tournament_rounds,
+    tournament_speakers, tournament_team_speakers, tournament_teams,
+    tournaments, users,
 };
 use abacus::tournaments::config::{
     PullupMetric, RankableTeamMetric, SpeakerMetric,
@@ -247,22 +248,83 @@ fn main() {
             .unwrap();
 
         let rounds = [
-            (1, "Round 1A", "P", None::<String>),
-            (1, "Round 1B", "P", None::<String>),
-            (2, "Round 2", "P", None::<String>),
-            (3, "Round 3", "P", None::<String>),
-            (4, "Round 4", "P", None::<String>),
-            (5, "Round 5", "P", None::<String>),
-            (6, "Round 6", "P", None::<String>),
-            (7, "Quarterfinals", "E", Some(open.clone())),
-            (8, "Semi-finals", "E", Some(open.clone())),
-            (9, "Finals", "E", Some(open)),
+            (
+                1,
+                "Round 1A",
+                "P",
+                None::<String>,
+                "This House would require all world maps to be drawn using equal-area projections",
+            ),
+            (
+                1,
+                "Round 1B",
+                "P",
+                None::<String>,
+                "This House believes that tomatoes are a fruit",
+            ),
+            (
+                2,
+                "Round 2",
+                "P",
+                None::<String>,
+                "This House believes that Harry Potter should have married Luna Lovegood",
+            ),
+            (
+                3,
+                "Round 3",
+                "P",
+                None::<String>,
+                "This House regrets the existence of Valentine's Day",
+            ),
+            (
+                4,
+                "Round 4",
+                "P",
+                None::<String>,
+                "This House would stop using cash",
+            ),
+            (
+                5,
+                "Round 5",
+                "P",
+                None::<String>,
+                "This House would abolish timeouts in all team sports",
+            ),
+            (
+                6,
+                "Round 6",
+                "P",
+                None::<String>,
+                "This House would make Esperanto mandatory in all schools in the world",
+            ),
+            (
+                7,
+                "Quarterfinals",
+                "E",
+                Some(open.clone()),
+                "This House would require every citizen to watch a film produced in their country every year",
+            ),
+            (
+                8,
+                "Semi-finals",
+                "E",
+                Some(open.clone()),
+                "This House would make an exception to laws forbidding indecent exposure for hot days",
+            ),
+            (
+                9,
+                "Finals",
+                "E",
+                Some(open),
+                "This House would not buy Apple",
+            ),
         ];
 
         for round in rounds {
+            let round_id = Uuid::now_v7().to_string();
             diesel::insert_into(tournament_rounds::table)
                 .values((
-                    tournament_rounds::id.eq(Uuid::now_v7().to_string()),
+                    tournament_rounds::id.eq(&round_id),
                     tournament_rounds::tournament_id.eq(&tournament_id),
                     tournament_rounds::seq.eq(round.0),
                     tournament_rounds::name.eq(round.1),
@@ -272,6 +334,17 @@ fn main() {
                     tournament_rounds::draw_status.eq("N"),
                     tournament_rounds::draw_released_at
                         .eq(None::<NaiveDateTime>),
+                ))
+                .execute(&mut conn)
+                .unwrap();
+
+            diesel::insert_into(tournament_round_motions::table)
+                .values((
+                    tournament_round_motions::id.eq(Uuid::now_v7().to_string()),
+                    tournament_round_motions::tournament_id.eq(&tournament_id),
+                    tournament_round_motions::round_id.eq(&round_id),
+                    tournament_round_motions::infoslide.eq(None::<String>),
+                    tournament_round_motions::motion.eq(round.4),
                 ))
                 .execute(&mut conn)
                 .unwrap();

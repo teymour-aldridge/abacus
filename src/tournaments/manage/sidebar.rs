@@ -40,7 +40,7 @@ impl<'r> Renderable for Sidebar<'r> {
         &self,
         buffer: &mut hypertext::Buffer<hypertext::context::Node>,
     ) {
-        let grouped_rounds = self.rounds.group_by_seq();
+        let grouped_rounds = self.rounds.all_grouped_by_seq();
 
         maud! {
             div class="col-12 col-md-3 col-lg-2 order-last order-md-first p-0" {

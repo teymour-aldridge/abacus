@@ -5,12 +5,10 @@ use rocket::form;
 pub fn is_ascii_no_spaces<'v>(username: &str) -> form::Result<'v, ()> {
     match username.chars().all(|c| c.is_ascii() && !c.is_whitespace()) {
         true => Ok(()),
-        false => {
-            Err(rocket::form::Error::validation(
-                "should be an ascii string without spaces",
-            )
-            .into())
-        }
+        false => Err(rocket::form::Error::validation(
+            "should be an ascii string without spaces",
+        )
+        .into()),
     }
 }
 
@@ -22,9 +20,7 @@ pub fn is_valid_email<'v>(string: &str) -> form::Result<'v, ()> {
     });
     match RE.is_match(string) {
         true => Ok(()),
-        false => {
-            Err(rocket::form::Error::validation("invalid email").into())
-        }
+        false => Err(rocket::form::Error::validation("invalid email").into()),
     }
 }
 

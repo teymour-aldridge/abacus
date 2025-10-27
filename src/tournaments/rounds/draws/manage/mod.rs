@@ -30,21 +30,19 @@ where
             h3 {
                 "Unallocated judges"
             }
-            div class="row" {
+            div class="container" {
                 @for judge in self.participants.judges.values().filter(|judge| {
                     // todo: could do this using SQLite
-                    let allocated_on_draw =
+                    let is_allocated_on_draw =
                         self.repr.debates.iter().any(|debate| {
                             debate.judges_of_debate.iter().any(|debate_judge| {
                                 debate_judge.judge_id == judge.id
                             })
                         });
-                    !allocated_on_draw
+                    !is_allocated_on_draw
                 }) {
-                    div class="col" {
-                        p {
-                            (judge.name) "(j" (judge.number) ")"
-                        }
+                    span class="badge rounded-pill text-bg-secondary m-1" {
+                        (judge.name) "(j" (judge.number) ")"
                     }
                 }
             }
@@ -96,12 +94,14 @@ where
                     td {
                         @for debate_judge in &debate.judges_of_debate {
                             @let judge = &debate.judges.get(&debate_judge.judge_id).unwrap();
-                            div class="card m-1" {
-                                div class="card-body" {
-                                    p class="card-text" {
-                                        (judge.name) " (" (debate_judge.status) ", " "j" (judge.number) ")"
-                                    }
-                                }
+                            @let class = match debate_judge.status.as_str() {
+                                "C" => "badge rounded-pill text-bg-danger m-1",
+                                "P" => "badge rounded-pill text-bg-info m-1",
+                                "T" => "badge rounded-pill text-bg-secondary m-1",
+                                _ => unreachable!()
+                            };
+                            div class=(class) {
+                                (judge.name) " (" (debate_judge.status) ", " "j" (judge.number) ")"
                             }
                         }
                     }

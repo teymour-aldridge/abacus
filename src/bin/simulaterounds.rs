@@ -22,7 +22,10 @@ use abacus::{
 };
 use clap::Parser;
 use diesel::{
-    Connection, connection::LoadConnection, prelude::*, sqlite::Sqlite,
+    Connection,
+    connection::{AnsiTransactionManager, LoadConnection, TransactionManager},
+    prelude::*,
+    sqlite::Sqlite,
 };
 use itertools::Itertools;
 use rand::{Rng, distr::Uniform};
@@ -44,6 +47,7 @@ fn main() {
     };
 
     let mut conn = diesel::SqliteConnection::establish(&db_url).unwrap();
+    AnsiTransactionManager::begin_transaction(&mut conn).unwrap();
 
     let tournament = tournaments::table
         .filter(tournaments::name.eq("bp88team"))
@@ -60,6 +64,8 @@ fn main() {
             &mut conn,
         );
     }
+
+    AnsiTransactionManager::commit_transaction(&mut conn).unwrap();
 }
 
 fn simulate_concurrent_in_rounds(

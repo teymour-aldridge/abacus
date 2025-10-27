@@ -11,6 +11,7 @@ use crate::{
     template::Page,
     tournaments::{
         Tournament,
+        manage::sidebar::SidebarWrapper,
         participants::{
             Institution,
             manage::{
@@ -18,6 +19,7 @@ use crate::{
                 institution_selector::InstitutionSelector,
             },
         },
+        rounds::TournamentRounds,
         snapshots::take_snapshot,
         teams::Team,
     },
@@ -57,34 +59,39 @@ pub async fn manage_team_page(
         None => return err_not_found(),
     };
 
+    let rounds = TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
+
     success(
         Page::new()
             .user(user)
             .tournament(tournament.clone())
             .body(maud! {
-                h1 {
-                    "Team " (team.name)
-                }
+                SidebarWrapper tournament=(&tournament) rounds=(&rounds) {
+                    h1 {
+                        "Team " (team.name)
+                    }
 
-                Actions options=(&[
-                    (format!("/tournaments/{}/teams/{}/speakers/create", tournament.id, team.id).as_str(), "Add speaker")
-                ]);
+                    Actions options=(&[
+                        (format!("/tournaments/{}/teams/{}/speakers/create", tournament.id, team.id).as_str(), "Add speaker")
+                    ]);
 
-                ul class="list-group list-group-horizontal" {
-                    li class="list-group-item" {
-                        a href=(format!("/tournaments/{}/teams/{}/edit",
-                                tournament.id,
-                                team.id))
-                        {
-                            "Edit team details"
+                    ul class="list-group list-group-horizontal" {
+                        li class="list-group-item" {
+                            a href=(format!("/tournaments/{}/teams/{}/edit",
+                                    tournament.id,
+                                    team.id))
+                            {
+                                "Edit team details"
+                            }
+                        }
+
+                        li class="list-group-item" {
+                            a href="" {
+                                "Add speaker"
+                            }
                         }
                     }
 
-                    li class="list-group-item" {
-                        a href="" {
-                            "Add speaker"
-                        }
-                    }
                 }
             })
             .render(),

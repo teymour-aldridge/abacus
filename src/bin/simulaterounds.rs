@@ -26,7 +26,6 @@ use abacus::{
 use clap::Parser;
 use diesel::{
     Connection,
-    backend::Backend,
     connection::{AnsiTransactionManager, LoadConnection, TransactionManager},
     prelude::*,
     sqlite::Sqlite,

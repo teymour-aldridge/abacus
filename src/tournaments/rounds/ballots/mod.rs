@@ -1,8 +1,11 @@
+use std::cmp::Reverse;
+
 use chrono::NaiveDateTime;
 use diesel::{
     Queryable, connection::LoadConnection, prelude::*, sqlite::Sqlite,
 };
 use itertools::Itertools;
+use rust_decimal::Decimal;
 
 use crate::schema::{tournament_ballots, tournament_speaker_score_entries};
 
@@ -66,6 +69,21 @@ impl BallotRepr {
             .iter()
             .unique_by(|s| s.team_id.clone())
             .map(|s| s.team_id.clone())
+    }
+
+    /// Returns the IDs of the teams, in the order in which they came in the
+    /// debate.
+    pub fn teams_in_rank_order(&self) -> impl Iterator<Item = String> {
+        self.teams().sorted_by_key(|team| {
+            let total: Decimal = self
+                .scores_of_team(team)
+                .iter()
+                .map(|score| -> Decimal { score.score.try_into().unwrap() })
+                .sum();
+
+            // sort descending by score (not ascending)
+            Reverse(total)
+        })
     }
 
     /// Retrieves the score elements of a particular team.

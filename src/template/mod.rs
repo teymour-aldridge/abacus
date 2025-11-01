@@ -62,11 +62,9 @@ impl<R1: Renderable, R2: Renderable, const TX: bool> Renderable
                     title { "Abacus" }
                     script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.7/dist/htmx.min.js" integrity="sha384-ZBXiYtYQ6hJ2Y0ZNoYuI+Nq5MqWBr+chMrS/RkXpNzQCApHEhOt2aY8EJgqwHLkJ" crossorigin="anonymous" {
                     }
-                    link
-                        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
-                        rel="stylesheet"
-                        integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
-                        crossorigin="anonymous";
+                    style {
+                        (include_str!(concat!(env!("OUT_DIR"), "/style.css")))
+                    }
                     meta
                         name="viewport"
                         content="width=device-width, initial-scale=1";
@@ -76,39 +74,37 @@ impl<R1: Renderable, R2: Renderable, const TX: bool> Renderable
                 }
                 body {
                     nav class="navbar navbar-expand"
-                        style="background-color: #452859"
+                        style="background-color: #452859; display: flex; justify-content: space-between; align-items: center;"
                         data-bs-theme="dark" {
-                        div class="container-fluid" {
-                            ul class="nav nav-justify-start" data-bs-theme="dark" {
-                                li class="nav-item" {
-                                    @if let Some(tournament) = &self.tournament {
-                                        a class="nav-link text-white"
-                                          href=(format!("/tournaments/{}", tournament.id)) {
-                                            (tournament.abbrv)
-                                        }
-                                    } @else {
-                                        a class="nav-link text-white" href="/" {
-                                            "Home"
-                                        }
-                                    }
+                        div class="container-fluid" style="display: flex; justify-content: space-between; align-items: center;" {
+                            @if let Some(tournament) = &self.tournament {
+                                a class="navbar-brand text-white"
+                                  href=(format!("/tournaments/{}", tournament.id)) {
+                                    (tournament.abbrv)
+                                }
+                            } @else {
+                                a class="navbar-brand text-white" href="/" {
+                                    "Home"
                                 }
                             }
-                            ul class="nav nav-justify-end" data-bs-theme="dark" {
-                                @if let Some(user) = &self.user {
-                                    li class="nav-item" {
-                                        a class="nav-link text-white" href="/user" {
-                                            (user.username)
+                            div {
+                                ul class="navbar-nav" style="display: flex; gap: 1rem;" data-bs-theme="dark" {
+                                    @if let Some(user) = &self.user {
+                                        li class="nav-item" {
+                                            a class="nav-link text-white" href="/user" {
+                                                (user.username)
+                                            }
                                         }
-                                    }
-                                } @else {
-                                    li class="nav-item" {
-                                        a class="nav-link text-white" href="/login" {
-                                            "Login"
+                                    } @else {
+                                        li class="nav-item" {
+                                            a class="nav-link text-white" href="/login" {
+                                                "Login"
+                                            }
                                         }
-                                    }
-                                    li class="nav-item" {
-                                        a class="nav-link text-white" href="/register" {
-                                            "Register"
+                                        li class="nav-item" {
+                                            a class="nav-link text-white" href="/register" {
+                                                "Register"
+                                            }
                                         }
                                     }
                                 }

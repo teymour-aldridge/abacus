@@ -4,3 +4,9 @@
 # Added by cargo
 
 /target
+
+
+/assets/bootstrap
+assets/bootstrap.tar.gz
+static/
+*.css

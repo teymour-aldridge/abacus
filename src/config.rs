@@ -204,6 +204,7 @@ pub fn make_rocket() -> Rocket<Build> {
                 Err(_) => Err(rocket),
             }
         }))
+        
         .mount(
             "/",
             routes![

@@ -210,6 +210,7 @@ impl DebateRepr {
         tournament_ballots::table
             .filter(tournament_ballots::debate_id.eq(&self.debate.id))
             .select(tournament_ballots::id)
+            .order_by(tournament_ballots::submitted_at.desc())
             .load::<String>(conn)
             .unwrap()
             .into_iter()

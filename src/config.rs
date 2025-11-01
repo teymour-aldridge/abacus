@@ -38,6 +38,7 @@ use crate::{
         },
         privateurls::view::private_url_page,
         rounds::{
+            ballots::manage::overview::admin_ballot_of_seq_overview,
             draws::{
                 manage::create::{do_generate_draw, generate_draw_page},
                 public::view::view_active_draw_page,
@@ -252,7 +253,8 @@ pub fn make_rocket() -> Rocket<Build> {
                 update_eligibility_for_all,
                 private_url_page,
                 view_private_urls,
-                admin_view_team_standings
+                admin_view_team_standings,
+                admin_ballot_of_seq_overview
             ],
         )
 }

@@ -66,7 +66,10 @@ use crate::{
                 view::view_tournament_rounds_page,
             },
         },
-        standings::public::public_team_tab_page,
+        standings::{
+            manage::admin_team_standings::admin_view_team_standings,
+            public::public_team_tab_page,
+        },
         view::view_tournament_page,
     },
     util_resp::{StandardResponse, success},
@@ -248,7 +251,8 @@ pub fn make_rocket() -> Rocket<Build> {
                 update_tournament_configuration,
                 update_eligibility_for_all,
                 private_url_page,
-                view_private_urls
+                view_private_urls,
+                admin_view_team_standings
             ],
         )
 }

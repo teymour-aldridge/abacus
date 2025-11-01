@@ -6,6 +6,7 @@ use itertools::Itertools;
 
 use crate::schema::{tournament_ballots, tournament_speaker_score_entries};
 
+pub mod aggregate;
 pub mod manage;
 pub mod public;
 
@@ -15,6 +16,21 @@ pub struct BallotRepr {
 }
 
 impl BallotRepr {
+    pub fn is_isomorphic(&self, other: &BallotRepr) -> bool {
+        for score in &self.scores {
+            let found_matching = other.scores.iter().any(|other_score| {
+                other_score.speaker_position == score.speaker_position
+                    && other_score.speaker_id == score.speaker_id
+                    && (other_score.score - score.score).max(0.0)
+                        <= f32::EPSILON
+            });
+            if !found_matching {
+                return false;
+            }
+        }
+        true
+    }
+
     pub fn ballot(&self) -> &Ballot {
         &self.ballot
     }
@@ -42,7 +58,14 @@ impl BallotRepr {
     /// the tournament is not incompatible with the data currently entered (we
     /// also check to ensure that people cannot set an invalid format).
     pub fn team_count(&self) -> usize {
-        self.scores.iter().unique_by(|s| s.team_id.clone()).count()
+        self.teams().count()
+    }
+
+    pub fn teams(&self) -> impl Iterator<Item = String> {
+        self.scores
+            .iter()
+            .unique_by(|s| s.team_id.clone())
+            .map(|s| s.team_id.clone())
     }
 
     /// Retrieves the score elements of a particular team.

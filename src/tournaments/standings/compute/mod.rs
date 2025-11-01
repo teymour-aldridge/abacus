@@ -102,6 +102,7 @@ impl TeamStandings {
         let mut ranked_metrics_of_team = HashMap::new();
 
         for metric in &metrics {
+            println!("computing for {metric:?}");
             let val2merge = match metric {
                 RankableTeamMetric::Wins => {
                     TeamPointsComputer::compute(&TeamPointsComputer, tid, conn)
@@ -159,10 +160,12 @@ impl TeamStandings {
             .load::<Team>(conn)
             .unwrap();
 
-        let f = |team: &Team| -> Option<Vec<&MetricValue>> {
-            ranked_metrics_of_team
-                .get(&team.id)
-                .map(|t| t.iter().map(|(_k, v)| v).collect::<Vec<_>>())
+        let f = |team: &Team| -> _ {
+            std::cmp::Reverse(
+                ranked_metrics_of_team
+                    .get(&team.id)
+                    .map(|t| t.iter().map(|(_k, v)| v).collect::<Vec<_>>()),
+            )
         };
 
         teams.sort_by_cached_key(f);

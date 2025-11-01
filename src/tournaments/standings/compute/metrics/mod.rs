@@ -34,8 +34,24 @@ pub enum MetricValue {
 }
 
 impl MetricValue {
+    pub fn as_integer_mut(&mut self) -> Option<&mut i64> {
+        if let Self::Integer(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
     pub fn as_integer(&self) -> Option<&i64> {
         if let Self::Integer(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_float_mut(&mut self) -> Option<&mut rust_decimal::Decimal> {
+        if let Self::Float(v) = self {
             Some(v)
         } else {
             None

@@ -1,12 +1,9 @@
 use diesel::prelude::*;
 
 use crate::schema::{
-    tournament_debate_team_results, tournament_debate_teams,
-    tournament_debates, tournament_rounds, tournament_teams,
+    tournament_debate_team_results, tournament_debates, tournament_rounds,
 };
-use crate::tournaments::standings::compute::metrics::{
-    Metric, MetricValue, completed_preliminary_rounds,
-};
+use crate::tournaments::standings::compute::metrics::{Metric, MetricValue};
 
 pub struct TeamPointsComputer;
 
@@ -18,85 +15,37 @@ impl Metric<MetricValue> for TeamPointsComputer {
             Backend = diesel::sqlite::Sqlite,
         >,
     ) -> std::collections::HashMap<String, MetricValue> {
-        let (team, other_team) = diesel::alias!(
-            tournament_teams as team,
-            tournament_teams as other_team
-        );
+        let results: Vec<(String, i64)> = tournament_debate_team_results::table
+            .inner_join(
+                tournament_debates::table
+                    .on(tournament_debate_team_results::debate_id
+                        .eq(tournament_debates::id)),
+            )
+            .inner_join(
+                tournament_rounds::table
+                    .on(tournament_debates::round_id.eq(tournament_rounds::id)),
+            )
+            .filter(tournament_rounds::tournament_id.eq(tid))
+            .filter(tournament_rounds::kind.eq("P"))
+            .filter(tournament_rounds::completed.eq(true))
+            .select((
+                tournament_debate_team_results::team_id,
+                tournament_debate_team_results::points,
+            ))
+            .load::<(String, i64)>(conn)
+            .expect("Failed to load team points");
 
-        let team_is_in_this_debate = diesel::dsl::exists(
-            tournament_debate_teams::table
-                .filter(
-                    tournament_debate_teams::team_id
-                        .eq(team.field(tournament_teams::id)),
-                )
-                .filter(
-                    tournament_debate_teams::debate_id
-                        .eq(tournament_debates::id),
-                ),
-        );
+        println!("{:?}", results);
 
-        let other_team_is_in_this_debate = diesel::dsl::exists(
-            tournament_debate_teams::table
-                .filter(
-                    tournament_debate_teams::team_id
-                        .eq(other_team.field(tournament_teams::id)),
-                )
-                .filter(
-                    tournament_debate_teams::debate_id
-                        .eq(tournament_debates::id),
-                ),
-        );
+        let mut team_points = std::collections::HashMap::new();
 
-        let did_team_defeat_other_team =
-            (tournament_debate_team_results::table
-                .filter(
-                    tournament_debate_team_results::team_id
-                        .eq(team.field(tournament_teams::id)),
-                )
-                .filter(
-                    tournament_debate_team_results::debate_id
-                        .eq(tournament_debates::id),
-                )
-                .select(tournament_debate_team_results::points)
-                .single_value())
-            .gt(tournament_debate_team_results::table
-                .filter(
-                    tournament_debate_team_results::team_id
-                        .eq(other_team.field(tournament_teams::id)),
-                )
-                .filter(
-                    tournament_debate_team_results::debate_id
-                        .eq(tournament_debates::id),
-                )
-                .select(tournament_debate_team_results::points)
-                .single_value());
+        for (team_id, points) in results {
+            *team_points.entry(team_id).or_insert(0i64) += points;
+        }
 
-        team.filter(
-            team.field(tournament_teams::tournament_id)
-                .eq(tid.to_string()),
-        )
-        .inner_join(
-            other_team.on(other_team
-                .field(tournament_teams::tournament_id)
-                .eq(tid.to_string())),
-        )
-        .inner_join(completed_preliminary_rounds())
-        .inner_join(
-            tournament_debates::table.on(tournament_debates::round_id
-                .eq(tournament_rounds::id)
-                .and(team_is_in_this_debate)
-                .and(other_team_is_in_this_debate)),
-        )
-        .filter(did_team_defeat_other_team)
-        .group_by(team.field(tournament_teams::id))
-        .select((
-            team.field(tournament_teams::id),
-            diesel::dsl::count(other_team.field(tournament_teams::id)),
-        ))
-        .load::<(String, i64)>(conn)
-        .unwrap()
-        .into_iter()
-        .map(|(a, b)| (a, MetricValue::Integer(b)))
-        .collect()
+        team_points
+            .into_iter()
+            .map(|(team_id, points)| (team_id, MetricValue::Integer(points)))
+            .collect()
     }
 }

@@ -2,14 +2,8 @@ use std::collections::HashMap;
 
 use diesel::prelude::*;
 
-use crate::{
-    schema::{
-        tournament_debate_teams, tournament_debates, tournament_rounds,
-        tournament_teams,
-    },
-    tournaments::standings::compute::metrics::{
-        Metric, MetricValue, completed_preliminary_rounds,
-    },
+use crate::tournaments::standings::compute::metrics::{
+    Metric, MetricValue, points::TeamPointsComputer,
 };
 
 /// This computes the draw strength for a given team, according to the
@@ -29,88 +23,52 @@ impl<const FLOAT_METRIC: bool> Metric<MetricValue>
             Backend = diesel::sqlite::Sqlite,
         >,
     ) -> std::collections::HashMap<String, MetricValue> {
-        let (team, other_team) = diesel::alias!(
-            tournament_teams as team,
-            tournament_teams as other_team
-        );
+        use crate::schema::tournament_debate_teams;
 
-        // First retrieve a list of (team_a, team_b) where team_a debated
-        // against team_b.
-        let teams_and_debated_against = team
-            .filter(team.field(tournament_teams::id).eq(tid))
-            .inner_join(completed_preliminary_rounds())
-            // get all debates in which this team participated
+        let wins = TeamPointsComputer::compute(&TeamPointsComputer, tid, conn);
+
+        let debates: Vec<(String, String)> = tournament_debate_teams::table
             .inner_join(
-                tournament_debates::table.on(tournament_debates::round_id
-                    .eq(tournament_rounds::id)
-                    .and(diesel::dsl::exists(
-                        tournament_debate_teams::table.filter(
-                            tournament_debate_teams::debate_id
-                                .eq(tournament_debates::id)
-                                .and(
-                                    tournament_debate_teams::team_id
-                                        .eq(team.field(tournament_teams::id)),
-                                ),
-                        ),
-                    ))),
+                crate::schema::tournament_debates::table
+                    .on(tournament_debate_teams::debate_id
+                        .eq(crate::schema::tournament_debates::id)),
             )
-            // then find all the other teams who participated in this debate
-            .inner_join(
-                other_team.on(other_team
-                    .field(tournament_teams::id)
-                    .ne(team.field(tournament_teams::id))
-                    .and(diesel::dsl::exists(
-                        // we check that there is a record denoting that
-                        // `other_team` is also in this debate
-                        tournament_debate_teams::table.filter(
-                            tournament_debate_teams::debate_id
-                                .eq(tournament_debates::id)
-                                .and(tournament_debate_teams::team_id.eq(
-                                    other_team.field(tournament_teams::id),
-                                )),
-                        ),
-                    ))),
-            )
+            .filter(crate::schema::tournament_debates::tournament_id.eq(tid))
             .select((
-                team.field(tournament_teams::id),
-                other_team.field(tournament_teams::id),
+                tournament_debate_teams::debate_id,
+                tournament_debate_teams::team_id,
             ))
-            .order_by(team.field(tournament_teams::id).asc())
-            .load::<(String, String)>(conn)
+            .load(conn)
             .unwrap();
 
-        let mut ds_wins = HashMap::new();
-
-        // todo: we could also place this in the SQL
-        for (team, debated_against) in &teams_and_debated_against {
-            let debated_against_metric =
-                match (self.0.get(debated_against).unwrap(), FLOAT_METRIC) {
-                    (MetricValue::Integer(p), false) => {
-                        MetricValue::Integer(*p)
-                    }
-                    (MetricValue::Float(f), true) => MetricValue::Float(*f),
-                    _ => unreachable!(),
-                };
-            ds_wins
-                .entry(team.clone())
-                .and_modify(|metric| match (metric, FLOAT_METRIC) {
-                    (MetricValue::Integer(ds), false) => {
-                        *ds += match debated_against_metric {
-                            MetricValue::Integer(i) => i,
-                            _ => unreachable!(),
-                        }
-                    }
-                    (MetricValue::Float(ds), true) => {
-                        *ds += match debated_against_metric {
-                            MetricValue::Float(decimal) => decimal,
-                            _ => unreachable!(),
-                        }
-                    }
-                    _ => unreachable!(),
-                })
-                .or_insert(debated_against_metric);
+        let mut debates_to_teams: HashMap<String, Vec<String>> = HashMap::new();
+        for (debate_id, team_id) in debates {
+            debates_to_teams.entry(debate_id).or_default().push(team_id);
         }
 
-        ds_wins
+        let mut draw_strengths: HashMap<String, MetricValue> = HashMap::new();
+
+        for teams_in_debate in debates_to_teams.values() {
+            for team_id in teams_in_debate {
+                let mut opponent_wins_sum = 0i64;
+                for other_team_id in teams_in_debate {
+                    if team_id != other_team_id {
+                        opponent_wins_sum += wins
+                            .get(other_team_id)
+                            .unwrap()
+                            .as_integer()
+                            .unwrap()
+                            .clone();
+                    }
+                }
+
+                let entry = draw_strengths
+                    .entry(team_id.clone())
+                    .or_insert(MetricValue::Integer(opponent_wins_sum));
+                *entry.as_integer_mut().unwrap() += opponent_wins_sum;
+            }
+        }
+
+        draw_strengths
     }
 }

@@ -1,9 +1,11 @@
 //! Simulates rounds.
 
+use std::collections::HashSet;
+
 use abacus::{
     schema::{
         tournament_ballots, tournament_debate_judges, tournament_debates,
-        tournament_judges, tournament_round_motions,
+        tournament_judges, tournament_round_motions, tournament_rounds,
         tournament_speaker_score_entries, tournament_team_availability,
         tournament_teams, tournaments,
     },
@@ -12,6 +14,7 @@ use abacus::{
         participants::{DebateJudge, Judge},
         rounds::{
             Motion, Round, TournamentRounds,
+            ballots::{BallotRepr, aggregate::aggregate_ballot_set},
             draws::{
                 Debate, DebateRepr,
                 manage::drawalgs::{self, do_draw},
@@ -23,6 +26,7 @@ use abacus::{
 use clap::Parser;
 use diesel::{
     Connection,
+    backend::Backend,
     connection::{AnsiTransactionManager, LoadConnection, TransactionManager},
     prelude::*,
     sqlite::Sqlite,
@@ -132,6 +136,8 @@ fn simulate_concurrent_in_rounds(
             .first::<Motion>(conn)
             .unwrap();
 
+        // Randomly allocate judges onto panels. Aims to assign three judges to
+        // a panel.
         let _allocate_judges = for debate in debates.iter() {
             let free_judges = tournament_judges::table
                 .filter(
@@ -178,7 +184,10 @@ fn simulate_concurrent_in_rounds(
 
             let repr = DebateRepr::fetch(&debate.id, conn);
 
-            for judge in judges {
+            let create_ballot_for_judge = |judge: &DebateJudge,
+                                           speaks: &[i64],
+                                           conn: &mut _|
+             -> String {
                 let ballot_id = Uuid::now_v7().to_string();
                 diesel::insert_into(tournament_ballots::table)
                     .values((
@@ -201,6 +210,16 @@ fn simulate_concurrent_in_rounds(
                             repr.speakers_of_team.get(&team.team_id).unwrap();
                         let first = &speakers[0];
                         let second = &speakers[1];
+
+                        let (speaker_1_speak, speaker_2_speak) = match (i, j) {
+                            (0, 0) => (speaks[0], speaks[1]),
+                            (1, 0) => (speaks[2], speaks[3]),
+                            (0, 1) => (speaks[4], speaks[5]),
+                            (1, 1) => (speaks[6], speaks[7]),
+                            // todo: WSDC
+                            _ => unreachable!(),
+                        };
+
                         speaker_scores.push((
                             tournament_speaker_score_entries::id
                                 .eq(Uuid::now_v7().to_string()),
@@ -212,13 +231,10 @@ fn simulate_concurrent_in_rounds(
                                 .eq(first.id.clone()),
                             tournament_speaker_score_entries::speaker_position
                                 .eq(0),
-                            tournament_speaker_score_entries::score.eq(
-                                rand::rng()
-                                    .sample(Uniform::new(50i64, 99i64).unwrap())
-                                    as f32,
-                            ),
+                            tournament_speaker_score_entries::score
+                                .eq(speaker_1_speak as f32),
                         ));
-                        (
+                        speaker_scores.push((
                             tournament_speaker_score_entries::id
                                 .eq(Uuid::now_v7().to_string()),
                             tournament_speaker_score_entries::ballot_id
@@ -229,21 +245,56 @@ fn simulate_concurrent_in_rounds(
                                 .eq(second.id.clone()),
                             tournament_speaker_score_entries::speaker_position
                                 .eq(1),
-                            tournament_speaker_score_entries::score.eq(
-                                rand::rng()
-                                    .sample(Uniform::new(50i64, 99i64).unwrap())
-                                    as f32,
-                            ),
-                        );
+                            tournament_speaker_score_entries::score
+                                .eq(speaker_2_speak as f32),
+                        ));
                     }
                 }
+
                 diesel::insert_into(tournament_speaker_score_entries::table)
                     .values(speaker_scores)
                     .execute(conn)
                     .unwrap();
-            }
-        };
-    }
+                ballot_id
+            };
 
-    println!("Simulated in-rounds");
+            let speaks = loop {
+                let speaks: Vec<i64> = (0..8)
+                    .map(|_| {
+                        rand::rng()
+                            .sample(Uniform::new_inclusive(50, 99).unwrap())
+                    })
+                    .collect();
+                if speaks
+                    .chunks(2)
+                    .map(|pair| pair.iter().sum::<i64>())
+                    .fold(HashSet::new(), |mut acc, sum| {
+                        acc.insert(sum);
+                        acc
+                    })
+                    .len()
+                    == 4
+                {
+                    break speaks;
+                }
+            };
+
+            let mut reprs = Vec::new();
+            for judge in judges {
+                let ballot_id =
+                    (create_ballot_for_judge)(&judge, &speaks, conn);
+                reprs.push(BallotRepr::fetch(&ballot_id, conn));
+            }
+
+            aggregate_ballot_set(&reprs, abacus::tournaments::rounds::ballots::aggregate::BallotAggregationMethod::Consensus, conn);
+        };
+
+        diesel::update(
+            tournament_rounds::table
+                .filter(tournament_rounds::id.eq(&round.id)),
+        )
+        .set(tournament_rounds::completed.eq(true))
+        .execute(&mut *conn)
+        .unwrap();
+    }
 }

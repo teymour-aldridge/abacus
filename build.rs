@@ -1,6 +1,6 @@
-use std::process::Command;
-use std::path::Path;
 use std::env;
+use std::path::Path;
+use std::process::Command;
 
 fn main() {
     // Check for bootstrap
@@ -13,7 +13,8 @@ fn main() {
             std::fs::create_dir(assets_dir).unwrap();
         }
 
-        let url = "https://github.com/twbs/bootstrap/archive/refs/tags/v5.3.3.tar.gz";
+        let url =
+            "https://github.com/twbs/bootstrap/archive/refs/tags/v5.3.3.tar.gz";
         let archive_path = "assets/bootstrap.tar.gz";
 
         // Download
@@ -49,7 +50,7 @@ fn main() {
             // try another name
             let downloaded_folder = Path::new("assets/bootstrap-5.3.3");
             if downloaded_folder.exists() {
-                 std::fs::rename(downloaded_folder, extracted_folder).unwrap();
+                std::fs::rename(downloaded_folder, extracted_folder).unwrap();
             }
         } else {
             std::fs::rename(downloaded_folder, extracted_folder).unwrap();

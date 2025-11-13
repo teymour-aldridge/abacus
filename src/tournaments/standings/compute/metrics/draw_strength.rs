@@ -2,8 +2,11 @@ use std::collections::HashMap;
 
 use diesel::prelude::*;
 
-use crate::tournaments::standings::compute::metrics::{
-    Metric, MetricValue, points::TeamPointsComputer,
+use crate::{
+    schema::{tournament_debates, tournament_rounds},
+    tournaments::standings::compute::metrics::{
+        Metric, MetricValue, points::TeamPointsComputer,
+    },
 };
 
 /// This computes the draw strength for a given team, according to the
@@ -33,6 +36,11 @@ impl<const FLOAT_METRIC: bool> Metric<MetricValue>
                     .on(tournament_debate_teams::debate_id
                         .eq(crate::schema::tournament_debates::id)),
             )
+            .inner_join(
+                crate::schema::tournament_rounds::table
+                    .on(tournament_rounds::id.eq(tournament_debates::round_id)),
+            )
+            .filter(tournament_rounds::completed.eq(true))
             .filter(crate::schema::tournament_debates::tournament_id.eq(tid))
             .select((
                 tournament_debate_teams::debate_id,

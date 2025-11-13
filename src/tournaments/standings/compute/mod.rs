@@ -160,12 +160,21 @@ impl TeamStandings {
             .load::<Team>(conn)
             .unwrap();
 
+        #[cfg(debug_assertions)]
+        {
+            for team in &teams {
+                debug_assert_ne!(ranked_metrics_of_team.get(&team.id), None);
+            }
+        }
+
         let f = |team: &Team| -> _ {
-            std::cmp::Reverse(
-                ranked_metrics_of_team
-                    .get(&team.id)
-                    .map(|t| t.iter().map(|(_k, v)| v).collect::<Vec<_>>()),
-            )
+            let map = ranked_metrics_of_team
+                .get(&team.id)
+                .map(|t| t.iter().map(|(_k, v)| v).collect::<Vec<_>>());
+
+            dbg!(&team.name, &map);
+
+            std::cmp::Reverse(map)
         };
 
         teams.sort_by_cached_key(f);

@@ -183,7 +183,23 @@ impl std::fmt::Display for RankableTeamMetric {
                 "draw strength by (average) total speaker score"
             }
             RankableTeamMetric::NTimesAchieved(points) => {
-                return write!(f, "#times achieved {points} points");
+                return write!(
+                    f,
+                    "{}",
+                    match points {
+                        // todo: correctly handle 2-team formats
+                        0 => "#4ths",
+                        1 => "#3rds",
+                        2 => "#2nds",
+                        3 => "#1sts",
+                        _ =>
+                            return write!(
+                                f,
+                                "{}",
+                                format!("#times achieved {points} points")
+                            ),
+                    }
+                );
             }
             RankableTeamMetric::TotalSpeakerScore => "total speaker score",
             RankableTeamMetric::AverageTotalSpeakerScore => {

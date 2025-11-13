@@ -35,8 +35,6 @@ impl Metric<MetricValue> for TeamPointsComputer {
             .load::<(String, i64)>(conn)
             .expect("Failed to load team points");
 
-        println!("{:?}", results);
-
         let mut team_points = std::collections::HashMap::new();
 
         for (team_id, points) in results {

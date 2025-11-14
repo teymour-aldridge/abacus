@@ -1,82 +1,70 @@
 use std::collections::HashMap;
 
 use diesel::prelude::*;
+use rust_decimal::prelude::ToPrimitive;
 
-use crate::{
-    schema::{tournament_debates, tournament_rounds},
-    tournaments::standings::compute::metrics::{
-        Metric, MetricValue, points::TeamPointsComputer,
-    },
+use crate::schema::{
+    tournament_debate_teams, tournament_debates, tournament_rounds,
 };
 
-/// This computes the draw strength for a given team, according to the
-/// provided metric (i.e. the HashMap passed to this struct). Note that the
-/// draw strength
-pub struct DrawStrengthComputer<const FLOAT_METRIC: bool>(
-    pub std::collections::HashMap<String, MetricValue>,
-);
-
-impl<const FLOAT_METRIC: bool> Metric<MetricValue>
-    for DrawStrengthComputer<FLOAT_METRIC>
-{
-    fn compute(
-        &self,
-        tid: &str,
-        conn: &mut impl diesel::connection::LoadConnection<
-            Backend = diesel::sqlite::Sqlite,
-        >,
-    ) -> std::collections::HashMap<String, MetricValue> {
-        use crate::schema::tournament_debate_teams;
-
-        let wins = TeamPointsComputer::compute(&TeamPointsComputer, tid, conn);
-
-        let debates: Vec<(String, String)> = tournament_debate_teams::table
+pub fn draw_strength_of_teams(
+    (tid, team_points): (&str, HashMap<String, rust_decimal::Decimal>),
+    conn: &mut impl diesel::connection::LoadConnection<
+        Backend = diesel::sqlite::Sqlite,
+    >,
+) -> HashMap<String, i64> {
+    let teams_of_debate: Vec<(String, String)> =
+        tournament_debates::table
             .inner_join(
-                crate::schema::tournament_debates::table
-                    .on(tournament_debate_teams::debate_id
-                        .eq(crate::schema::tournament_debates::id)),
-            )
-            .inner_join(
-                crate::schema::tournament_rounds::table
+                tournament_rounds::table
                     .on(tournament_rounds::id.eq(tournament_debates::round_id)),
             )
-            .filter(tournament_rounds::completed.eq(true))
-            .filter(crate::schema::tournament_debates::tournament_id.eq(tid))
-            .select((
-                tournament_debate_teams::debate_id,
-                tournament_debate_teams::team_id,
+            .filter(
+                tournament_rounds::completed
+                    .eq(true)
+                    .and(tournament_rounds::kind.eq("P")),
+            )
+            .filter(tournament_rounds::tournament_id.eq(tid))
+            .inner_join(tournament_debate_teams::table.on(
+                tournament_debate_teams::debate_id.eq(tournament_debates::id),
             ))
-            .load(conn)
+            .select((tournament_debates::id, tournament_debate_teams::team_id))
+            .load::<(String, String)>(conn)
             .unwrap();
+    let teams_of_debate = teams_of_debate.into_iter().fold(
+        HashMap::new(),
+        |mut map, (debate, team)| {
+            map.entry(debate)
+                .and_modify(|teams: &mut Vec<String>| {
+                    teams.push(team.clone());
+                })
+                .or_insert(vec![team]);
 
-        let mut debates_to_teams: HashMap<String, Vec<String>> = HashMap::new();
-        for (debate_id, team_id) in debates {
-            debates_to_teams.entry(debate_id).or_default().push(team_id);
-        }
+            map
+        },
+    );
 
-        let mut draw_strengths: HashMap<String, MetricValue> = HashMap::new();
+    let mut ds: HashMap<String, i64> =
+        HashMap::with_capacity(team_points.len());
 
-        for teams_in_debate in debates_to_teams.values() {
-            for team_id in teams_in_debate {
-                let mut opponent_wins_sum = 0i64;
-                for other_team_id in teams_in_debate {
-                    if team_id != other_team_id {
-                        opponent_wins_sum += wins
-                            .get(other_team_id)
-                            .unwrap()
-                            .as_integer()
-                            .unwrap()
-                            .clone();
-                    }
+    for (_, teams) in teams_of_debate {
+        for team_a in &teams {
+            for team_b in &teams {
+                if team_a == team_b {
+                    continue;
                 }
 
-                let entry = draw_strengths
-                    .entry(team_id.clone())
-                    .or_insert(MetricValue::Integer(opponent_wins_sum));
-                *entry.as_integer_mut().unwrap() += opponent_wins_sum;
+                ds.entry(team_a.clone())
+                    .and_modify(|entry| {
+                        *entry +=
+                            team_points.get(team_b).unwrap().to_i64().unwrap()
+                    })
+                    .or_insert(
+                        team_points.get(team_b).unwrap().to_i64().unwrap(),
+                    );
             }
         }
-
-        draw_strengths
     }
+
+    ds
 }

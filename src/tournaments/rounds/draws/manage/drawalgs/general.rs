@@ -331,8 +331,10 @@ pub fn make_draw(input: DrawInput) -> Result<Vec<TeamsOfRoom>, MakeDrawError> {
                                     team.id.clone(),
                                     UnrankableTeamMetric::DrawStrengthByRank,
                                 )).unwrap();
-                                penalty +=
-                                    -(*ds_rank.as_integer().unwrap() as f64);
+                                penalty += -({
+                                    assert!(ds_rank.is_integer());
+                                    ds_rank.to_f64().unwrap()
+                                });
                             }
                             PullupMetric::LowestDsSpeaks => {
                                 let sub_penalty = -standings
@@ -340,8 +342,6 @@ pub fn make_draw(input: DrawInput) -> Result<Vec<TeamsOfRoom>, MakeDrawError> {
                                         &team.id,
                                         RankableTeamMetric::AverageTotalSpeakerScore
                                     )
-                                    .as_float()
-                                    .unwrap()
                                     .to_f64()
                                     .unwrap();
                                 penalty += sub_penalty;

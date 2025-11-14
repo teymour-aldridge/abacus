@@ -15,14 +15,13 @@ use crate::tournaments::Tournament;
 use crate::tournaments::config::{
     PullupMetric, RankableTeamMetric, UnrankableTeamMetric,
 };
-use crate::tournaments::standings::compute::metrics::Metric;
-use crate::tournaments::standings::compute::metrics::MetricValue;
-use crate::tournaments::standings::compute::metrics::atss::AverageTotalSpeakerScoreComputer;
-use crate::tournaments::standings::compute::metrics::draw_strength::DrawStrengthComputer;
-use crate::tournaments::standings::compute::metrics::n_times_specific_result::NTimesSpecificResultComputer;
-use crate::tournaments::standings::compute::metrics::points::TeamPointsComputer;
-use crate::tournaments::standings::compute::metrics::tss::TotalTeamSpeakerScoreComputer;
+use crate::tournaments::standings::compute::metrics::atss;
+use crate::tournaments::standings::compute::metrics::draw_strength::draw_strength_of_teams;
+use crate::tournaments::standings::compute::metrics::n_times_specific_result::times_team_achieved_p_points;
+use crate::tournaments::standings::compute::metrics::points::points_of_team;
+use crate::tournaments::standings::compute::metrics::tss::total_speaker_score_of_team;
 use crate::tournaments::teams::Team;
+use rust_decimal::Decimal;
 
 pub mod history;
 pub mod metrics;
@@ -39,9 +38,9 @@ pub enum SerializableMetric {
 pub struct TeamStandings {
     pub metrics: Vec<RankableTeamMetric>,
     pub ranked_metrics_of_team:
-        HashMap<String, Vec<(RankableTeamMetric, MetricValue)>>,
+        HashMap<String, Vec<(RankableTeamMetric, Decimal)>>,
     /// Metrics that are exclusively used for pullups.
-    pub pullup_metrics: HashMap<(String, UnrankableTeamMetric), MetricValue>,
+    pub pullup_metrics: HashMap<(String, UnrankableTeamMetric), Decimal>,
     /// Stores the teams, in ranked. Note that teams which are tied will occupy
     /// the same list. Teams which are not tied occupy a single list each.
     pub teams_in_rank_order: Vec<Vec<Team>>,
@@ -55,7 +54,7 @@ impl TeamStandings {
         &self,
         team_id: &str,
         metric: RankableTeamMetric,
-    ) -> MetricValue {
+    ) -> Decimal {
         *self
             .ranked_metrics_of_team
             .get(team_id)
@@ -78,7 +77,11 @@ impl TeamStandings {
             .first::<Tournament>(conn)
             .unwrap();
 
-        let metrics: Vec<RankableTeamMetric> = tournament.metrics();
+        let metrics: Vec<RankableTeamMetric> = tournament
+            .metrics()
+            .into_iter()
+            .sorted_by_key(RankableTeamMetric::sort_order_for_comp)
+            .collect();
         let pullup_metrics = tournament.pullup_metrics();
 
         // Some pullup metrics need to be computed ahead of time (for example,
@@ -99,45 +102,72 @@ impl TeamStandings {
                 })
         };
 
-        let mut ranked_metrics_of_team = HashMap::new();
+        let mut ranked_metrics_of_team: HashMap<
+            String,
+            Vec<(RankableTeamMetric, Decimal)>,
+        > = HashMap::new();
 
         for metric in &metrics {
-            println!("computing for {metric:?}");
-            let val2merge = match metric {
-                RankableTeamMetric::Wins => {
-                    TeamPointsComputer::compute(&TeamPointsComputer, tid, conn)
-                }
+            let val2merge: HashMap<String, rust_decimal::Decimal> = match metric
+            {
+                RankableTeamMetric::Wins => points_of_team((tid,), conn)
+                    .into_iter()
+                    .map(|(k, v)| (k, rust_decimal::Decimal::from(v)))
+                    .collect(),
                 RankableTeamMetric::NTimesAchieved(t) => {
-                    NTimesSpecificResultComputer(*t).compute(tid, conn)
+                    times_team_achieved_p_points((*t, tid), conn)
+                        .into_iter()
+                        .map(|(k, v)| (k, rust_decimal::Decimal::from(v)))
+                        .collect()
                 }
                 RankableTeamMetric::TotalSpeakerScore => {
-                    TotalTeamSpeakerScoreComputer::compute(
-                        &TotalTeamSpeakerScoreComputer,
-                        tid,
-                        conn,
-                    )
+                    total_speaker_score_of_team((tid,), conn)
                 }
                 RankableTeamMetric::DrawStrengthByWins => {
-                    // todo: can re-use the points allocation
-                    // (unnecessary to compute twice)
-                    let points = TeamPointsComputer::compute(
-                        &TeamPointsComputer,
-                        tid,
-                        conn,
-                    );
-
-                    DrawStrengthComputer::<false>(points).compute(tid, conn)
+                    // todo: store metrics separately
+                    let team_points = ranked_metrics_of_team
+                        .iter()
+                        .map(|(team, metrics)| {
+                            (
+                                team.clone(),
+                                metrics
+                                    .iter()
+                                    .find_map(|(metric, value)| match metric {
+                                        RankableTeamMetric::Wins => {
+                                            Some(value.clone())
+                                        }
+                                        _ => None,
+                                    })
+                                    // todo: unwrap_or(Zero) (?)
+                                    .unwrap(),
+                            )
+                        })
+                        .collect();
+                    draw_strength_of_teams((tid, team_points), conn)
+                        .into_iter()
+                        .map(|(k, v)| (k, rust_decimal::Decimal::from(v)))
+                        .collect()
                 }
                 RankableTeamMetric::AverageTotalSpeakerScore => {
-                    // todo: (same as for draw strength by wins), we are doin
-                    // a computation twice here
-                    let tss = TotalTeamSpeakerScoreComputer::compute(
-                        &TotalTeamSpeakerScoreComputer,
-                        tid,
-                        conn,
-                    );
-
-                    AverageTotalSpeakerScoreComputer(tss).compute(tid, conn)
+                    let tss = ranked_metrics_of_team
+                        .iter()
+                        .map(|(team, metrics)| {
+                            (
+                                team.clone(),
+                                metrics
+                                    .iter()
+                                    .find_map(|(metric, value)| match metric {
+                                        RankableTeamMetric::TotalSpeakerScore => {
+                                            Some(value.clone())
+                                        }
+                                        _ => None,
+                                    })
+                                    // todo: unwrap_or(Zero) (?)
+                                    .unwrap(),
+                            )
+                        })
+                        .collect();
+                    atss::atss((tid, tss), conn)
                 }
                 RankableTeamMetric::Ballots
                 | RankableTeamMetric::DrawStrengthBySpeaks => todo!(),
@@ -147,7 +177,7 @@ impl TeamStandings {
                 ranked_metrics_of_team
                     .entry(k)
                     .and_modify(
-                        |vals: &mut Vec<(RankableTeamMetric, MetricValue)>| {
+                        |vals: &mut Vec<(RankableTeamMetric, Decimal)>| {
                             vals.push((*metric, v))
                         },
                     )
@@ -299,13 +329,7 @@ impl TeamStandings {
         for (team, kind, value) in team_metrics {
             let kind: SerializableMetric = serde_json::from_str(&kind).unwrap();
 
-            let value = if (value as i64) as f32 == value {
-                MetricValue::Integer(value as i64)
-            } else {
-                MetricValue::Float(
-                    rust_decimal::Decimal::from_f32_retain(value).unwrap(),
-                )
-            };
+            let value = Decimal::from_f32_retain(value).unwrap();
 
             match kind {
                 SerializableMetric::Rankable(rankable_team_metric) => {
@@ -360,12 +384,19 @@ impl TeamStandings {
     }
 
     pub fn points_of_team(&self, team: &String) -> Option<i64> {
-        self.ranked_metrics_of_team.get(team).and_then(|t| t.iter().find_map(|(kind, value)| {
-            match (kind, value) {
-                (RankableTeamMetric::Wins, crate::tournaments::standings::compute::metrics::MetricValue::Integer(p)) => Some(*p),
+        self.ranked_metrics_of_team.get(team).and_then(|t| {
+            t.iter().find_map(|(kind, value)| match (kind, value) {
+                (RankableTeamMetric::Wins, decimal) => {
+                    assert!(
+                        decimal.is_integer(),
+                        "expected decimal {} to be an integer",
+                        decimal
+                    );
+                    Some(decimal.to_i64().unwrap())
+                }
                 _ => None,
-            }
-        }))
+            })
+        })
     }
 
     pub fn save(
@@ -401,14 +432,8 @@ impl TeamStandings {
                         tournament_team_metrics::team_id.eq(team),
                         tournament_team_metrics::metric_kind
                             .eq(serde_json::to_string(kind).unwrap()),
-                        tournament_team_metrics::metric_value.eq(match value {
-                            // todo: should we serialize to something other than
-                            // f32?
-                            MetricValue::Integer(integer) => *integer as f32,
-                            MetricValue::Float(decimal) => {
-                                decimal.to_f32().unwrap()
-                            }
-                        }),
+                        tournament_team_metrics::metric_value
+                            .eq(value.to_f32().unwrap()),
                     ))
                 }
             }
@@ -429,14 +454,8 @@ impl TeamStandings {
                     tournament_team_metrics::team_id.eq(team),
                     tournament_team_metrics::metric_kind
                         .eq(serde_json::to_string(metric_kind).unwrap()),
-                    tournament_team_metrics::metric_value.eq(match value {
-                        // todo: should we serialize to something other than
-                        // f32?
-                        MetricValue::Integer(integer) => *integer as f32,
-                        MetricValue::Float(decimal) => {
-                            decimal.to_f32().unwrap()
-                        }
-                    }),
+                    tournament_team_metrics::metric_value
+                        .eq(value.to_f32().unwrap()),
                 ));
             }
 

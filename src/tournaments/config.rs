@@ -56,6 +56,22 @@ pub enum RankableTeamMetric {
     AverageTotalSpeakerScore,
 }
 
+impl RankableTeamMetric {
+    /// Expresses the order of dependency for computation. This allows us to use
+    /// the results of previous analyses for later ones.
+    pub fn sort_order_for_comp(&self) -> usize {
+        match self {
+            RankableTeamMetric::Wins => 1,
+            RankableTeamMetric::AverageTotalSpeakerScore => 2,
+            RankableTeamMetric::Ballots => 3,
+            RankableTeamMetric::TotalSpeakerScore => 4,
+            RankableTeamMetric::DrawStrengthBySpeaks => 5,
+            RankableTeamMetric::NTimesAchieved(_) => 6,
+            RankableTeamMetric::DrawStrengthByWins => 7,
+        }
+    }
+}
+
 impl Serialize for RankableTeamMetric {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where

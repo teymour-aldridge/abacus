@@ -1,46 +1,42 @@
 use std::collections::HashMap;
 
-use crate::{
-    schema::{
-        tournament_debate_teams, tournament_debates,
-        tournament_rounds::{self},
-        tournament_teams,
-    },
-    tournaments::standings::compute::metrics::{
-        Metric, MetricValue, completed_preliminary_rounds,
-    },
+use crate::schema::{
+    tournament_debate_team_results, tournament_debates,
+    tournament_rounds::{self},
+    tournament_teams,
 };
 use diesel::prelude::*;
-use rust_decimal::prelude::FromPrimitive;
+use rust_decimal::Decimal;
 
-pub struct AverageTotalSpeakerScoreComputer(pub HashMap<String, MetricValue>);
-
-impl Metric<MetricValue> for AverageTotalSpeakerScoreComputer {
-    fn compute(
-        &self,
-        tid: &str,
-        conn: &mut impl diesel::connection::LoadConnection<
-            Backend = diesel::sqlite::Sqlite,
-        >,
-    ) -> std::collections::HashMap<String, MetricValue> {
-        tournament_teams::table
-            .filter(tournament_teams::tournament_id.eq(tid))
-            // for all completed preliminary rounds
-            .inner_join(completed_preliminary_rounds())
+pub fn atss(
+    (tid, tss): (&str, HashMap<String, rust_decimal::Decimal>),
+    conn: &mut impl diesel::connection::LoadConnection<
+        Backend = diesel::sqlite::Sqlite,
+    >,
+) -> HashMap<String, rust_decimal::Decimal> {
+    let debates_team_appears_in: HashMap<String, i64> =
+        tournament_debates::table
             .inner_join(
-                tournament_debates::table
-                    .on(tournament_debates::round_id.eq(tournament_rounds::id)),
+                tournament_rounds::table
+                    .on(tournament_rounds::id.eq(tournament_debates::round_id)),
+            )
+            .filter(
+                tournament_rounds::tournament_id
+                    .eq(tid)
+                    .and(tournament_rounds::kind.eq("P"))
+                    .and(tournament_rounds::completed.eq(true)),
             )
             .inner_join(
-                tournament_debate_teams::table
-                    .on(
-                        tournament_debate_teams::team_id
+                tournament_teams::table.on(diesel::dsl::exists(
+                    tournament_debate_team_results::table.filter(
+                        tournament_debate_team_results::team_id
                             .eq(tournament_teams::id)
                             .and(
-                                tournament_debate_teams::debate_id
+                                tournament_debate_team_results::debate_id
                                     .eq(tournament_debates::id),
                             ),
                     ),
+                )),
             )
             .group_by(tournament_teams::id)
             .select((
@@ -50,21 +46,20 @@ impl Metric<MetricValue> for AverageTotalSpeakerScoreComputer {
             .load::<(String, i64)>(conn)
             .unwrap()
             .into_iter()
-            .map(|(a, b)| {
-                let float = if b == 0 {
-                    assert_eq!(
-                        *self.0.get(&a).unwrap().as_float().unwrap(),
-                        rust_decimal::Decimal::ZERO
-                    );
-                    MetricValue::Float(rust_decimal::Decimal::ZERO)
+            .collect();
+
+    tss.into_iter()
+        .map(|(k, v)| {
+            let decimal = {
+                let n_rounds_debated = debates_team_appears_in.get(&k).unwrap();
+                if *n_rounds_debated == 0 {
+                    assert!(v == Decimal::ZERO);
+                    Decimal::ZERO
                 } else {
-                    MetricValue::Float(
-                        self.0.get(&a).unwrap().as_float().unwrap()
-                            / rust_decimal::Decimal::from_i64(b).unwrap_or_else(|| panic!("failed to convert {b} to rust_decimal::Decimal")),
-                    )
-                };
-                (a, float)
-            })
-            .collect()
-    }
+                    v / Decimal::from(*n_rounds_debated)
+                }
+            };
+            (k, decimal)
+        })
+        .collect()
 }

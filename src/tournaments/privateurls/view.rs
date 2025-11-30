@@ -14,7 +14,7 @@ use crate::{
         Tournament,
         participants::{Judge, Participant, Speaker},
         rounds::{
-            Round,
+            Round, TournamentRounds,
             draws::{DebateRepr, DebateTeam},
             side_names::name_of_side,
         },
@@ -143,6 +143,7 @@ fn private_url_page_of_judge(
     user: Option<User<true>>,
     conn: &mut impl LoadConnection<Backend = Sqlite>,
 ) -> StandardResponse {
+    let rounds = TournamentRounds::fetch(&tournament.id, conn).unwrap();
     let current_rounds = Round::current_rounds(&tournament.id, conn);
 
     let current_debate_info = if !current_rounds.is_empty() {
@@ -215,7 +216,14 @@ fn private_url_page_of_judge(
                             h5 class="card-title" {
                                 "Private URL for " (judge.name)
                             }
-                            // todo: options to submit feedback
+                            @for round in rounds.prelim.iter().filter(|r| r.completed) {
+                                // todo: check if the person was actually involved in the round
+                                a href=(
+                                    format!("/tournaments/{}/privateurls/{}/rounds/{}/feedback/submit", tournament.id, judge.private_url, round.id)
+                                ) {
+                                    "Submit feedback for " (round.name)
+                                }
+                            }
                         }
                     }
                 }

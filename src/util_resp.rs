@@ -29,7 +29,7 @@ pub enum SuccessResponse {
     SeeOther(Box<Redirect>),
 }
 
-#[derive(Responder)]
+#[derive(Responder, Debug)]
 pub enum FailureResponse {
     #[response(status = 400)]
     BadRequest(Rendered<String>),

@@ -22,7 +22,7 @@ pub struct Round {
     pub name: String,
     kind: String,
     break_cat: Option<String>,
-    completed: bool,
+    pub completed: bool,
     pub draw_status: String,
     pub draw_released_at: Option<chrono::NaiveDateTime>,
 }

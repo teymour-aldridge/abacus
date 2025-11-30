@@ -354,3 +354,47 @@ create table if not exists tournament_speaker_score_entries (
     score float not null,
     unique (ballot_id, team_id, speaker_id)
 );
+
+create table if not exists feedback_of_judges (
+    id text primary key not null,
+    tournament_id text not null references tournaments (id),
+    debate_id text not null references tournament_debates (id),
+    judge_id text not null references tournament_judges (id),
+    target_judge_id text not null references tournament_debate_judges (id),
+    foreign key (debate_id, judge_id) references tournament_debate_judges (debate_id, judge_id),
+    foreign key (debate_id, target_judge_id) references tournament_debate_judges (debate_id, judge_id)
+);
+
+create table if not exists feedback_of_teams (
+    id text primary key not null,
+    tournament_id text not null references tournaments (id),
+    debate_id text not null references tournament_debates (id),
+    team_id text not null,
+    target_judge_id text not null references tournament_debate_judges (id),
+    foreign key (debate_id, team_id) references tournament_debate_team_results (debate_id, team_id),
+    foreign key (debate_id, target_judge_id) references tournament_debate_judges (debate_id, judge_id)
+);
+
+create table if not exists feedback_questions (
+    id text primary key not null,
+    tournament_id text not null references tournaments (id),
+    question text not null,
+    kind text not null check (json_valid(kind) = 1 and json_type(kind) = 'object'),
+    seq integer not null,
+    for_judges boolean not null,
+    for_teams boolean not null
+);
+
+create table if not exists feedback_from_judges_question_answers (
+    id text primary key not null,
+    feedback_id text not null,
+    question_id text not null references feedback_questions (id),
+    answer text not null
+);
+
+create table if not exists feedback_from_teams_question_answers (
+    id text primary key not null,
+    feedback_id text not null,
+    question_id text not null references feedback_questions (id),
+    answer text not null
+);

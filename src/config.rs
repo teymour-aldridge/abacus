@@ -22,6 +22,14 @@ use crate::{
     tournaments::{
         Tournament,
         create::{create_tournament_page, do_create_tournament},
+        feedback::manage::config::{
+            add_feedback_question, delete_feedback_question,
+            edit_feedback_question, edit_feedback_question_page,
+            manage_feedback_page, move_feedback_question_down,
+            move_feedback_question_up,
+        },
+        feedback::manage::table::feedback_table_page,
+        feedback::public::submit::{do_submit_feedback, submit_feedback_page},
         manage::config::{
             update_tournament_configuration, view_tournament_configuration,
         },
@@ -254,7 +262,17 @@ pub fn make_rocket() -> Rocket<Build> {
                 private_url_page,
                 view_private_urls,
                 admin_view_team_standings,
-                admin_ballot_of_seq_overview
+                admin_ballot_of_seq_overview,
+                submit_feedback_page,
+                do_submit_feedback,
+                manage_feedback_page,
+                add_feedback_question,
+                edit_feedback_question_page,
+                edit_feedback_question,
+                delete_feedback_question,
+                move_feedback_question_up,
+                move_feedback_question_down,
+                feedback_table_page,
             ],
         )
 }

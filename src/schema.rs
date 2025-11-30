@@ -1,6 +1,56 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    feedback_from_judges_question_answers (id) {
+        id -> Text,
+        feedback_id -> Text,
+        question_id -> Text,
+        answer -> Text,
+    }
+}
+
+diesel::table! {
+    feedback_from_teams_question_answers (id) {
+        id -> Text,
+        feedback_id -> Text,
+        question_id -> Text,
+        answer -> Text,
+    }
+}
+
+diesel::table! {
+    feedback_of_judges (id) {
+        id -> Text,
+        tournament_id -> Text,
+        debate_id -> Text,
+        judge_id -> Text,
+        target_judge_id -> Text,
+    }
+}
+
+diesel::table! {
+    feedback_of_teams (id) {
+        id -> Text,
+        tournament_id -> Text,
+        debate_id -> Text,
+        team_id -> Text,
+        target_judge_id -> Text,
+    }
+}
+
+diesel::table! {
+    feedback_questions (id) {
+        id -> Text,
+        tournament_id -> Text,
+        question -> Text,
+        kind -> Text,
+        seq -> BigInt,
+        for_judges -> Bool,
+        for_teams -> Bool,
+    }
+}
+
+diesel::table! {
     tournament_action_logs (id) {
         id -> Text,
         snapshot_id -> Text,
@@ -352,6 +402,14 @@ diesel::table! {
     }
 }
 
+diesel::joinable!(feedback_from_judges_question_answers -> feedback_questions (question_id));
+diesel::joinable!(feedback_from_teams_question_answers -> feedback_questions (question_id));
+diesel::joinable!(feedback_of_judges -> tournament_debates (debate_id));
+diesel::joinable!(feedback_of_judges -> tournament_judges (judge_id));
+diesel::joinable!(feedback_of_judges -> tournaments (tournament_id));
+diesel::joinable!(feedback_of_teams -> tournament_debates (debate_id));
+diesel::joinable!(feedback_of_teams -> tournaments (tournament_id));
+diesel::joinable!(feedback_questions -> tournaments (tournament_id));
 diesel::joinable!(tournament_action_logs -> tournament_snapshots (snapshot_id));
 diesel::joinable!(tournament_ballots -> tournament_debates (debate_id));
 diesel::joinable!(tournament_ballots -> tournament_judges (judge_id));
@@ -416,6 +474,11 @@ diesel::joinable!(tournament_teams -> tournament_institutions (institution_id));
 diesel::joinable!(tournament_teams -> tournaments (tournament_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
+    feedback_from_judges_question_answers,
+    feedback_from_teams_question_answers,
+    feedback_of_judges,
+    feedback_of_teams,
+    feedback_questions,
     tournament_action_logs,
     tournament_ballots,
     tournament_break_categories,

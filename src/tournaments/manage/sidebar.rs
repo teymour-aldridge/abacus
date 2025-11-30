@@ -1,5 +1,6 @@
 use hypertext::prelude::*;
 use hypertext::{Renderable, maud};
+use itertools::Itertools;
 
 use crate::tournaments::{Tournament, rounds::TournamentRounds};
 
@@ -74,7 +75,14 @@ impl<'r> Renderable for Sidebar<'r> {
                                         // TODO: make it possible to edit the draw
                                         // for arbitrary (uncompleted) rounds at
                                         // the same time
-                                        a class="link-light" href=(format!("/tournaments/{}/rounds/{}/draws", self.tournament.id, level[0].seq)) {
+                                        a class="link-light"
+                                          href=(
+                                            format!(
+                                              "/tournaments/{}/rounds/draws/edit?rounds={}",
+                                              self.tournament.id,
+                                              level.iter().map(|l| l.id.clone()).join(",")
+                                            )
+                                          ) {
                                             "Manage draws"
                                         }
                                     }

@@ -19,6 +19,7 @@ use crate::{
 pub mod categories;
 pub mod config;
 pub mod create;
+pub mod feedback;
 pub mod manage;
 pub mod participants;
 pub mod privateurls;

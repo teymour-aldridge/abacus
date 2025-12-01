@@ -30,16 +30,18 @@ pub async fn login_page(user: Option<User<true>>) -> StandardResponse {
     }
 
     bad_request(Page::new().user_opt(user).body(maud! {
-        form method="post" {
-            div class="form-group" {
-                label for="email" { "Email or username" }
-                input type="text" class="form-control" id="email" name="id" placeholder="Enter email or username";
+        div class="container-fluid p-3" {
+            form method="post" {
+                div class="form-group" {
+                    label for="email" { "Email or username" }
+                    input type="text" class="form-control" id="email" name="id" placeholder="Enter email or username";
+                }
+                div class="form-group" {
+                    label for="password" { "Password" }
+                    input type="password" class="form-control" id="password" name="password" placeholder="Password";
+                }
+                button type="submit" class="btn btn-primary" { "Submit" }
             }
-            div class="form-group" {
-                label for="password" { "Password" }
-                input type="password" class="form-control" id="password" name="password" placeholder="Password";
-            }
-            button type="submit" class="btn btn-primary" { "Submit" }
         }
     }).render())
 }

@@ -28,25 +28,29 @@ pub async fn register_page(user: Option<User<true>>) -> StandardResponse {
         Page::new()
             .user_opt(user)
             .body(maud! {
-                h1 {"Register"}
-                form method="post" class="mt-4" {
-                    div class="mb-3" {
-                        label for="username" class="form-label" { "Username" }
-                        input type="text" class="form-control" id="username" name="username";
+                div class="container-fluid p-3" {
+                    h1 {"Register"}
+                    form method="post" class="mt-4" {
+                        div class="mb-3" {
+                            label for="username" class="form-label" { "Username" }
+                            input type="text" class="form-control" id="username" name="username" required;
+                        }
+                        div class="mb-3" {
+                            label for="email" class="form-label" { "Email" }
+                            input type="email" class="form-control" id="email" name="email" required;
+                        }
+                        div class="mb-3" {
+                            label for="password" class="form-label" { "Password" }
+                            input type="password" class="form-control" id="password" name="password" required;
+                        }
+                        div class="mb-3" {
+                            label for="password2" class="form-label" { "Confirm Password" }
+                            input type="password" class="form-control" id="password2" name="password2" required;
+                        }
+                        div class="mb-3" {
+                            button type="submit" class="btn btn-primary" { "Register" }
+                        }
                     }
-                    div class="mb-3" {
-                        label for="email" class="form-label" { "Email" }
-                        input type="email" class="form-control" id="email" name="email";
-                    }
-                    div class="mb-3" {
-                        label for="password" class="form-label" { "Password" }
-                        input type="password" class="form-control" id="password" name="password";
-                    }
-                    div class="mb-3" {
-                        label for="password2" class="form-label" { "Confirm Password" }
-                        input type="password" class="form-control" id="password2" name="password2";
-                    }
-                    button type="submit" class="btn btn-primary" { "Register" }
                 }
             })
             .render(),

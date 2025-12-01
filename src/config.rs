@@ -158,7 +158,9 @@ pub fn home(
             Page::new()
                 .user_opt(None::<User<true>>)
                 .body(maud! {
-                    "Abacus"
+                    div class="container-fluid p-3" {
+                        "Abacus"
+                    }
                 })
                 .render(),
         )

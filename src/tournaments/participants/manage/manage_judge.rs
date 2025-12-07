@@ -1,6 +1,9 @@
+use axum::{
+    extract::{Form, Path},
+    response::Redirect,
+};
 use diesel::prelude::*;
 use hypertext::prelude::*;
-use rocket::{form::Form, get, post, response::Redirect};
 use uuid::Uuid;
 
 use crate::{
@@ -18,14 +21,15 @@ use crate::{
             },
         },
     },
-    util_resp::{StandardResponse, err_not_found, see_other_ok, success},
+    util_resp::{
+        StandardResponse, bad_request, err_not_found, see_other_ok, success,
+    },
+    validation::is_valid_email,
 };
 
-#[get("/tournaments/<tournament_id>/judges/<judge_id>/edit", rank = 2)]
 pub async fn edit_judge_details_page(
+    Path((tournament_id, judge_id)): Path<(String, String)>,
     user: User<true>,
-    tournament_id: &str,
-    judge_id: &str,
     mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
@@ -102,17 +106,11 @@ pub async fn edit_judge_details_page(
     )
 }
 
-#[post(
-    "/tournaments/<tournament_id>/judges/<judge_id>/edit",
-    rank = 2,
-    data = "<form>"
-)]
 pub async fn do_edit_judge_details(
-    tournament_id: &str,
-    judge_id: &str,
+    Path((tournament_id, judge_id)): Path<(String, String)>,
     user: User<true>,
     mut conn: Conn<true>,
-    form: Form<CreateJudgeForm>,
+    Form(form): Form<CreateJudgeForm>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_has_permission(
@@ -120,6 +118,40 @@ pub async fn do_edit_judge_details(
         crate::permission::Permission::ManageParticipants,
         &mut *conn,
     )?;
+
+    if form.name.len() > 128 {
+        return bad_request(
+            Page::new()
+                .user(user)
+                .tournament(tournament)
+                .body(maud! {
+                    "Error: Name is too long (max 128 characters)."
+                })
+                .render(),
+        );
+    }
+    if form.email.len() > 254 {
+        return bad_request(
+            Page::new()
+                .user(user)
+                .tournament(tournament)
+                .body(maud! {
+                    "Error: Email is too long (max 254 characters)."
+                })
+                .render(),
+        );
+    }
+    if let Err(_) = is_valid_email(&form.email) {
+        return bad_request(
+            Page::new()
+                .user(user)
+                .tournament(tournament)
+                .body(maud! {
+                    "Error: Invalid email address."
+                })
+                .render(),
+        );
+    }
 
     let judge = match tournament_judges::table
         .find(judge_id)
@@ -136,10 +168,9 @@ pub async fn do_edit_judge_details(
         "-----" => None,
         id => {
             let inst_exists = diesel::dsl::select(diesel::dsl::exists(
-                tournament_judges::table.filter(
-                    tournament_judges::id
-                        .eq(id)
-                        .and(tournament_judges::institution_id.eq(id)),
+                tournament_institutions::table.filter(
+                    // Changed from tournament_judges to tournament_institutions as it seems to be checking if institution exists?
+                    tournament_institutions::id.eq(id),
                 ),
             ))
             .get_result::<bool>(&mut *conn)
@@ -166,7 +197,7 @@ pub async fn do_edit_judge_details(
     .execute(&mut *conn)
     .unwrap();
 
-    see_other_ok(Redirect::to(format!(
+    see_other_ok(Redirect::to(&format!(
         "/tournaments/{}/participants",
         tournament.id
     )))

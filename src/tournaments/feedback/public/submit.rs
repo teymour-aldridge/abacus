@@ -1,8 +1,9 @@
+use axum::extract::{Form, Path};
 use std::collections::HashMap;
 
-use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
+use diesel::{connection::LoadConnection, prelude::*};
 use hypertext::{Renderable, maud, prelude::*};
-use rocket::{FromForm, form::Form, get, post};
+use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::{
@@ -31,25 +32,24 @@ use crate::{
     util_resp::{FailureResponse, StandardResponse, err_not_found, success},
 };
 
-#[get(
-    "/tournaments/<tournament_id>/privateurls/<private_url>/rounds/<round_id>/feedback/submit"
-)]
 pub async fn submit_feedback_page(
-    tournament_id: &str,
-    private_url: &str,
-    round_id: &str,
+    Path((tournament_id, private_url, round_id)): Path<(
+        String,
+        String,
+        String,
+    )>,
     user: Option<User<true>>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
-    let round = Round::fetch(round_id, &mut *conn)?;
-    let rounds = TournamentRounds::fetch(tournament_id, &mut *conn).unwrap();
+    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
+    let round = Round::fetch(&round_id, &mut *conn)?;
+    let rounds = TournamentRounds::fetch(&tournament_id, &mut *conn).unwrap();
 
     let judge = tournament_judges::table
         .filter(
             tournament_judges::private_url
-                .eq(private_url)
-                .and(tournament_judges::tournament_id.eq(tournament_id)),
+                .eq(&private_url)
+                .and(tournament_judges::tournament_id.eq(&tournament_id)),
         )
         .first::<Judge>(&mut *conn)
         .optional()
@@ -59,8 +59,8 @@ pub async fn submit_feedback_page(
         tournament_speakers::table
             .filter(
                 tournament_speakers::private_url
-                    .eq(private_url)
-                    .and(tournament_speakers::tournament_id.eq(tournament_id)),
+                    .eq(&private_url)
+                    .and(tournament_speakers::tournament_id.eq(&tournament_id)),
             )
             .first::<Speaker>(&mut *conn)
             .optional()
@@ -88,7 +88,7 @@ pub async fn submit_feedback_page(
     };
 
     let questions = feedback_questions::table
-        .filter(feedback_questions::tournament_id.eq(tournament_id))
+        .filter(feedback_questions::tournament_id.eq(&tournament_id))
         .order_by(feedback_questions::seq.asc())
         .load::<FeedbackQuestion>(&mut *conn)
         .unwrap();
@@ -145,19 +145,19 @@ impl Renderable for FeedbackFormRenderer {
 
                     @for question in &self.questions {
                         @let kind: FeedbackQuestionKind = serde_json::from_str(&question.kind).unwrap();
-                        @if question.for_judges && matches!(self.submitter_kind, ParticipantKind::Judge)
-                            || question.for_teams && matches!(self.submitter_kind, ParticipantKind::Speaker) {
+                        @if (question.for_judges && matches!(self.submitter_kind, ParticipantKind::Judge))
+                            || (question.for_teams && matches!(self.submitter_kind, ParticipantKind::Speaker)) {
                                 div class="mb-3" {
-                                    label for=(format!("answers[{}]", question.id)) class="form-label" { (question.question) }
+                                    label for=(question.id) class="form-label" { (question.question) }
                                     @match kind {
                                         FeedbackQuestionKind::IntegerScale { .. } => {
-                                            input type="number" class="form-control" name=(format!("answers[{}]", question.id)) min="1" max="10" required;
+                                            input type="number" class="form-control" name=(question.id) min="1" max="10" required;
                                         }
                                         FeedbackQuestionKind::Text => {
-                                            textarea class="form-control" name=(format!("answers[{}]", question.id)) rows="3" required {}
+                                            textarea class="form-control" name=(question.id) rows="3" required {}
                                         }
                                         FeedbackQuestionKind::Boolean => {
-                                            input type="checkbox" class="form-check-input" name=(format!("answers[{}]", question.id)) required;
+                                            input type="checkbox" class="form-check-input" name=(question.id) required;
                                         }
                                     }
                                 }
@@ -172,33 +172,32 @@ impl Renderable for FeedbackFormRenderer {
     }
 }
 
-#[derive(FromForm)]
+#[derive(Deserialize)]
 pub struct FeedbackSubmissionForm {
     target_judge_id: String,
+    #[serde(flatten)]
     answers: HashMap<String, String>,
 }
 
-#[post(
-    "/tournaments/<tournament_id>/privateurls/<private_url>/rounds/<round_id>/feedback/submit",
-    data = "<form>"
-)]
 pub async fn do_submit_feedback(
-    tournament_id: &str,
-    private_url: &str,
-    round_id: &str,
+    Path((tournament_id, private_url, round_id)): Path<(
+        String,
+        String,
+        String,
+    )>,
     user: Option<User<true>>,
     mut conn: Conn<true>,
-    form: Form<FeedbackSubmissionForm>,
+    Form(form): Form<FeedbackSubmissionForm>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
-    let round = Round::fetch(round_id, &mut *conn)?;
+    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
+    let round = Round::fetch(&round_id, &mut *conn)?;
 
     // Identify submitter
     let judge = tournament_judges::table
         .filter(
             tournament_judges::private_url
-                .eq(private_url)
-                .and(tournament_judges::tournament_id.eq(tournament_id)),
+                .eq(&private_url)
+                .and(tournament_judges::tournament_id.eq(&tournament_id)),
         )
         .first::<Judge>(&mut *conn)
         .optional()
@@ -208,8 +207,8 @@ pub async fn do_submit_feedback(
         tournament_speakers::table
             .filter(
                 tournament_speakers::private_url
-                    .eq(private_url)
-                    .and(tournament_speakers::tournament_id.eq(tournament_id)),
+                    .eq(&private_url)
+                    .and(tournament_speakers::tournament_id.eq(&tournament_id)),
             )
             .first::<Speaker>(&mut *conn)
             .optional()
@@ -311,7 +310,7 @@ pub async fn do_submit_feedback(
 fn debate_of_judge_in_round(
     judge_id: &str,
     round_id: &str,
-    conn: &mut impl LoadConnection<Backend = Sqlite>,
+    conn: &mut impl LoadConnection<Backend = diesel::sqlite::Sqlite>,
 ) -> Result<Debate, FailureResponse> {
     match tournament_debates::table
         .inner_join(
@@ -341,7 +340,7 @@ fn debate_of_judge_in_round(
 fn debate_of_speaker_in_round(
     speaker_id: &str,
     round_id: &str,
-    conn: &mut impl LoadConnection<Backend = Sqlite>,
+    conn: &mut impl LoadConnection<Backend = diesel::sqlite::Sqlite>,
 ) -> Result<Debate, FailureResponse> {
     let team_id = tournament_team_speakers::table
         .filter(tournament_team_speakers::speaker_id.eq(speaker_id))
@@ -383,7 +382,7 @@ fn debate_of_speaker_in_round(
 fn get_feedback_targets_for_judge(
     judge_id: &str,
     debate_id: &str,
-    conn: &mut impl LoadConnection<Backend = Sqlite>,
+    conn: &mut impl LoadConnection<Backend = diesel::sqlite::Sqlite>,
 ) -> Vec<Judge> {
     let status = tournament_debate_judges::table
         .filter(tournament_debate_judges::debate_id.eq(debate_id))
@@ -409,7 +408,7 @@ fn get_feedback_targets_for_judge(
 
 fn get_feedback_targets_for_speaker(
     debate_id: &str,
-    conn: &mut impl LoadConnection<Backend = Sqlite>,
+    conn: &mut impl LoadConnection<Backend = diesel::sqlite::Sqlite>,
 ) -> Vec<Judge> {
     tournament_judges::table
         .inner_join(

@@ -1,6 +1,7 @@
+use axum::{Form, extract::Path, response::Redirect};
 use diesel::prelude::*;
 use hypertext::prelude::*;
-use rocket::{FromForm, form::Form, get, post, response::Redirect};
+use serde::Deserialize;
 
 use crate::{
     auth::User,
@@ -19,19 +20,17 @@ use crate::{
     },
 };
 
-#[get("/tournaments/<tid>/rounds/<rid>/edit")]
 pub async fn edit_round_page(
-    tid: &str,
-    rid: &str,
+    Path((tid, rid)): Path<(String, String)>,
     user: User<true>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tid, &mut *conn)?;
+    let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
     let round = match tournament_rounds::table
-        .filter(tournament_rounds::tournament_id.eq(tid))
-        .filter(tournament_rounds::id.eq(rid))
+        .filter(tournament_rounds::tournament_id.eq(&tid))
+        .filter(tournament_rounds::id.eq(&rid))
         .first::<Round>(&mut *conn)
         .optional()
         .unwrap()
@@ -40,7 +39,7 @@ pub async fn edit_round_page(
         None => return Err(FailureResponse::NotFound(())),
     };
 
-    let rounds = TournamentRounds::fetch(tid, &mut *conn).unwrap();
+    let rounds = TournamentRounds::fetch(&tid, &mut *conn).unwrap();
 
     Ok(SuccessResponse::Success(
         Page::new()
@@ -89,24 +88,31 @@ pub async fn edit_round_page(
     ))
 }
 
-#[derive(FromForm)]
+#[derive(Deserialize)]
 pub struct EditRoundForm {
-    #[field(validate = len(4..=32))]
     name: String,
-    #[field(validate = range(1..))]
     seq: u32,
 }
 
-#[post("/tournaments/<tid>/rounds/<rid>/edit", data = "<form>")]
 pub async fn do_edit_round(
-    tid: &str,
-    rid: &str,
+    Path((tid, rid)): Path<(String, String)>,
     user: User<true>,
-    form: Form<EditRoundForm>,
     mut conn: Conn<true>,
+    Form(form): Form<EditRoundForm>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tid, &mut *conn)?;
+    let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+
+    if form.name.len() < 4 || form.name.len() > 32 {
+        return crate::util_resp::bad_request(
+            maud! { "Round name must be between 4 and 32 characters" }.render(),
+        );
+    }
+    if form.seq < 1 {
+        return crate::util_resp::bad_request(
+            maud! { "Sequence must be at least 1" }.render(),
+        );
+    }
 
     let round = match tournament_rounds::table
         .filter(tournament_rounds::tournament_id.eq(&tid))
@@ -154,7 +160,7 @@ pub async fn do_edit_round(
     .unwrap();
     assert_eq!(n, 1);
 
-    take_snapshot(tid, &mut *conn);
+    take_snapshot(&tid, &mut *conn);
 
-    see_other_ok(Redirect::to(format!("/tournaments/{tid}/rounds")))
+    see_other_ok(Redirect::to(&format!("/tournaments/{tid}/rounds")))
 }

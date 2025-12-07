@@ -1,6 +1,9 @@
+use axum::{
+    extract::{Form, Path},
+    response::Redirect,
+};
 use diesel::prelude::*;
 use hypertext::prelude::*;
-use rocket::{FromForm, form::Form, get, post, response::Redirect};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -59,9 +62,8 @@ fn config_of_tournament(tournament: &Tournament) -> TournamentConfig {
     }
 }
 
-#[get("/tournaments/<tournament_id>/configuration")]
 pub async fn view_tournament_configuration(
-    tournament_id: &str,
+    Path(tournament_id): Path<String>,
     user: User<true>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
@@ -98,17 +100,16 @@ pub async fn view_tournament_configuration(
     )
 }
 
-#[derive(FromForm)]
+#[derive(Deserialize)]
 pub struct UpdateConfigForm {
     config: String,
 }
 
-#[post("/tournaments/<tournament_id>/configuration", data = "<form>")]
 pub async fn update_tournament_configuration(
-    tournament_id: &str,
+    Path(tournament_id): Path<String>,
     user: User<true>,
     mut conn: Conn<true>,
-    form: Form<UpdateConfigForm>,
+    Form(form): Form<UpdateConfigForm>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
@@ -175,5 +176,5 @@ pub async fn update_tournament_configuration(
     .unwrap();
     assert_eq!(n, 1);
 
-    see_other_ok(Redirect::to(format!("/tournaments/{}", &tournament.id)))
+    see_other_ok(Redirect::to(&format!("/tournaments/{}", &tournament.id)))
 }

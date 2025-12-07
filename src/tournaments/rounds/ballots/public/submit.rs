@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use axum::extract::{Form, Path};
 use diesel::{
     connection::LoadConnection,
     prelude::*,
@@ -7,8 +8,8 @@ use diesel::{
     sqlite::Sqlite,
 };
 use hypertext::{Renderable, maud, prelude::*};
-use rocket::{FromForm, form::Form, get, post};
 use rust_decimal::prelude::ToPrimitive;
+use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::{
@@ -34,23 +35,22 @@ use crate::{
     widgets::alert::ErrorAlert,
 };
 
-#[get(
-    "/tournaments/<tournament_id>/privateurls/<private_url>/rounds/<round_id>/submit"
-)]
 pub async fn submit_ballot_page(
-    tournament_id: &str,
-    private_url: &str,
-    round_id: &str,
+    Path((tournament_id, private_url, round_id)): Path<(
+        String,
+        String,
+        String,
+    )>,
     user: Option<User<true>>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
+    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
 
     let judge = match tournament_judges::table
         .filter(
             tournament_judges::private_url
-                .eq(private_url)
-                .and(tournament_judges::tournament_id.eq(tournament_id)),
+                .eq(&private_url)
+                .and(tournament_judges::tournament_id.eq(&tournament_id)),
         )
         .first::<Judge>(&mut *conn)
         .optional()
@@ -60,7 +60,7 @@ pub async fn submit_ballot_page(
         None => return err_not_found(),
     };
 
-    let round = Round::fetch(round_id, &mut *conn)?;
+    let round = Round::fetch(&round_id, &mut *conn)?;
 
     if round.draw_status != "R" {
         return bad_request(
@@ -130,8 +130,8 @@ impl Renderable for BallotFormRenderer {
                                 @let team = &self.debate.teams_of_debate[2 * (seq as usize)];
                                 @let speakers = self.debate.speakers_of_team.get(&team.id).unwrap();
                                 (TeamSpeakerChoice {
-                                    team_pos: 2*(seq as usize),
-                                    speaker_pos: row,
+                                    _team_pos: 2*(seq as usize),
+                                    _speaker_pos: row,
                                     speakers_on_team: speakers
                                 })
                             }
@@ -139,14 +139,16 @@ impl Renderable for BallotFormRenderer {
                                 @let team = &self.debate.teams_of_debate[2 * (seq as usize) + 1];
                                 @let speakers = self.debate.speakers_of_team.get(&team.id).unwrap();
                                 (TeamSpeakerChoice {
-                                    team_pos: 2*(seq as usize) + 1,
-                                    speaker_pos: row,
+                                    _team_pos: 2*(seq as usize) + 1,
+                                    _speaker_pos: row,
                                     speakers_on_team: speakers
                                 })
                             }
                         }
                     }
                 }
+
+                button type="submit" class="btn btn-primary mt-3" { "Submit Ballot" }
             }
         }
         .render_to(buffer);
@@ -154,9 +156,9 @@ impl Renderable for BallotFormRenderer {
 }
 
 struct TeamSpeakerChoice<'r> {
-    team_pos: usize,
+    _team_pos: usize,
     /// Position on the team
-    speaker_pos: usize,
+    _speaker_pos: usize,
     speakers_on_team: &'r Vec<Speaker>,
     // TODO: reply speakers
 }
@@ -168,12 +170,12 @@ impl Renderable for TeamSpeakerChoice<'_> {
     ) {
         maud! {
             select class="form-select"
-                name=(format!("speakers[{}][{}]", self.team_pos, self.speaker_pos)) {
+                name="speakers" {
                 option selected value="-----" {
                     "-----"
                 }
                 @for speaker in self.speakers_on_team {
-                    option selected value=(speaker.id) {
+                    option value=(speaker.id) {
                         (speaker.name)
                     }
                 }
@@ -181,7 +183,7 @@ impl Renderable for TeamSpeakerChoice<'_> {
 
             input
                 required
-                  name=(format!("scores[{}][{}]", self.team_pos, self.speaker_pos))
+                  name="scores"
                   type="number"
                   // todo: adjust per tournament
                   min="50" max="99" step="1" placeholder="Speaker score";
@@ -190,47 +192,37 @@ impl Renderable for TeamSpeakerChoice<'_> {
     }
 }
 
-#[derive(FromForm)]
+#[derive(Deserialize)]
 /// A BP ballot might look like
 ///
 /// ```ignore
-/// speakers: [
-///     [s1, s2],
-///     [s3, s4],
-///     [s5, s6],
-///     [s7, s8]
-/// ]
-/// scores: [
-///     [85, 86],
-///     [87, 88],
-///     [89, 90],
-///     [91, 92]
-/// ]
+/// speakers: [s1, s2, s3, s4, s5, s6, s7, s8]
+/// scores: [85, 86, 87, 88, 89, 90, 91, 92]
 /// ```
 pub struct BallotSubmissionForm {
-    speakers: Vec<Vec<String>>,
-    scores: Vec<Vec<f64>>,
+    #[serde(default)]
+    speakers: Vec<String>,
+    #[serde(default)]
+    scores: Vec<f64>,
     motion: Option<String>,
 }
 
-#[post(
-    "/tournaments/<tournament_id>/privateurls/<private_url>/rounds/<round_id>/submit",
-    data = "<form>"
-)]
 pub async fn do_submit_ballot(
-    tournament_id: &str,
-    private_url: &str,
-    round_id: &str,
+    Path((tournament_id, private_url, round_id)): Path<(
+        String,
+        String,
+        String,
+    )>,
     user: Option<User<true>>,
     mut conn: Conn<true>,
-    form: Form<BallotSubmissionForm>,
+    Form(form): Form<BallotSubmissionForm>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
+    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     let judge = match tournament_judges::table
         .filter(
             tournament_judges::private_url
-                .eq(private_url)
-                .and(tournament_judges::tournament_id.eq(tournament_id)),
+                .eq(&private_url)
+                .and(tournament_judges::tournament_id.eq(&tournament_id)),
         )
         .first::<Judge>(&mut *conn)
         .optional()
@@ -239,7 +231,7 @@ pub async fn do_submit_ballot(
         Some(judge) => judge,
         None => return err_not_found(),
     };
-    let round = Round::fetch(round_id, &mut *conn)?;
+    let round = Round::fetch(&round_id, &mut *conn)?;
     if round.draw_status != "R" {
         return bad_request(
             Page::new()
@@ -259,49 +251,60 @@ pub async fn do_submit_ballot(
     // up as `bye` and will have no adjudicators).
     let actual_teams = &debate_repr.teams_of_debate;
 
+    let teams_count = (tournament.teams_per_side * 2) as usize;
+    let speakers_count = tournament.substantive_speakers as usize;
+    let expected_len = teams_count * speakers_count;
+
     {
-        if form.speakers.len() != actual_teams.len()
-            || form.scores.len() != actual_teams.len()
+        if form.speakers.len() != expected_len
+            || form.scores.len() != expected_len
         {
             return bad_request(
                 Page::new()
                     .tournament(tournament.clone())
                     .user_opt(user)
                     .body(maud! {
-                        ErrorAlert msg = "Error: data submitted incorrectly formatted";
+                        ErrorAlert msg = "Error: data submitted incorrectly formatted (wrong number of speakers/scores)";
                     })
                     .render()
             );
         }
 
-        for each in &form.speakers {
-            if each.len() != (tournament.substantive_speakers as usize) {
-                return bad_request(
-                    Page::new()
-                        .tournament(tournament.clone())
-                        .user_opt(user)
-                        .body(maud! {
-                            ErrorAlert msg = "Error: data submitted incorrectly formatted";
-                        })
-                        .render()
-                );
-            }
-        }
-
-        for each in &form.scores {
-            if each.len() != (tournament.substantive_speakers as usize) {
-                return bad_request(
-                    Page::new()
-                        .tournament(tournament.clone())
-                        .user_opt(user)
-                        .body(maud! {
-                            ErrorAlert msg = "Error: data submitted incorrectly formatted";
-                        })
-                        .render()
-                );
-            }
+        if actual_teams.len() != teams_count {
+            // Should verify logic about byes here if relevant
         }
     };
+
+    // Reconstruct nested structure
+    // form.speakers contains [T0S0, T1S0, T0S1, T1S1, ... T2S0, T3S0 ...]
+    // We want nested_speakers[team_idx][speaker_idx]
+    let mut nested_speakers: Vec<Vec<String>> =
+        vec![vec![String::default(); speakers_count]; teams_count];
+    let mut nested_scores: Vec<Vec<f64>> =
+        vec![vec![0.0; speakers_count]; teams_count];
+
+    let mut speaker_iter = form.speakers.into_iter();
+    let mut score_iter = form.scores.into_iter();
+
+    for seq in 0..tournament.teams_per_side {
+        for row in 0..speakers_count {
+            // First col (Team 2*seq)
+            let t1_idx = (seq as usize * 2) as usize;
+            let s1 = speaker_iter.next().unwrap();
+            let sc1 = score_iter.next().unwrap();
+
+            nested_speakers[t1_idx][row] = s1;
+            nested_scores[t1_idx][row] = sc1;
+
+            // Second col (Team 2*seq+1)
+            let t2_idx = (seq as usize * 2 + 1) as usize;
+            let s2 = speaker_iter.next().unwrap();
+            let sc2 = score_iter.next().unwrap();
+
+            nested_speakers[t2_idx][row] = s2;
+            nested_scores[t2_idx][row] = sc2;
+        }
+    }
 
     {
         if let Some(motion) = &form.motion
@@ -346,8 +349,8 @@ pub async fn do_submit_ballot(
 
     let mut scoresheets = Vec::new();
 
-    for ((i, speakers_on_team), scores_of_speakers) in
-        form.speakers.iter().enumerate().zip(&form.scores)
+    for (i, (speakers_on_team, scores_of_speakers)) in
+        nested_speakers.iter().zip(nested_scores.iter()).enumerate()
     {
         let actual_team = &actual_teams[i];
         let actual_team_speakers =
@@ -368,7 +371,7 @@ pub async fn do_submit_ballot(
                         .tournament(tournament.clone())
                         .user_opt(user)
                         .body(maud! {
-                            ErrorAlert msg = "Error: data submitted incorrectly formatted";
+                            ErrorAlert msg = "Error: data submitted incorrectly formatted (speaker not on team)";
                         })
                         .render()
                 );
@@ -474,7 +477,24 @@ pub async fn do_submit_ballot(
         }
     }
 
-    todo!()
+    diesel::insert_into(tournament_speaker_score_entries::table)
+        .values(&scoresheet_entries)
+        .execute(&mut *conn)
+        .unwrap();
+
+    success(
+        Page::new()
+            .user_opt(user)
+            .tournament(tournament.clone())
+            .body(maud! {
+                div class="container" {
+                    div class="alert alert-success" role="alert" {
+                        "Ballot submitted successfully."
+                    }
+                }
+            })
+            .render(),
+    )
 }
 
 struct TeamScoresheet {

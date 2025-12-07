@@ -1,5 +1,8 @@
+use axum::{
+    http::StatusCode,
+    response::{Html, IntoResponse, Redirect, Response},
+};
 use hypertext::Rendered;
-use rocket::{Responder, response::Redirect};
 
 pub fn see_other_ok(r: Redirect) -> StandardResponse {
     Ok(SuccessResponse::SeeOther(Box::new(r)))
@@ -23,20 +26,49 @@ pub fn unauthorized() -> StandardResponse {
 
 pub type StandardResponse = Result<SuccessResponse, FailureResponse>;
 
-#[derive(Responder)]
+// StandardResponse is Result, which implements IntoResponse if T and E do.
+
 pub enum SuccessResponse {
     Success(Rendered<String>),
     SeeOther(Box<Redirect>),
 }
 
-#[derive(Responder, Debug)]
+impl IntoResponse for SuccessResponse {
+    fn into_response(self) -> Response {
+        match self {
+            SuccessResponse::Success(html) => {
+                Html(html.into_inner()).into_response()
+            }
+            SuccessResponse::SeeOther(redirect) => redirect.into_response(),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum FailureResponse {
-    #[response(status = 400)]
     BadRequest(Rendered<String>),
-    #[response(status = 404)]
     NotFound(()),
-    #[response(status = 403)]
     Unauthorized(()),
-    #[response(status = 500)]
     ServerError(()),
+}
+
+impl IntoResponse for FailureResponse {
+    fn into_response(self) -> Response {
+        match self {
+            FailureResponse::BadRequest(html) => {
+                (StatusCode::BAD_REQUEST, Html(html.into_inner()))
+                    .into_response()
+            }
+            FailureResponse::NotFound(_) => {
+                (StatusCode::NOT_FOUND, "Not Found").into_response()
+            }
+            FailureResponse::Unauthorized(_) => {
+                (StatusCode::UNAUTHORIZED, "Unauthorized").into_response()
+            }
+            FailureResponse::ServerError(_) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, "Server Error")
+                    .into_response()
+            }
+        }
+    }
 }

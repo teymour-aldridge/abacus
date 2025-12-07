@@ -1,7 +1,6 @@
-use abacus::config::make_rocket;
-use rocket::launch;
+use abacus::config::run;
 
-#[launch]
-async fn launch() -> _ {
-    make_rocket()
+#[tokio::main]
+async fn main() {
+    run().await;
 }

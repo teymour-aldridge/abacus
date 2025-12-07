@@ -6,9 +6,10 @@
 //!
 //! todo: document this
 
+use axum::{Form, extract::Path, response::Redirect};
 use diesel::prelude::*;
 use hypertext::prelude::*;
-use rocket::{FromForm, form::Form, get, post, response::Redirect};
+use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::{
@@ -23,13 +24,12 @@ use crate::{
     util_resp::{StandardResponse, err_not_found, see_other_ok, success},
 };
 
-#[get("/tournaments/<tid>/rounds/create", rank = 1)]
 pub async fn create_new_round(
-    tid: &str,
+    Path(tid): Path<String>,
     user: User<true>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tid, &mut *conn)?;
+    let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
     let rounds = TournamentRounds::fetch(&tid, &mut *conn).unwrap();
@@ -79,14 +79,12 @@ pub async fn create_new_round(
         .render())
 }
 
-#[get("/tournaments/<tid>/rounds/<category_id>/create")]
 pub async fn create_new_round_of_specific_category_page(
-    tid: &str,
-    category_id: &str,
+    Path((tid, category_id)): Path<(String, String)>,
     user: User<true>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tid, &mut *conn)?;
+    let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
     let rounds = TournamentRounds::fetch(&tid, &mut *conn).unwrap();
@@ -98,7 +96,7 @@ pub async fn create_new_round_of_specific_category_page(
                 tournament_break_categories::table.filter(
                     tournament_break_categories::tournament_id
                         .eq(&tournament.id)
-                        .and(tournament_break_categories::id.eq(category_id)),
+                        .and(tournament_break_categories::id.eq(&category_id)),
                 ),
             ))
             .get_result::<bool>(&mut *conn)
@@ -152,30 +150,37 @@ pub async fn create_new_round_of_specific_category_page(
     )
 }
 
-#[derive(FromForm)]
+#[derive(Deserialize)]
 pub struct CreateNewRoundForm {
-    #[field(validate = len(4..=32))]
     name: String,
-    #[field(validate = range(1..=100))]
     seq: u32,
 }
 
-#[post("/tournaments/<tid>/rounds/<category_id>/create", data = "<form>")]
 pub async fn do_create_new_round_of_specific_category(
-    tid: &str,
-    category_id: &str,
-    form: Form<CreateNewRoundForm>,
+    Path((tid, category_id)): Path<(String, String)>,
     user: User<true>,
     mut conn: Conn<true>,
+    Form(form): Form<CreateNewRoundForm>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tid, &mut *conn)?;
+    let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+
+    if form.name.len() < 4 || form.name.len() > 32 {
+        return crate::util_resp::bad_request(
+            maud! { "Round name must be between 4 and 32 characters" }.render(),
+        );
+    }
+    if form.seq < 1 || form.seq > 100 {
+        return crate::util_resp::bad_request(
+            maud! { "Sequence must be between 1 and 100" }.render(),
+        );
+    }
 
     let break_cat = if category_id == "in_round" {
         None
     } else {
         let cat = match tournament_break_categories::table
-            .filter(tournament_break_categories::id.eq(category_id))
+            .filter(tournament_break_categories::id.eq(&category_id))
             .filter(
                 tournament_break_categories::tournament_id.eq(&tournament.id),
             )
@@ -206,7 +211,7 @@ pub async fn do_create_new_round_of_specific_category(
         .execute(&mut *conn)
         .unwrap();
 
-    see_other_ok(Redirect::to(format!(
+    see_other_ok(Redirect::to(&format!(
         "/tournaments/{}/rounds",
         tournament.id
     )))

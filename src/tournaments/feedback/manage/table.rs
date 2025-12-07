@@ -1,7 +1,8 @@
+use axum::extract::{Path, Query};
 use diesel::prelude::*;
 use diesel::sql_types::{Bool, Text};
 use hypertext::{Renderable, maud, prelude::*};
-use rocket::{FromForm, get};
+use serde::Deserialize;
 use std::collections::HashMap;
 
 use crate::{
@@ -19,7 +20,7 @@ use crate::{
     util_resp::{StandardResponse, success},
 };
 
-#[derive(FromForm)]
+#[derive(Deserialize)]
 pub struct FeedbackTableQuery {
     page: Option<i64>,
 }
@@ -38,20 +39,19 @@ struct FeedbackRow {
     is_latest: bool,
 }
 
-#[get("/tournaments/<tournament_id>/feedback/table?<query..>")]
 pub async fn feedback_table_page(
-    tournament_id: &str,
+    Path(tournament_id): Path<String>,
     user: User<true>,
     mut conn: Conn<true>,
-    query: FeedbackTableQuery,
+    Query(query): Query<FeedbackTableQuery>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
+    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
-    let rounds = TournamentRounds::fetch(tournament_id, &mut *conn).unwrap();
+    let rounds = TournamentRounds::fetch(&tournament_id, &mut *conn).unwrap();
 
     let questions = feedback_questions::table
-        .filter(feedback_questions::tournament_id.eq(tournament_id))
+        .filter(feedback_questions::tournament_id.eq(&tournament_id))
         .order_by(feedback_questions::seq.asc())
         .select((feedback_questions::id, feedback_questions::question))
         .load::<(String, String)>(&mut *conn)
@@ -144,7 +144,7 @@ pub async fn feedback_table_page(
     );
 
     let feedback_page = diesel::sql_query(latest_feedback_sql)
-        .bind::<Text, _>(tournament_id)
+        .bind::<Text, _>(&tournament_id)
         .bind::<diesel::sql_types::BigInt, _>(per_page)
         .bind::<diesel::sql_types::BigInt, _>(offset)
         .load::<FeedbackRow>(&mut *conn)

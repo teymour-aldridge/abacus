@@ -1,9 +1,12 @@
 use argon2::{Argon2, PasswordHash, PasswordVerifier};
+use axum::{
+    extract::{Form, Query},
+    response::Redirect,
+};
+use axum_extra::extract::{PrivateCookieJar, cookie::Key};
 use diesel::prelude::*;
 use hypertext::prelude::*;
-use rocket::{
-    FromForm, form::Form, get, http::CookieJar, post, response::Redirect,
-};
+use serde::Deserialize;
 use url::Url;
 
 use crate::{
@@ -12,18 +15,18 @@ use crate::{
     state::Conn,
     template::Page,
     util_resp::{FailureResponse, StandardResponse, bad_request, see_other_ok},
-    widgets::alert::ErrorAlert,
+    // widgets::alert::ErrorAlert,
 };
 
-#[get("/login")]
 pub async fn login_page(user: Option<User<true>>) -> StandardResponse {
     if user.is_some() {
         return Err(FailureResponse::BadRequest(
             Page::new()
                 .user_opt(user)
                 .body(maud! {
-                    ErrorAlert
-                        msg = "You are already logged in, so cannot log in!";
+                    div class="alert alert-danger" {
+                         "You are already logged in, so cannot log in!"
+                    }
                 })
                 .render(),
         ));
@@ -46,20 +49,25 @@ pub async fn login_page(user: Option<User<true>>) -> StandardResponse {
     }).render())
 }
 
-#[derive(FromForm)]
+#[derive(Deserialize)]
 pub struct LoginForm {
     id: String,
     password: String,
 }
 
-#[post("/login?<next>", data = "<form>")]
+#[derive(Deserialize)]
+pub struct NextParams {
+    next: Option<String>,
+}
+
 pub async fn do_login(
     user: Option<User<true>>,
-    next: Option<&str>,
+    Query(params): Query<NextParams>,
     mut conn: Conn<true>,
-    form: Form<LoginForm>,
-    jar: &CookieJar<'_>,
-) -> StandardResponse {
+    jar: PrivateCookieJar<Key>,
+    Form(form): Form<LoginForm>,
+) -> (PrivateCookieJar<Key>, StandardResponse) {
+    let next = params.next.as_deref();
     let user1 =
         match users::table
             .filter(users::email.eq(&form.id).or(users::username.eq(&form.id)))
@@ -68,16 +76,16 @@ pub async fn do_login(
             .unwrap()
         {
             Some(user) => user,
-            None => return Err(FailureResponse::BadRequest(
+            None => return (jar, Err(FailureResponse::BadRequest(
                 Page::new()
                     .user_opt(user)
                     .body(maud! {
-                        ErrorAlert
-                            msg =  "No such user exists. Please return to the
-                                    previous page and try again.";
+                        div class="alert alert-danger" {
+                             "No such user exists. Please return to the previous page and try again."
+                        }
                     })
                     .render(),
-            )),
+             ))),
         };
 
     let parsed_hash = PasswordHash::new(&user1.password_hash).unwrap();
@@ -86,28 +94,32 @@ pub async fn do_login(
         .is_err()
     {
         // todo: password rate limiting
-        return bad_request(
+        return (jar, bad_request(
             Page::new()
                 .user_opt(user)
                 .body(maud! {
-                    ErrorAlert msg =
-                        "Incorrect password. Please return to the previous page
-                         and try again.";
+                    div class="alert alert-danger" {
+                        "Incorrect password. Please return to the previous page and try again."
+                    }
                 })
                 .render(),
-        );
+        ));
     }
 
-    set_login_cookie(user1.id, jar);
+    let jar = set_login_cookie(user1.id, jar);
 
-    see_other_ok({
-        let redirect_to =
-            if let Some(url) = next.and_then(|url| url.parse::<Url>().ok()) {
+    (
+        jar,
+        see_other_ok({
+            let redirect_to = if let Some(url) =
+                next.and_then(|url| url.parse::<Url>().ok())
+            {
                 url.path().to_string()
             } else {
                 "/".to_string()
             };
 
-        Redirect::to(redirect_to)
-    })
+            Redirect::to(&redirect_to)
+        }),
+    )
 }

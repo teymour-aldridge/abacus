@@ -1,6 +1,10 @@
+use axum::{
+    extract::{Form, Path},
+    response::Redirect,
+};
 use diesel::prelude::*;
 use hypertext::prelude::*;
-use rocket::{FromForm, form::Form, get, post, response::Redirect};
+use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::{
@@ -13,24 +17,19 @@ use crate::{
         participants::manage::gen_private_url::get_unique_private_url,
         rounds::TournamentRounds, teams::Team,
     },
-    util_resp::{StandardResponse, see_other_ok, success},
+    util_resp::{StandardResponse, bad_request, see_other_ok, success},
     validation::is_valid_email,
 };
 
-#[get(
-    "/tournaments/<tournament_id>/teams/<team_id>/speakers/create",
-    rank = 1
-)]
 pub async fn create_speaker_page(
-    tournament_id: &str,
-    team_id: &str,
+    Path((tournament_id, team_id)): Path<(String, String)>,
     user: User<true>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
+    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
-    let team = Team::fetch(team_id, tournament_id, &mut *conn)?;
+    let team = Team::fetch(&team_id, &tournament_id, &mut *conn)?;
 
     let rounds = TournamentRounds::fetch(&tournament_id, &mut *conn).unwrap();
 
@@ -60,29 +59,55 @@ pub async fn create_speaker_page(
     )
 }
 
-#[derive(FromForm)]
+#[derive(Deserialize)]
 pub struct CreateSpeakerForm {
-    #[field(validate = len(..128))]
-    name: String,
-    #[field(validate = len(..254))]
-    #[field(validate = is_valid_email())]
-    email: String,
+    pub name: String,
+    pub email: String,
 }
 
-#[post(
-    "/tournaments/<tournament_id>/teams/<team_id>/speakers/create",
-    data = "<form>"
-)]
 pub async fn do_create_speaker(
-    tournament_id: &str,
-    team_id: &str,
+    Path((tournament_id, team_id)): Path<(String, String)>,
     user: User<true>,
     mut conn: Conn<true>,
-    form: Form<CreateSpeakerForm>,
+    Form(form): Form<CreateSpeakerForm>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
+    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
-    let team = Team::fetch(team_id, tournament_id, &mut *conn)?;
+    let team = Team::fetch(&team_id, &tournament_id, &mut *conn)?;
+
+    if form.name.len() > 128 {
+        return bad_request(
+            Page::new()
+                .user(user)
+                .tournament(tournament)
+                .body(maud! {
+                    "Error: Name is too long (max 128 characters)."
+                })
+                .render(),
+        );
+    }
+    if form.email.len() > 254 {
+        return bad_request(
+            Page::new()
+                .user(user)
+                .tournament(tournament)
+                .body(maud! {
+                    "Error: Email is too long (max 254 characters)."
+                })
+                .render(),
+        );
+    }
+    if let Err(_) = is_valid_email(&form.email) {
+        return bad_request(
+            Page::new()
+                .user(user)
+                .tournament(tournament)
+                .body(maud! {
+                    "Error: Invalid email address."
+                })
+                .render(),
+        );
+    }
 
     let private_url = get_unique_private_url(&tournament.id, &mut *conn);
 
@@ -110,7 +135,7 @@ pub async fn do_create_speaker(
 
     // todo: should probably redirect back to team page if this is where the
     // user first navigated to the edit form
-    see_other_ok(Redirect::to(format!(
+    see_other_ok(Redirect::to(&format!(
         "/tournaments/{tournament_id}/participants"
     )))
 }

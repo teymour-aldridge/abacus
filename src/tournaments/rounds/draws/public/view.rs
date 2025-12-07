@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
+use axum::extract::Path;
 use diesel::prelude::*;
 use hypertext::prelude::*;
-use rocket::get;
 
 use crate::{
     auth::User,
@@ -17,15 +17,14 @@ use crate::{
     util_resp::{StandardResponse, success},
 };
 
-#[get("/tournaments/<tournament_id>/draw")]
 pub async fn view_active_draw_page(
-    tournament_id: &str,
+    Path(tournament_id): Path<String>,
     user: Option<User<true>>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
+    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
 
-    let rounds = Round::current_rounds(tournament_id, &mut *conn);
+    let rounds = Round::current_rounds(&tournament_id, &mut *conn);
 
     let draws = rounds
         .into_iter()

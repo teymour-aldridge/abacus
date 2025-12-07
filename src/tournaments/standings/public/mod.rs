@@ -1,5 +1,5 @@
-use hypertext::prelude::*;
-use rocket::get;
+use axum::extract::Path;
+use hypertext::{Renderable, maud, prelude::*};
 
 use crate::{
     auth::User,
@@ -9,19 +9,18 @@ use crate::{
     util_resp::{StandardResponse, success, unauthorized},
 };
 
-#[get("/tournaments/<tournament_id>/tab/team")]
 pub async fn public_team_tab_page(
-    tournament_id: &str,
+    Path(tournament_id): Path<String>,
     mut conn: Conn<true>,
     user: Option<User<true>>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
+    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
 
     if !tournament.team_tab_public {
         return unauthorized();
     }
 
-    let standings = TeamStandings::recompute(tournament_id, &mut *conn);
+    let standings = TeamStandings::recompute(&tournament_id, &mut *conn);
 
     success(Page::new()
         .tournament(tournament)

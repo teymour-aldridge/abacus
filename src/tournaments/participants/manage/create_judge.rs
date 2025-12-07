@@ -1,6 +1,10 @@
+use axum::{
+    extract::{Form, Path},
+    response::Redirect,
+};
 use diesel::prelude::*;
 use hypertext::prelude::*;
-use rocket::{FromForm, form::Form, get, post, response::Redirect};
+use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::{
@@ -20,13 +24,12 @@ use crate::{
     validation::is_valid_email,
 };
 
-#[get("/tournaments/<tournament_id>/judges/create")]
 pub async fn create_judge_page(
-    tournament_id: &str,
+    Path(tournament_id): Path<String>,
     user: User<true>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
+    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_has_permission(
         &user.id,
         crate::permission::Permission::ManageParticipants,
@@ -93,29 +96,59 @@ pub async fn create_judge_page(
         .render())
 }
 
-#[derive(FromForm)]
+#[derive(Deserialize)]
 pub struct CreateJudgeForm {
-    #[field(validate = len(..128))]
     pub name: String,
-    #[field(validate = len(..254))]
-    #[field(validate = is_valid_email())]
     pub email: String,
     pub institution_id: String,
 }
 
-#[post("/tournaments/<tournament_id>/judges/create", data = "<form>")]
 pub async fn do_create_judge(
-    tournament_id: &str,
+    Path(tournament_id): Path<String>,
     user: User<true>,
-    form: Form<CreateJudgeForm>,
     mut conn: Conn<true>,
+    Form(form): Form<CreateJudgeForm>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
+    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_has_permission(
         &user.id,
         crate::permission::Permission::ManageParticipants,
         &mut *conn,
     )?;
+
+    if form.name.len() > 128 {
+        return bad_request(
+            Page::new()
+                .user(user)
+                .tournament(tournament)
+                .body(maud! {
+                    "Error: Name is too long (max 128 characters)."
+                })
+                .render(),
+        );
+    }
+    if form.email.len() > 254 {
+        return bad_request(
+            Page::new()
+                .user(user)
+                .tournament(tournament)
+                .body(maud! {
+                    "Error: Email is too long (max 254 characters)."
+                })
+                .render(),
+        );
+    }
+    if let Err(_) = is_valid_email(&form.email) {
+        return bad_request(
+            Page::new()
+                .user(user)
+                .tournament(tournament)
+                .body(maud! {
+                    "Error: Invalid email address."
+                })
+                .render(),
+        );
+    }
 
     let id = match form.institution_id.as_str() {
         "-----" => None,
@@ -152,7 +185,7 @@ pub async fn do_create_judge(
     let private_url = get_unique_private_url(&tournament.id, &mut *conn);
 
     let next_number = tournament_judges::table
-        .filter(tournament_judges::tournament_id.eq(tournament_id))
+        .filter(tournament_judges::tournament_id.eq(&tournament_id))
         .order_by(tournament_judges::number.desc())
         .select(tournament_judges::number)
         .first::<i64>(&mut *conn)
@@ -176,7 +209,7 @@ pub async fn do_create_judge(
         .unwrap();
     assert_eq!(n, 1);
 
-    see_other_ok(Redirect::to(format!(
+    see_other_ok(Redirect::to(&format!(
         "/tournaments/{}/participants",
         tournament.id
     )))

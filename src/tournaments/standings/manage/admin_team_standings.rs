@@ -1,5 +1,5 @@
-use hypertext::prelude::*;
-use rocket::get;
+use axum::extract::Path;
+use hypertext::{Renderable, maud, prelude::*};
 
 use crate::{
     auth::User,
@@ -12,13 +12,12 @@ use crate::{
     util_resp::{StandardResponse, success},
 };
 
-#[get("/tournaments/<tournament_id>/standings/teams")]
 pub async fn admin_view_team_standings(
-    tournament_id: &str,
+    Path(tournament_id): Path<String>,
     user: User<true>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
+    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
     let rounds = TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
 

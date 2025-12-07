@@ -1,5 +1,5 @@
+use axum::extract::Path;
 use hypertext::prelude::*;
-use rocket::get;
 
 use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
 
@@ -42,14 +42,12 @@ fn percentage_teams_available(
     )
 }
 
-#[get("/tournaments/<tournament_id>/rounds/<seq_id>/availability")]
 pub async fn manage_round_availability(
-    tournament_id: &str,
-    seq_id: usize,
+    Path((tournament_id, seq_id)): Path<(String, usize)>,
     user: User<true>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
+    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
     let rounds = TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
@@ -61,7 +59,7 @@ pub async fn manage_round_availability(
     }
 
     let total_teams = tournament_teams::table
-        .filter(tournament_teams::tournament_id.eq(tournament_id))
+        .filter(tournament_teams::tournament_id.eq(&tournament_id))
         .count()
         .get_result::<i64>(&mut *conn)
         .unwrap();

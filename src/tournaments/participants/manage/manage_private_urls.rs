@@ -1,5 +1,5 @@
+use axum::extract::Path;
 use hypertext::prelude::*;
-use rocket::get;
 
 use crate::{
     auth::User,
@@ -12,9 +12,8 @@ use crate::{
     util_resp::{StandardResponse, success},
 };
 
-#[get("/tournaments/<tournament_id>/participants/privateurls")]
 pub async fn view_private_urls(
-    tournament_id: &str,
+    Path(tournament_id): Path<String>,
     user: User<true>,
     mut conn: Conn<true>,
 ) -> StandardResponse {

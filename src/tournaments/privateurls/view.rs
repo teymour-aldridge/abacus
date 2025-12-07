@@ -1,6 +1,6 @@
-use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
-use hypertext::prelude::*;
-use rocket::get;
+use axum::extract::Path;
+use diesel::{connection::LoadConnection, prelude::*};
+use hypertext::{Renderable, maud, prelude::*};
 
 use crate::{
     auth::User,
@@ -22,17 +22,15 @@ use crate::{
     util_resp::{StandardResponse, success},
 };
 
-#[get("/tournaments/<tournament_id>/privateurls/<private_url>")]
 pub async fn private_url_page(
-    tournament_id: &str,
-    private_url: &str,
+    Path((tournament_id, private_url)): Path<(String, String)>,
     user: Option<User<true>>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     let participant = Participant::of_private_url_and_tournament(
-        tournament_id,
-        private_url,
+        &tournament_id,
+        &private_url,
         &mut *conn,
     )?;
 
@@ -50,7 +48,7 @@ fn private_url_page_of_speaker(
     tournament: Tournament,
     speaker: Speaker,
     user: Option<User<true>>,
-    conn: &mut impl LoadConnection<Backend = Sqlite>,
+    conn: &mut impl LoadConnection<Backend = diesel::sqlite::Sqlite>,
 ) -> StandardResponse {
     let current_rounds = Round::current_rounds(&tournament.id, conn);
 
@@ -141,7 +139,7 @@ fn private_url_page_of_judge(
     tournament: Tournament,
     judge: Judge,
     user: Option<User<true>>,
-    conn: &mut impl LoadConnection<Backend = Sqlite>,
+    conn: &mut impl LoadConnection<Backend = diesel::sqlite::Sqlite>,
 ) -> StandardResponse {
     let rounds = TournamentRounds::fetch(&tournament.id, conn).unwrap();
     let current_rounds = Round::current_rounds(&tournament.id, conn);

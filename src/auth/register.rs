@@ -2,22 +2,23 @@ use argon2::Argon2;
 use argon2::PasswordHasher;
 use argon2::password_hash::SaltString;
 use argon2::password_hash::rand_core::OsRng;
+use axum::{extract::Form, response::Redirect};
+use axum_extra::extract::{PrivateCookieJar, cookie::Key};
 use chrono::Utc;
 use diesel::{insert_into, prelude::*};
 use hypertext::prelude::*;
-use rocket::{FromForm, form::Form, get, post, response::Redirect};
-use serde::Serialize;
+use serde::Deserialize;
 use uuid::Uuid;
 
+use crate::auth::set_login_cookie;
 use crate::state::Conn;
 use crate::util_resp::StandardResponse;
 use crate::util_resp::bad_request;
 use crate::util_resp::see_other_ok;
 use crate::validation::*;
-use crate::widgets::alert::ErrorAlert;
+// use crate::widgets::alert::ErrorAlert;
 use crate::{auth::User, schema::users, template::Page};
 
-#[get("/register")]
 pub async fn register_page(user: Option<User<true>>) -> StandardResponse {
     if user.is_some() {
         // todo: flash message
@@ -57,29 +58,46 @@ pub async fn register_page(user: Option<User<true>>) -> StandardResponse {
     )
 }
 
-#[derive(FromForm, Serialize)]
-pub struct RegisterForm<'v> {
-    #[field(validate = is_ascii_no_spaces())]
-    #[field(validate = len(..128))]
-    pub username: &'v str,
-    #[field(validate = is_valid_email())]
-    pub(crate) email: &'v str,
-    #[field(validate = len(6..))]
-    #[field(validate = eq(self.password2))]
-    pub(crate) password: &'v str,
-    #[field(validate = len(6..))]
-    pub(crate) password2: &'v str,
+#[derive(Deserialize)]
+pub struct RegisterForm {
+    pub username: String,
+    pub email: String,
+    pub password: String,
+    pub password2: String,
 }
 
-#[post("/register", data = "<form>")]
 pub async fn do_register(
     user: Option<User<true>>,
     mut conn: Conn<true>,
-    form: Form<RegisterForm<'_>>,
-) -> StandardResponse {
+    jar: PrivateCookieJar<Key>,
+    Form(form): Form<RegisterForm>,
+) -> (PrivateCookieJar<Key>, StandardResponse) {
     if user.is_some() {
         // todo: flash message
-        return bad_request(maud! {p {"You are already logged in!"}}.render());
+        // todo: flash message
+        return (
+            jar,
+            bad_request(maud! {p {"You are already logged in!"}}.render()),
+        );
+    }
+
+    if let Err(e) = is_ascii_no_spaces(&form.username) {
+        return (jar, bad_request(maud! {p {(e)}}.render()));
+    }
+    if form.username.len() >= 128 {
+        return (jar, bad_request(maud! {p {"Username too long"}}.render()));
+    }
+    if let Err(e) = is_valid_email(&form.email) {
+        return (jar, bad_request(maud! {p {(e)}}.render()));
+    }
+    if form.password.len() < 6 {
+        return (jar, bad_request(maud! {p {"Password too short"}}.render()));
+    }
+    if form.password != form.password2 {
+        return (
+            jar,
+            bad_request(maud! {p {"Passwords do not match"}}.render()),
+        );
     }
 
     let existing = users::table
@@ -96,20 +114,22 @@ pub async fn do_register(
         Some(user) => {
             let is_email_problem = user.email == form.email;
 
-            bad_request(
+            (jar, bad_request(
                 Page::<_, _, true>::new()
                     .body(maud! {
-                        ErrorAlert msg=(match is_email_problem {
-                            true => "That email is already taken",
-                            false => "That username is already taken"
-                        }.to_string() +
-                        ". Please return to the previous page and try again.");
+                        div class="alert alert-danger" {
+                            (match is_email_problem {
+                                true => "That email is already taken",
+                                false => "That username is already taken"
+                            }.to_string() + ". Please return to the previous page and try again.")
+                        }
                     })
                     .render(),
-            )
+            ))
         }
         None => {
             let salt = SaltString::generate(&mut OsRng);
+            let id = Uuid::now_v7().to_string();
 
             let argon2 = Argon2::default();
 
@@ -120,7 +140,7 @@ pub async fn do_register(
 
             insert_into(users::table)
                 .values((
-                    users::id.eq(Uuid::now_v7().to_string()),
+                    users::id.eq(id.clone()),
                     users::email.eq(form.email),
                     users::username.eq(form.username),
                     users::password_hash.eq(password_hash),
@@ -129,7 +149,9 @@ pub async fn do_register(
                 .execute(&mut *conn)
                 .unwrap();
 
-            see_other_ok(Redirect::to("/user"))
+            let jar = set_login_cookie(id.clone(), jar);
+
+            (jar, see_other_ok(Redirect::to("/user")))
         }
     }
 }

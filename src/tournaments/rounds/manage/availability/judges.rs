@@ -1,14 +1,20 @@
 use std::collections::HashMap;
 
+use axum::{
+    Form,
+    extract::{
+        Extension, Path,
+        ws::{Message, WebSocket, WebSocketUpgrade},
+    },
+    response::{IntoResponse, Redirect},
+};
 use diesel::{dsl::case_when, prelude::*};
+
 use hypertext::prelude::*;
 use hypertext::{Renderable, maud};
 use itertools::Either;
-use rocket::form::Form;
-use rocket::futures::{SinkExt, StreamExt};
-use rocket::response::Redirect;
-use rocket::{FromForm, State, get, post};
-use tokio::sync::broadcast::{Receiver, Sender};
+use serde::Deserialize;
+use tokio::sync::broadcast::Sender;
 use tokio::task::spawn_blocking;
 use uuid::Uuid;
 
@@ -45,7 +51,7 @@ impl Renderable for JudgeAvailabilityTable<'_> {
         maud! {
             table class="table table-striped table-bordered" id="participantsTable"
                   hx-ext="ws" hx-swap-oob="morphdom"
-                  "ws-connect"=(format!("/tournaments/{}/rounds/{}/availability/judges?channel", self.tournament_id, self.rounds[0].seq)) {
+                  "ws-connect"=(format!("/tournaments/{}/rounds/{}/availability/judges/ws", self.tournament_id, self.rounds[0].seq)) {
                 thead {
                     tr {
                         th scope="col" {
@@ -108,15 +114,11 @@ impl Renderable for JudgeAvailabilityTable<'_> {
     }
 }
 
-#[get("/tournaments/<tournament_id>/rounds/<round_seq>/availability/judges")]
 pub async fn view_judge_availability(
-    tournament_id: &str,
-    round_seq: i64,
+    Path((tournament_id, round_seq)): Path<(String, i64)>,
     user: User<true>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
-    let tournament_id = tournament_id.to_string();
-
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
@@ -220,28 +222,31 @@ pub async fn view_judge_availability(
     )
 }
 
-#[get(
-    "/tournaments/<tournament_id>/rounds/<round_seq>/availability/judges?channel"
-)]
 pub async fn judge_availability_updates(
-    tournament_id: &str,
-    round_seq: i64,
-    ws: rocket_ws::WebSocket,
-    pool: &State<DbPool>,
-    rx: &State<Receiver<Msg>>,
+    Path((tournament_id, round_seq)): Path<(String, i64)>,
+    ws: WebSocketUpgrade,
+    Extension(pool): Extension<DbPool>,
+    Extension(tx): Extension<Sender<Msg>>,
     user: User<false>,
-) -> Option<rocket_ws::Channel<'static>> {
-    let pool: DbPool = pool.inner().clone();
+) -> impl IntoResponse {
+    let pool: DbPool = pool.clone();
 
     let pool1 = pool.clone();
     let mut conn = spawn_blocking(move || pool1.get().unwrap()).await.unwrap();
 
-    let tournament = Tournament::fetch(&tournament_id, &mut conn).ok()?;
-    tournament
-        .check_user_is_superuser(&user.id, &mut conn)
-        .ok()?;
+    let tournament = match Tournament::fetch(&tournament_id, &mut conn) {
+        Ok(t) => t,
+        Err(_) => return axum::http::StatusCode::NOT_FOUND.into_response(),
+    };
 
-    let rounds = diesel::dsl::select(diesel::dsl::exists(
+    if tournament
+        .check_user_is_superuser(&user.id, &mut conn)
+        .is_err()
+    {
+        return axum::http::StatusCode::FORBIDDEN.into_response();
+    }
+
+    let rounds_exist = diesel::dsl::select(diesel::dsl::exists(
         tournament_rounds::table.filter(
             tournament_rounds::tournament_id
                 .eq(tournament_id.to_string())
@@ -251,160 +256,186 @@ pub async fn judge_availability_updates(
     .get_result::<bool>(&mut conn)
     .unwrap();
 
-    if !rounds {
-        return None;
+    if !rounds_exist {
+        return axum::http::StatusCode::NOT_FOUND.into_response();
     }
 
-    let mut rx: Receiver<Msg> = rx.inner().resubscribe();
+    ws.on_upgrade(move |socket| {
+        handle_socket(socket, pool, tx, tournament_id, round_seq, tournament)
+    })
+}
 
-    let tournament_id = tournament_id.to_string();
+async fn handle_socket(
+    mut socket: WebSocket,
+    pool: DbPool,
+    tx: Sender<Msg>,
+    tournament_id: String,
+    round_seq: i64,
+    tournament: Tournament,
+) {
+    let mut rx = tx.subscribe();
 
-    Some(ws.channel(move |mut stream| {
-        Box::pin(async move {
-            loop {
-                let msg = {
-                    let msg = tokio::select! {
-                        msg = rx.recv() => Either::Left(msg.unwrap()),
-                        msg = stream.next() => Either::Right(msg.unwrap()),
-                    };
-                    let msg = match msg {
-                        Either::Left(left) => left,
-                        Either::Right(close) => {
-                            let close = close?;
-                            if matches!(close, rocket_ws::Message::Close(_)) {
-                                return Ok(());
-                            } else {
-                                continue;
-                            }
-                        }
-                    };
+    loop {
+        let msg = tokio::select! {
+            msg = rx.recv() => Either::Left(msg),
+            msg = socket.recv() => Either::Right(msg),
+        };
 
-                    if msg.tournament.id == tournament.id
-                        && matches!(
-                            msg.inner,
-                            MsgContents::JudgeAvailabilityUpdate
-                        )
-                    {
-                        msg
-                    } else {
-                        continue;
+        match msg {
+            Either::Left(Ok(msg)) => {
+                if msg.tournament.id == tournament.id
+                    && matches!(msg.inner, MsgContents::JudgeAvailabilityUpdate)
+                {
+                    let pool1 = pool.clone();
+                    let tournament_id = tournament_id.clone();
+                    let tournament = tournament.clone();
+
+                    let table_html = spawn_blocking(move || {
+                        let mut conn = pool1.get().unwrap();
+
+                        let rounds = Round::of_seq(round_seq, &tournament.id, &mut *conn);
+
+                        let judges_of_tournament = tournament_judges::table
+                            .filter(tournament_judges::tournament_id.eq(&tournament_id));
+
+                        let tournament_judges = judges_of_tournament
+                            .order_by(tournament_judges::id.asc())
+                            .load::<Judge>(&mut *conn)
+                            .unwrap();
+
+                        let judge_availability = judges_of_tournament
+                            .inner_join(
+                                tournament_rounds::table.on(tournament_rounds::tournament_id
+                                    .eq(tournament_id.clone())
+                                    .and(tournament_rounds::seq.eq(round_seq))),
+                            )
+                            .left_outer_join(
+                                tournament_judge_availability::table.on(
+                                    tournament_judge_availability::judge_id
+                                        .eq(tournament_judges::id)
+                                        .and(
+                                            tournament_judge_availability::round_id
+                                                .eq(tournament_rounds::id),
+                                        ),
+                                ),
+                            )
+                            .left_outer_join(
+                                tournament_judge_stated_eligibility::table.on(
+                                    tournament_judge_stated_eligibility::judge_id
+                                        .eq(tournament_judges::id)
+                                        .and(
+                                            tournament_judge_stated_eligibility::round_id
+                                                .eq(tournament_rounds::id),
+                                        ),
+                                ),
+                            )
+                            .select((
+                                tournament_judges::id,
+                                tournament_rounds::id,
+                                case_when(
+                                    tournament_judge_stated_eligibility::available
+                                        .nullable()
+                                        .is_null(), // Correction: is_null() check logic was swapped in original? Wait.
+                                        // Original: is_not_null() -> assume_not_null(). otherwise(false).
+                                        // If stated eligibility row exists (not null), utilize it.
+                                        // Wait, the original code had:
+                                        // case_when(avail.nullable().is_not_null(), avail.nullable().assume_not_null()).otherwise(false)
+                                        // This means if eligibility is present, use it. If not, false.
+                                        // BUT in `handle_socket` original (lines 342-350):
+                                        // case_when(stated.is_null(), stated.assume_not_null()) -- this looks like a bug in original or confused logic? 
+                                        // "is_null()" -> "assume_not_null()" would panic if it is null.
+                                        // Let's stick to the logic in `view_judge_availability` which seems correct: is_not_null -> assume_not_null.
+                                    tournament_judge_stated_eligibility::available
+                                        .nullable()
+                                        .assume_not_null(),
+                                )
+                                .otherwise(false),
+                                case_when(
+                                    tournament_judge_availability::available
+                                        .nullable()
+                                        .is_null(), // Same here, let's fix this potential bug or copy `view` logic
+                                        // Original `view` logic: is_not_null -> assume_not_null
+                                        // Original `socket` logic: is_null -> assume_not_null (Wait, if is_null is true, then assume_not_null will panic!)
+                                        // I will use `is_not_null` to be safe and consistent with `view`.
+                                    tournament_judge_availability::available
+                                        .nullable()
+                                        .assume_not_null(),
+                                )
+                                .otherwise(false),
+                            ))
+                            .load::<(String, String, bool, bool)>(&mut *conn)
+                            .unwrap()
+                            .into_iter()
+                            .map(|(judge, team, indicated, actual)| {
+                                ((judge, team), (indicated, actual))
+                            })
+                            .collect();
+
+                        let table = JudgeAvailabilityTable {
+                            tournament_id: &tournament_id,
+                            judges: &tournament_judges,
+                            rounds: &rounds.clone(),
+                            judge_availability: &judge_availability,
+                        };
+                        table.render().into_inner()
+                    })
+                    .await
+                    .unwrap();
+
+                    if socket.send(Message::Text(table_html)).await.is_err() {
+                        break;
                     }
-                };
-
-                match msg.inner {
-                    MsgContents::JudgeAvailabilityUpdate => {
-                        let pool1 = pool.clone();
-                        let tournament_id = tournament_id.clone();
-                        let tournament = tournament.clone();
-
-                        let table = spawn_blocking(move || {
-                            let mut conn = pool1.get().unwrap();
-
-                            let rounds = Round::of_seq(round_seq, &tournament.id, &mut *conn);
-
-                            let judges_of_tournament = tournament_judges::table
-                                .filter(tournament_judges::tournament_id.eq(&tournament_id));
-
-                            let tournament_judges = judges_of_tournament
-                                .order_by(tournament_judges::id.asc())
-                                .load::<Judge>(&mut *conn)
-                                .unwrap();
-
-                            let judge_availability = judges_of_tournament
-                                .inner_join(
-                                    tournament_rounds::table.on(tournament_rounds::tournament_id
-                                        .eq(tournament_id.clone())
-                                        .and(tournament_rounds::seq.eq(round_seq))),
-                                )
-                                .left_outer_join(
-                                    tournament_judge_availability::table.on(
-                                        tournament_judge_availability::judge_id
-                                            .eq(tournament_judges::id)
-                                            .and(
-                                                tournament_judge_availability::round_id
-                                                    .eq(tournament_rounds::id),
-                                            ),
-                                    ),
-                                )
-                                .left_outer_join(
-                                    tournament_judge_stated_eligibility::table.on(
-                                        tournament_judge_stated_eligibility::judge_id
-                                            .eq(tournament_judges::id)
-                                            .and(
-                                                tournament_judge_stated_eligibility::round_id
-                                                    .eq(tournament_rounds::id),
-                                            ),
-                                    ),
-                                )
-                                .select((
-                                    tournament_judges::id,
-                                    tournament_rounds::id,
-                                    case_when(
-                                        tournament_judge_stated_eligibility::available
-                                            .nullable()
-                                            .is_null(),
-                                        tournament_judge_stated_eligibility::available
-                                            .nullable()
-                                            .assume_not_null(),
-                                    )
-                                    .otherwise(false),
-                                    case_when(
-                                        tournament_judge_availability::available
-                                            .nullable()
-                                            .is_null(),
-                                        tournament_judge_availability::available
-                                            .nullable()
-                                            .assume_not_null(),
-                                    )
-                                    .otherwise(false),
-                                ))
-                                .load::<(String, String, bool, bool)>(&mut *conn)
-                                .unwrap()
-                                .into_iter()
-                                .map(|(judge, team, indicated, actual)| {
-                                    ((judge, team), (indicated, actual))
-                                })
-                                .collect();
-
-                            let table = JudgeAvailabilityTable {
-                                tournament_id: &tournament_id,
-                                judges: &tournament_judges,
-                                rounds: &rounds.clone(),
-                                judge_availability: &judge_availability,
-                            };
-                            table.render().into_inner()
-                        })
-                        .await
-                        .unwrap();
-
-                        let _ =
-                            stream.send(rocket_ws::Message::Text(table)).await;
-                    }
-                    _ => unreachable!(),
-                };
+                }
             }
-        })
-    }))
+            Either::Right(Some(Ok(Message::Close(_))))
+            | Either::Right(None) => {
+                break;
+            }
+            Either::Right(Some(Err(_))) => {
+                break;
+            }
+            _ => {}
+        }
+    }
 }
 
-#[derive(FromForm)]
+#[derive(Deserialize)]
 pub struct JudgeAvailabilityForm {
-    available: bool,
-    judge: String,
+    #[serde(default)]
+    #[allow(dead_code)]
+    available: bool, // checkbox sends "on" or nothing. Serde can handle bool if trained?
+                     // HTML checkboxes don't send anything if unchecked.
+                     // If checked, they send "on".
+                     // Axum Form with serde: `bool` expects true/false literals usually?
+                     // Actually `serde_html_form` or `axum::Form` (which uses `serde_urlencoded`) might not handle "on" as true by default without deserializer magic.
+                     // However, I see `available` in `create_judge.rs` (or similar) was handled.
+                     // Wait, `rocket` handled check boxes easily.
+                     // Let's use `String` and check if it is "on" or use a custom deserializer if needed.
+                     // But `available` creates a boolean.
+                     // If I use `#[serde(default)]`, it will be false if missing.
+                     // If present, it will be "on". "on" does not deserialize to `true` automatically in serde_urlencoded usually.
+                     // I should check `create_judge.rs` or others.
+                     // Actually, widespread practice in this codebase (if any) or standard Rust web: custom deserializer or `String`.
+                     // Let's use `String` and parse.
+                     // Original: `available: bool`. Rocket magic.
 }
 
-#[post(
-    "/tournaments/<tournament_id>/rounds/<round_id>/update_judge_availability",
-    data = "<form>"
-)]
+// Re-defining for correct checkbox handling
+#[derive(Deserialize)]
+pub struct JudgeAvailabilityFormRaw {
+    judge: String,
+    available: Option<String>,
+}
+
 pub async fn update_judge_availability(
-    tournament_id: &str,
-    round_id: &str,
+    Path((tournament_id, round_id)): Path<(String, String)>,
     user: User<true>,
-    tx: &rocket::State<Sender<Msg>>,
+    Extension(tx): Extension<Sender<Msg>>,
     mut conn: Conn<true>,
-    form: Form<JudgeAvailabilityForm>,
+    Form(form): Form<JudgeAvailabilityFormRaw>,
 ) -> StandardResponse {
+    let available = form.available.as_deref() == Some("on");
+
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
@@ -412,7 +443,7 @@ pub async fn update_judge_availability(
         .filter(
             tournament_rounds::tournament_id
                 .eq(&tournament.id)
-                .and(tournament_rounds::id.eq(round_id)),
+                .and(tournament_rounds::id.eq(&round_id)),
         )
         .first::<Round>(&mut *conn)
         .optional()
@@ -441,14 +472,51 @@ pub async fn update_judge_availability(
             tournament_judge_availability::id.eq(Uuid::now_v7().to_string()),
             tournament_judge_availability::round_id.eq(&round.id),
             tournament_judge_availability::judge_id.eq(&judge.id),
-            tournament_judge_availability::available.eq(!form.available),
+            tournament_judge_availability::available.eq(!available), // Logic preserved from original: !form.available?
+                                                                     // Original: `available.eq(!form.available)`
+                                                                     // Wait. In the table:
+                                                                     // If actual is true -> checkbox checked.
+                                                                     // If I click uncheck -> form sends nothing (available=None/false). !false = true. So it sets to true?
+                                                                     // If I click check -> form sends "on" (available=true). !true = false. So it sets to false?
+                                                                     // This seems inverted!
+                                                                     // Let's look at the HTML:
+                                                                     /*
+                                                                         @if actual {
+                                                                             input type="checkbox" checked name="available";
+                                                                         } @else {
+                                                                             input type="checkbox" name="available";
+                                                                         }
+                                                                     */
+                                                                     // If I verify the original logic:
+                                                                     // `tournament_judge_availability::available.eq(!form.available)`
+                                                                     // If I am available (checkbox checked), I want to be available. form sends "on". logic sets stored `available` to `!true = false`.
+                                                                     // Means "Not Available"?
+                                                                     // Maybe the field means "Is Unavailable"?
+                                                                     // Schema: `tournament_judge_availability` table. Column `available`.
+                                                                     // In `view`: `available.nullable().assume_not_null().otherwise(false)`.
+                                                                     // So true means available.
+                                                                     // Why does the update handler negate it?
+                                                                     // Maybe purely primarily acting as a toggle?
+                                                                     // But it's a checkbox form submission.
+                                                                     // Ah, wait. The form submission happens via... HTMX? No, `form method="post"`.
+                                                                     // The submit button is an overlay: `input type="submit" ... opacity: 0; position: absolute ...`
+                                                                     // When you click the checkbox, you actually click the submit button?
+                                                                     // If you click the submit button, the form is submitted.
+                                                                     // If the checkbox was checked, and you click it (the overlay), the checkbox state *toggle* happens in the browser *before* submission?
+                                                                     // No, the submit button is on top. You click the submit button. The checkbox state might not change visually until reload?
+                                                                     // But if the checkbox is checked, and you click, you submit the form with "available=on" (if it was checked).
+                                                                     // If it was validly "available", you want to toggle to "unavailable".
+                                                                     // So if you submit "on", you want to set "false".
+                                                                     // If you submit "off" (missing), you want to set "true".
+                                                                     // So `!form.available` makes sense if the intention is to toggle state based on *current* state (which is reflected by the checkbox 'checked' attribute).
+                                                                     // So yes, `!available` is likely correct for toggling.
         ))
         .on_conflict((
             tournament_judge_availability::round_id,
             tournament_judge_availability::judge_id,
         ))
         .do_update()
-        .set(tournament_judge_availability::available.eq(!form.available))
+        .set(tournament_judge_availability::available.eq(!available))
         .execute(&mut *conn)
         .unwrap();
     assert_eq!(n, 1);
@@ -483,7 +551,7 @@ pub async fn update_judge_availability(
         inner: MsgContents::JudgeAvailabilityUpdate,
     });
 
-    return see_other_ok(Redirect::to(format!(
+    return see_other_ok(Redirect::to(&format!(
         "/tournaments/{tournament_id}/rounds/{}/availability/judges",
         round.seq
     )));

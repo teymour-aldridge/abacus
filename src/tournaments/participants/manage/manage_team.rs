@@ -1,6 +1,9 @@
+use axum::{
+    extract::{Extension, Form, Path},
+    response::Redirect,
+};
 use diesel::prelude::*;
 use hypertext::prelude::*;
-use rocket::{form::Form, get, post, response::Redirect};
 use tokio::sync::broadcast::Sender;
 
 use crate::{
@@ -31,14 +34,12 @@ use crate::{
 
 /// This has rank = 2 so that it does not collide with
 /// [`super::create_team::create_team_page`].
-#[get("/tournaments/<tournament_id>/teams/<team_id>", rank = 2)]
 pub async fn manage_team_page(
+    Path((tournament_id, team_id)): Path<(String, String)>,
     user: User<true>,
-    tournament_id: &str,
-    team_id: &str,
     mut conn: Conn<true>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
+    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_has_permission(
         &user.id,
         crate::permission::Permission::ManageParticipants,
@@ -48,8 +49,8 @@ pub async fn manage_team_page(
     let team = match tournament_teams::table
         .filter(
             tournament_teams::tournament_id
-                .eq(tournament_id)
-                .and(tournament_teams::id.eq(team_id)),
+                .eq(&tournament_id)
+                .and(tournament_teams::id.eq(&team_id)),
         )
         .first::<Team>(&mut *conn)
         .optional()
@@ -98,14 +99,12 @@ pub async fn manage_team_page(
     )
 }
 
-#[get("/tournaments/<tournament_id>/teams/<team_id>/edit")]
 pub async fn edit_team_details_page(
+    Path((tournament_id, team_id)): Path<(String, String)>,
     user: User<true>,
-    tournament_id: &str,
-    team_id: &str,
     mut conn: Conn<true>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
+    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_has_permission(
         &user.id,
         crate::permission::Permission::ManageParticipants,
@@ -115,8 +114,8 @@ pub async fn edit_team_details_page(
     let team = match tournament_teams::table
         .filter(
             tournament_teams::tournament_id
-                .eq(tournament_id)
-                .and(tournament_teams::id.eq(team_id)),
+                .eq(&tournament_id)
+                .and(tournament_teams::id.eq(&team_id)),
         )
         .first::<Team>(&mut *conn)
         .optional()
@@ -168,16 +167,14 @@ pub async fn edit_team_details_page(
     )
 }
 
-#[post("/tournaments/<tournament_id>/teams/<team_id>/edit", data = "<form>")]
 pub async fn do_edit_team_details(
+    Path((tournament_id, team_id)): Path<(String, String)>,
     user: User<true>,
-    tournament_id: &str,
-    team_id: &str,
-    form: Form<CreateTeamForm>,
-    tx: &rocket::State<Sender<Msg>>,
+    Extension(tx): Extension<Sender<Msg>>,
     mut conn: Conn<true>,
+    Form(form): Form<CreateTeamForm>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
+    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_has_permission(
         &user.id,
         crate::permission::Permission::ManageParticipants,
@@ -187,8 +184,8 @@ pub async fn do_edit_team_details(
     let team = match tournament_teams::table
         .filter(
             tournament_teams::tournament_id
-                .eq(tournament_id)
-                .and(tournament_teams::id.eq(team_id)),
+                .eq(&tournament_id)
+                .and(tournament_teams::id.eq(&team_id)),
         )
         .first::<Team>(&mut *conn)
         .optional()
@@ -259,7 +256,7 @@ pub async fn do_edit_team_details(
         inner: MsgContents::ParticipantsUpdate,
     });
 
-    see_other_ok(Redirect::to(format!(
+    see_other_ok(Redirect::to(&format!(
         "/tournaments/{}/teams/{}",
         tournament.id, team.id
     )))

@@ -20,6 +20,6 @@ pub mod state;
 pub mod template;
 pub mod tournaments;
 pub mod util_resp;
-/// Code for validating data input to the tab system.
+// /// Code for validating data input to the tab system.
 pub mod validation;
 pub mod widgets;

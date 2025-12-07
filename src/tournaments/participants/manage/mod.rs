@@ -6,15 +6,19 @@ use crate::{
     util_resp::{StandardResponse, success},
     widgets::actions::Actions,
 };
+use axum::{
+    extract::{
+        Extension, Path, Query,
+        ws::{Message, WebSocket, WebSocketUpgrade},
+    },
+    response::IntoResponse,
+};
 use diesel::prelude::*;
+
 use hypertext::prelude::*;
 use itertools::{Either, Itertools};
-use rocket::{
-    State,
-    futures::{SinkExt, StreamExt},
-    get,
-};
-use tokio::{sync::broadcast::Receiver, task::spawn_blocking};
+use serde::Deserialize;
+use tokio::{sync::broadcast::Sender, task::spawn_blocking};
 
 use crate::{
     auth::User,
@@ -43,7 +47,7 @@ impl Renderable for ParticipantsTable {
     ) {
         maud! {
             div class="row" hx-ext="ws" hx-swap-oob="morphdom"
-            "ws-connect"=(format!("/tournaments/{}/participants?channel", self.0.id)) {
+            "ws-connect"=(format!("/tournaments/{}/participants/ws", self.0.id)) {
                 div class="col mb-3 col-md-6" {
                     h3 {
                         "Judges"
@@ -217,22 +221,25 @@ impl Renderable for ParticipantsTable {
     }
 }
 
-// TODO: can remove `table_only` flag (!)
-#[get("/tournaments/<tid>/participants?<table_only>")]
+#[derive(Deserialize)]
+pub struct ManageParticipantsQuery {
+    table_only: Option<bool>,
+}
+
 pub async fn manage_tournament_participants(
-    tid: &str,
+    Path(tid): Path<String>,
     user: User<true>,
     mut conn: Conn<true>,
-    table_only: bool,
+    Query(query): Query<ManageParticipantsQuery>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tid, &mut *conn)?;
+    let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
-    let participants = TournamentParticipants::load(tid, &mut *conn);
+    let participants = TournamentParticipants::load(&tid, &mut *conn);
     let rounds = TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
     let table = ParticipantsTable(tournament.clone(), participants.clone());
 
-    if table_only {
+    if query.table_only.unwrap_or(false) {
         success(table.render())
     } else {
         success(
@@ -257,20 +264,18 @@ pub async fn manage_tournament_participants(
     }
 }
 
-#[get("/tournaments/<tid>/participants?channel")]
 pub async fn tournament_participant_updates(
-    tid: &str,
-    // todo: can replace with ThreadSafeConn where TX = false
-    pool: &State<DbPool>,
-    ws: rocket_ws::WebSocket,
-    rx: &State<Receiver<Msg>>,
+    ws: WebSocketUpgrade,
+    Path(tid): Path<String>,
+    Extension(pool): Extension<DbPool>,
+    Extension(tx): Extension<Sender<Msg>>,
     user: User<false>,
-) -> Option<rocket_ws::Channel<'static>> {
-    let pool: DbPool = pool.inner().clone();
-
-    let tid1 = tid.to_string();
+) -> impl IntoResponse {
+    let tid1 = tid.clone();
     let pool1 = pool.clone();
-    let tournament = spawn_blocking(move || {
+
+    // Validate permission before upgrading
+    let tournament_validation = spawn_blocking(move || {
         let mut conn = pool1.get().unwrap();
         let tournament = tournaments::table
             .filter(tournaments::id.eq(tid1))
@@ -298,13 +303,25 @@ pub async fn tournament_participant_updates(
     .await
     .unwrap();
 
-    let tournament = match tournament {
+    let tournament = match tournament_validation {
         Some(t) => t,
-        None => return None,
+        None => return axum::http::StatusCode::FORBIDDEN.into_response(),
     };
 
+    ws.on_upgrade(move |socket| {
+        handle_socket(socket, pool, tx, tid, tournament)
+    })
+}
+
+async fn handle_socket(
+    mut socket: WebSocket,
+    pool: DbPool,
+    tx: Sender<Msg>,
+    tid: String,
+    tournament: Tournament,
+) {
     let pool2 = pool.clone();
-    let tid2 = tid.to_string();
+    let tid2 = tid.clone();
     let get_serializable_data = move || {
         let mut conn = pool2.get().unwrap();
 
@@ -314,56 +331,41 @@ pub async fn tournament_participant_updates(
         .unwrap()
     };
 
-    let mut rx: Receiver<Msg> = rx.inner().resubscribe();
-    Some(ws.channel(move |mut stream| {
-        Box::pin(async move {
-            loop {
-                let msg = {
-                    let msg = tokio::select! {
-                        msg = rx.recv() => Either::Left(msg.unwrap()),
-                        msg = stream.next() => Either::Right(msg.unwrap()),
-                    };
-                    let msg = match msg {
-                        Either::Left(left) => left,
-                        Either::Right(close) => {
-                            let close = close?;
-                            if matches!(close, rocket_ws::Message::Close(_)) {
-                                return Ok(());
-                            } else {
-                                continue;
-                            }
-                        }
-                    };
+    let mut rx = tx.subscribe();
 
-                    if msg.tournament.id == tournament.id
-                        && matches!(msg.inner, MsgContents::ParticipantsUpdate)
-                    {
-                        msg
-                    } else {
-                        continue;
-                    }
-                };
+    loop {
+        let msg = tokio::select! {
+            msg = rx.recv() => Either::Left(msg),
+            msg = socket.recv() => Either::Right(msg),
+        };
 
-                match msg.inner {
-                    MsgContents::ParticipantsUpdate => {
-                        let participants =
-                            spawn_blocking(get_serializable_data.clone())
-                                .await
-                                .unwrap();
-                        let _ = stream
-                            .send(rocket_ws::Message::Text(
-                                ParticipantsTable(
-                                    tournament.clone(),
-                                    participants,
-                                )
-                                .render()
-                                .into_inner(),
-                            ))
-                            .await;
+        match msg {
+            Either::Left(Ok(msg)) => {
+                if msg.tournament.id == tournament.id
+                    && matches!(msg.inner, MsgContents::ParticipantsUpdate)
+                {
+                    let participants =
+                        spawn_blocking(get_serializable_data.clone())
+                            .await
+                            .unwrap();
+                    let html =
+                        ParticipantsTable(tournament.clone(), participants)
+                            .render()
+                            .into_inner();
+
+                    if socket.send(Message::Text(html)).await.is_err() {
+                        break;
                     }
-                    _ => unreachable!(),
                 }
             }
-        })
-    }))
+            Either::Right(Some(Ok(Message::Close(_))))
+            | Either::Right(None) => {
+                break;
+            }
+            Either::Right(Some(Err(_))) => {
+                break;
+            }
+            _ => {}
+        }
+    }
 }

@@ -5,16 +5,16 @@
 
 use std::fmt::Write;
 
-use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
-use hypertext::prelude::*;
-use itertools::{Either, Itertools};
-use rocket::{
-    FromForm, Responder, State,
-    form::Form,
-    futures::{SinkExt, StreamExt},
-    get, post,
-    response::Redirect,
+use axum::{
+    Extension, Form,
+    extract::{Path, Query, WebSocketUpgrade, ws},
+    response::{IntoResponse, Redirect},
 };
+use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
+use futures::{sink::SinkExt, stream::StreamExt};
+use hypertext::prelude::*;
+use itertools::Itertools;
+use serde::Deserialize;
 use tokio::{sync::broadcast::Receiver, task::spawn_blocking};
 
 use crate::{
@@ -44,26 +44,39 @@ use crate::{
     widgets::alert::ErrorAlert,
 };
 
-#[get("/tournaments/<tournament_id>/rounds/draws/edit?<rounds>")]
+#[derive(Deserialize)]
+pub struct RoundsQuery {
+    rounds: Option<String>,
+}
+
 pub async fn edit_multiple_draws_page(
-    tournament_id: &str,
-    rounds: Vec<String>,
+    Path(tournament_id): Path<String>,
+    Query(query): Query<RoundsQuery>,
     user: User<true>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
+    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+
+    let rounds_vec: Vec<String> = query
+        .rounds
+        .as_deref()
+        .unwrap_or("")
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
 
     let all_rounds =
         TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
 
     let rounds2edit = match tournament_rounds::table
-        .filter(tournament_rounds::id.eq_any(&rounds))
+        .filter(tournament_rounds::id.eq_any(&rounds_vec))
         .load::<Round>(&mut *conn)
         .optional()
         .unwrap()
     {
-        Some(t) if t.len() == rounds.len() => t,
+        Some(t) if t.len() == rounds_vec.len() => t,
         Some(_) | None => {
             return err_not_found();
         }
@@ -115,7 +128,7 @@ fn renderer_of_command_bar(
                 action=(
                     format!("/tournaments/{}/rounds/draws/edit?rounds={}",
                         tournament.id,
-                        rounds.iter().map(|repr| repr.round.id.clone()).join("&rounds=")
+                        rounds.iter().map(|repr| repr.round.id.clone()).join(",")
                     )
                 ) {
                 div class="mb-3" {
@@ -146,7 +159,7 @@ fn get_refreshable_part(
             hx-swap-oob="morphdom"
             "ws-connect"=(
                 format!(
-                    "/tournaments/{}/rounds/draws/edit?channel&rounds={}",
+                    "/tournaments/{}/rounds/draws/edit/ws?rounds={}",
                     tournament.id,
                     reprs.iter().map(|repr| repr.round.id.clone()).join(",")
                 )
@@ -176,94 +189,115 @@ fn get_refreshable_part(
     }
 }
 
-#[get("/tournaments/<tournament_id>/rounds/draws/edit?<round_ids>&channel")]
+#[derive(Deserialize)]
+pub struct ChannelQuery {
+    rounds: Option<String>,
+}
+
 /// Provides a WebSocket channel which notifies clients when the draw has been
 /// updated. After receiving this message, the client should then reload the
 /// draw (using [`edit_draw_page_tab_dir`], with the `table_only` flag set to
 /// true).
 pub async fn draw_updates(
-    tournament_id: &str,
-    round_ids: Vec<String>,
-    pool: &State<DbPool>,
-    rx: &State<Receiver<Msg>>,
-    ws: rocket_ws::WebSocket,
+    ws: WebSocketUpgrade,
+    Path(tournament_id): Path<String>,
+    Query(query): Query<ChannelQuery>,
+    Extension(pool): Extension<DbPool>,
+    Extension(tx): Extension<tokio::sync::broadcast::Sender<Msg>>,
     user: User<false>,
-) -> Option<rocket_ws::Channel<'static>> {
-    let pool: DbPool = pool.inner().clone();
+) -> impl IntoResponse {
+    let pool: DbPool = pool.clone();
+
+    let round_ids: Vec<String> = query
+        .rounds
+        .as_deref()
+        .unwrap_or("")
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
 
     let pool1 = pool.clone();
-    let (tournament, _) = {
-        let tournament_id = tournament_id.to_string();
-        let round_ids = round_ids.clone();
+    let round_ids_clone = round_ids.clone();
+    let setup_result = spawn_blocking(move || {
+        let round_ids = round_ids_clone;
+        let mut conn = pool1.get().unwrap();
+        let tournament = Tournament::fetch(&tournament_id, &mut conn).ok()?;
+        tournament
+            .check_user_is_superuser(&user.id, &mut conn)
+            .ok()?;
 
-        match spawn_blocking(move || {
-            let mut conn = pool1.get().unwrap();
+        let rounds = tournament_rounds::table
+            .filter(tournament_rounds::tournament_id.eq(&tournament.id))
+            .filter(tournament_rounds::id.eq_any(&round_ids))
+            .load::<Round>(&mut conn)
+            .optional()
+            .unwrap();
 
-            let tournament =
-                Tournament::fetch(&tournament_id, &mut conn).ok()?;
-            tournament
-                .check_user_is_superuser(&user.id, &mut conn)
-                .ok()?;
+        if rounds.as_ref().unwrap_or(&vec![]).len() != round_ids.len() {
+            return None;
+        }
 
-            let rounds = tournament_rounds::table
-                .filter(tournament_rounds::tournament_id.eq(&tournament.id))
-                .filter(tournament_rounds::id.eq_any(&round_ids))
-                .load::<Round>(&mut conn)
-                .optional()
-                .unwrap();
+        rounds.map(|_| tournament)
+    })
+    .await
+    .unwrap();
 
-            if rounds.as_ref().unwrap_or(&vec![]).len() != round_ids.len() {
-                return None;
-            }
-
-            rounds.map(|r| (tournament, r))
-        })
-        .await
-        .unwrap()
-        {
-            Some(t) => t,
-            None => return None,
+    let tournament = match setup_result {
+        Some(t) => t,
+        None => {
+            return (
+                axum::http::StatusCode::NOT_FOUND,
+                "Not found or access denied",
+            )
+                .into_response();
         }
     };
 
-    let mut rx: Receiver<Msg> = rx.inner().resubscribe();
+    let rx = tx.subscribe();
+    let tournament_id_str = tournament.id.clone();
+    let round_ids = round_ids.clone();
 
-    let tournament_id = tournament.id.clone();
-    Some(ws.channel(move |mut stream| {
-        Box::pin(async move {
-            loop {
-                let _listen_for_relevant_messages = {
-                    let msg = tokio::select! {
-                        msg = rx.recv() => Either::Left(msg.unwrap()),
-                        msg = stream.next() => Either::Right(msg.unwrap()),
-                    };
-                    let msg = match msg {
-                        Either::Left(left) => left,
-                        Either::Right(close) => {
-                            let close = close?;
-                            if matches!(close, rocket_ws::Message::Close(_)) {
-                                return Ok(());
-                            } else {
-                                continue;
-                            }
-                        }
-                    };
+    ws.on_upgrade(move |socket| {
+        handle_socket(
+            socket,
+            rx,
+            pool,
+            tournament_id_str,
+            round_ids,
+            tournament,
+        )
+    })
+}
 
-                    if msg.tournament.id == tournament.id
-                        && let MsgContents::DrawUpdated(updated_round_id) =
-                            &msg.inner
-                        && round_ids.contains(updated_round_id)
-                    {
-                        msg
-                    } else {
-                        continue;
-                    }
-                };
+async fn handle_socket(
+    socket: ws::WebSocket,
+    mut rx: Receiver<Msg>,
+    pool: DbPool,
+    tournament_id: String,
+    round_ids: Vec<String>,
+    tournament: Tournament,
+) {
+    let (mut sender, mut receiver) = socket.split();
 
+    let mut send_task = tokio::spawn(async move {
+        while let Ok(msg) = rx.recv().await {
+            let should_update = if msg.tournament.id == tournament_id {
+                if let MsgContents::DrawUpdated(updated_round_id) = &msg.inner {
+                    round_ids.contains(updated_round_id)
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            if should_update {
                 let pool1 = pool.clone();
                 let tournament = tournament.clone();
                 let tournament_id = tournament_id.clone();
                 let round_ids = round_ids.clone();
+
                 let rendered = spawn_blocking(move || {
                     let mut conn = pool1.get().unwrap();
 
@@ -297,42 +331,57 @@ pub async fn draw_updates(
                 })
                 .await.unwrap();
 
-                let _ = stream
-                    .send(rocket_ws::Message::Text(rendered))
-                    .await;
+                if sender
+                    .send(ws::Message::Text(rendered.into()))
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
             }
-        })
-    }))
+        }
+    });
+
+    let mut recv_task = tokio::spawn(async move {
+        while let Some(Ok(_msg)) = receiver.next().await {
+            // keep alive
+        }
+    });
+
+    tokio::select! {
+        _ = (&mut send_task) => recv_task.abort(),
+        _ = (&mut recv_task) => send_task.abort(),
+    };
 }
 
-#[derive(FromForm)]
+#[derive(Deserialize)]
 pub struct EditDrawForm {
     cmd: String,
 }
 
-#[derive(Responder)]
-// todo: collapse into `GenerallyUsefulResponse`
-pub enum FallibleResponse {
-    Ok(Rendered<String>),
-    #[response(status = 400)]
-    BadReq(Rendered<String>),
-    #[response(status = 404)]
-    NotFound(()),
+#[derive(Deserialize)]
+pub struct SubmitQuery {
+    rounds: Option<String>,
 }
 
-#[post(
-    "/tournaments/<tournament_id>/rounds/draws/edit?<round_ids>",
-    data = "<form>"
-)]
 pub async fn submit_cmd(
-    tournament_id: &str,
-    round_ids: Vec<String>,
-    form: Form<EditDrawForm>,
+    Path(tournament_id): Path<String>,
+    Query(query): Query<SubmitQuery>,
     user: User<true>,
     mut conn: Conn<true>,
+    Form(form): Form<EditDrawForm>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
+    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+
+    let round_ids: Vec<String> = query
+        .rounds
+        .as_deref()
+        .unwrap_or("")
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
 
     let round = match tournament_rounds::table
         .filter(tournament_rounds::id.eq_any(&round_ids))
@@ -364,8 +413,8 @@ pub async fn submit_cmd(
 
     let apply_move = apply_move(judge_no, debate_no, role, &round, &mut *conn);
     match apply_move {
-        Ok(()) => see_other_ok(Redirect::to(format!(
-            "/tournaments/{tournament_id}/rounds/draws/edit?{}",
+        Ok(()) => see_other_ok(Redirect::to(&format!(
+            "/tournaments/{tournament_id}/rounds/draws/edit?rounds={}",
             round_ids.iter().join(",")
         ))),
         Err(e) => bad_request(

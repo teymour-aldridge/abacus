@@ -1,9 +1,11 @@
+use axum::{extract::Form, response::Redirect};
 use chrono::Utc;
 use diesel::prelude::*;
 use hypertext::prelude::*;
-use rocket::form::Form;
-use rocket::{FromForm, get, post, response::Redirect};
+use serde::Deserialize;
 use uuid::Uuid;
+
+use crate::util_resp::bad_request;
 
 use crate::schema::{tournament_members, tournaments};
 use crate::state::Conn;
@@ -16,7 +18,6 @@ use crate::tournaments::config::{
 use crate::util_resp::{StandardResponse, SuccessResponse, see_other_ok};
 use crate::validation::is_valid_slug;
 
-#[get("/tournaments/create")]
 pub async fn create_tournament_page(user: User<true>) -> SuccessResponse {
     SuccessResponse::Success(
         Page::new()
@@ -79,33 +80,39 @@ pub async fn create_tournament_page(user: User<true>) -> SuccessResponse {
     )
 }
 
-#[derive(FromForm)]
-pub struct CreateTournamentForm<'v> {
-    #[field(validate = len(4..=32))]
-    name: &'v str,
-    #[field(validate = len(2..=8))]
-    abbrv: &'v str,
-    #[field(validate = is_valid_slug())]
-    slug: &'v str,
+#[derive(Deserialize)]
+pub struct CreateTournamentForm {
+    name: String,
+    abbrv: String,
+    slug: String,
 }
 
-#[post("/tournaments/create", data = "<form>")]
-/// Performs the actual tournament creation.
-///
-/// The user will be added as a super user.
 pub async fn do_create_tournament(
-    form: Form<CreateTournamentForm<'_>>,
     user: User<true>,
     mut conn: Conn<true>,
+    Form(form): Form<CreateTournamentForm>,
 ) -> StandardResponse {
     let tid = Uuid::now_v7().to_string();
+
+    if !(4..=32).contains(&form.name.len()) {
+        return bad_request(
+            maud! {p {"Tournament name must be between 4 and 32 characters."}}
+                .render(),
+        );
+    }
+    if !(2..=8).contains(&form.abbrv.len()) {
+        return bad_request(maud! {p {"Tournament abbreviation must be between 2 and 8 characters."}}.render());
+    }
+    if let Err(e) = is_valid_slug(&form.slug) {
+        return bad_request(maud! {p {(e)}}.render());
+    }
 
     let n = diesel::insert_into(tournaments::table)
         .values((
             tournaments::id.eq(&tid),
-            tournaments::name.eq(form.name),
-            tournaments::abbrv.eq(form.abbrv),
-            tournaments::slug.eq(form.slug),
+            tournaments::name.eq(&form.name),
+            tournaments::abbrv.eq(&form.abbrv),
+            tournaments::slug.eq(&form.slug),
             tournaments::created_at.eq(Utc::now().naive_utc()),
             tournaments::teams_per_side.eq(2),
             tournaments::substantive_speakers.eq(2),
@@ -149,5 +156,5 @@ pub async fn do_create_tournament(
         .unwrap();
     assert_eq!(n, 1);
 
-    see_other_ok(Redirect::to(format!("/tournaments/{tid}")))
+    see_other_ok(Redirect::to(&format!("/tournaments/{tid}")))
 }

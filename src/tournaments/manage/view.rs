@@ -18,15 +18,17 @@ use crate::{
 ///
 /// TODO: in future we probably want to unify the separate functions into a
 /// single entity (which shows appropriate actions).
+use axum::extract::Path;
+
 pub async fn admin_view_tournament(
-    tid: &str,
+    Path(tid): Path<String>,
     user: User<true>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tid, &mut *conn)?;
+    let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
-    let rounds = TournamentRounds::fetch(tid, &mut *conn).unwrap();
+    let rounds = TournamentRounds::fetch(&tid, &mut *conn).unwrap();
     let active_rounds = Round::current_rounds(&tournament.id, &mut *conn);
 
     success(Page::new()

@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
+use axum::extract::Path;
 use diesel::prelude::*;
 use hypertext::prelude::*;
 use itertools::Itertools;
-use rocket::get;
 
 use crate::{
     auth::User,
@@ -26,16 +26,15 @@ pub mod draw_edit;
 pub mod edit;
 pub mod view;
 
-#[get("/tournaments/<tid>/rounds")]
 pub async fn manage_rounds_page(
-    tid: &str,
+    Path(tid): Path<String>,
     user: User<true>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tid, &mut *conn)?;
+    let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
-    let rounds = TournamentRounds::fetch(tid, &mut *conn)
+    let rounds = TournamentRounds::fetch(&tid, &mut *conn)
         .expect("failed to retrieve rounds");
     let categories2rounds = rounds.categories();
     let categories = tournament_break_categories::table

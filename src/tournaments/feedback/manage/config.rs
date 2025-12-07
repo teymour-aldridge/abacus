@@ -1,6 +1,9 @@
+use axum::{
+    extract::{Form, Path},
+    response::Redirect,
+};
 use diesel::prelude::*;
 use hypertext::{Renderable, maud, prelude::*};
-use rocket::{FromForm, form::Form, get, post, response::Redirect};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -18,22 +21,21 @@ use crate::{
     },
 };
 
-#[get("/tournaments/<tournament_id>/feedback/manage")]
 pub async fn manage_feedback_page(
-    tournament_id: &str,
+    Path(tournament_id): Path<String>,
     user: User<true>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
+    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
     let questions = feedback_questions::table
-        .filter(feedback_questions::tournament_id.eq(tournament_id))
+        .filter(feedback_questions::tournament_id.eq(&tournament_id))
         .order_by(feedback_questions::seq.asc())
         .load::<FeedbackQuestion>(&mut *conn)
         .unwrap();
 
-    let rounds = TournamentRounds::fetch(tournament_id, &mut *conn).unwrap();
+    let rounds = TournamentRounds::fetch(&tournament_id, &mut *conn).unwrap();
 
     success(
         Page::new()
@@ -132,11 +134,11 @@ impl Renderable for FeedbackConfigRenderer {
                     }
                     div class="mb-3" {
                         label for="judges"  class="form-labale" {"For judges?"}
-                        input type="checkbox" class="form-check-input" id="judges" name="for_judges" required;
+                        input type="checkbox" class="form-check-input" id="judges" name="for_judges" value="true";
                     }
                     div class="mb-3" {
                         label for="teams" class="form-labale" {"For teams?"}
-                        input type="checkbox" class="form-check-input" id="teams" name="for_teams" required;
+                        input type="checkbox" class="form-check-input" id="teams" name="for_teams" value="true";
                     }
                     button type="submit" class="btn btn-primary" { "Add Question" }
                 }
@@ -146,16 +148,14 @@ impl Renderable for FeedbackConfigRenderer {
     }
 }
 
-#[get("/tournaments/<tournament_id>/feedback/manage/<question_id>/edit")]
 pub async fn edit_feedback_question_page(
-    tournament_id: &str,
-    question_id: &str,
+    Path((tournament_id, question_id)): Path<(String, String)>,
     user: User<true>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
+    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
-    let rounds = TournamentRounds::fetch(tournament_id, &mut *conn).unwrap();
+    let rounds = TournamentRounds::fetch(&tournament_id, &mut *conn).unwrap();
 
     let question = feedback_questions::table
         .find(question_id)
@@ -194,7 +194,7 @@ impl Renderable for EditFeedbackQuestionRenderer {
         maud! {
             SidebarWrapper tournament=(&self.tournament) rounds=(&self.rounds) {
                 h1 { "Edit Feedback Question" }
-                form method="post" action=(format!("/tournaments/{}/feedback/manage/edit", self.tournament.id)) {
+                form method="post" action=(format!("/tournaments/{}/feedback/manage/{}/edit", self.tournament.id, self.question.id)) {
                     @let kind: FeedbackQuestionKind = serde_json::from_str(&self.question.kind).unwrap();
                     input type="hidden" name="question_id" value=(self.question.id);
                     div class="mb-3" {
@@ -238,11 +238,17 @@ impl Renderable for EditFeedbackQuestionRenderer {
     }
 }
 
-#[derive(FromForm)]
+#[derive(Deserialize)]
 pub struct AddQuestionForm {
     question: String,
     kind: String,
+    // HTML checkboxes don't send anything if unchecked. Axum's Form helper can handle Option<bool> or we can default.
+    // However, basic HTML checkboxes usually send "on" or their value if checked.
+    // Rocket's FromForm is lenient. Serde needs specific handling.
+    // The easiest for bools is often `#[serde(default)]` if missing means false.
+    #[serde(default)]
     for_judges: bool,
+    #[serde(default)]
     for_teams: bool,
 }
 
@@ -253,12 +259,11 @@ pub enum FeedbackQuestionKind {
     Boolean,
 }
 
-#[post("/tournaments/<tournament_id>/feedback/manage/add", data = "<form>")]
 pub async fn add_feedback_question(
-    tournament_id: &str,
+    Path(tournament_id): Path<String>,
     user: User<true>,
     mut conn: Conn<true>,
-    form: Form<AddQuestionForm>,
+    Form(form): Form<AddQuestionForm>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
@@ -279,7 +284,7 @@ pub async fn add_feedback_question(
     };
 
     let max_seq = feedback_questions::table
-        .filter(feedback_questions::tournament_id.eq(tournament_id))
+        .filter(feedback_questions::tournament_id.eq(&tournament_id))
         .select(diesel::dsl::max(feedback_questions::seq))
         .first::<Option<i64>>(&mut *conn)
         .unwrap()
@@ -300,13 +305,13 @@ pub async fn add_feedback_question(
         .execute(&mut *conn)
         .unwrap();
 
-    see_other_ok(Redirect::to(format!(
+    see_other_ok(Redirect::to(&format!(
         "/tournaments/{}/feedback/manage",
         tournament_id
     )))
 }
 
-#[derive(FromForm)]
+#[derive(Deserialize)]
 pub struct EditQuestionForm {
     question_id: String,
     question: String,
@@ -314,12 +319,11 @@ pub struct EditQuestionForm {
     seq: i64,
 }
 
-#[post("/tournaments/<tournament_id>/feedback/manage/edit", data = "<form>")]
 pub async fn edit_feedback_question(
-    tournament_id: &str,
+    Path((tournament_id, _question_id)): Path<(String, String)>,
     user: User<true>,
     mut conn: Conn<true>,
-    form: Form<EditQuestionForm>,
+    Form(form): Form<EditQuestionForm>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
@@ -333,23 +337,22 @@ pub async fn edit_feedback_question(
         .execute(&mut *conn)
         .unwrap();
 
-    see_other_ok(Redirect::to(format!(
+    see_other_ok(Redirect::to(&format!(
         "/tournaments/{}/feedback/manage",
         tournament_id
     )))
 }
 
-#[derive(FromForm)]
+#[derive(Deserialize)]
 pub struct DeleteQuestionForm {
     question_id: String,
 }
 
-#[post("/tournaments/<tournament_id>/feedback/manage/delete", data = "<form>")]
 pub async fn delete_feedback_question(
-    tournament_id: &str,
+    Path(tournament_id): Path<String>,
     user: User<true>,
     mut conn: Conn<true>,
-    form: Form<DeleteQuestionForm>,
+    Form(form): Form<DeleteQuestionForm>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
@@ -358,23 +361,22 @@ pub async fn delete_feedback_question(
         .execute(&mut *conn)
         .unwrap();
 
-    see_other_ok(Redirect::to(format!(
+    see_other_ok(Redirect::to(&format!(
         "/tournaments/{}/feedback/manage",
         tournament_id
     )))
 }
 
-#[derive(FromForm)]
+#[derive(Deserialize)]
 pub struct ReorderQuestionForm {
     question_id: String,
 }
 
-#[post("/tournaments/<tournament_id>/feedback/manage/up", data = "<form>")]
 pub async fn move_feedback_question_up(
-    tournament_id: &str,
+    Path(tournament_id): Path<String>,
     user: User<true>,
     mut conn: Conn<true>,
-    form: Form<ReorderQuestionForm>,
+    Form(form): Form<ReorderQuestionForm>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
@@ -385,7 +387,7 @@ pub async fn move_feedback_question_up(
         .unwrap();
 
     let prev_question = feedback_questions::table
-        .filter(feedback_questions::tournament_id.eq(tournament_id))
+        .filter(feedback_questions::tournament_id.eq(&tournament_id))
         .filter(feedback_questions::seq.lt(current_question.seq))
         .order_by(feedback_questions::seq.desc())
         .first::<FeedbackQuestion>(&mut *conn)
@@ -407,18 +409,17 @@ pub async fn move_feedback_question_up(
             .unwrap();
     }
 
-    see_other_ok(Redirect::to(format!(
+    see_other_ok(Redirect::to(&format!(
         "/tournaments/{}/feedback/manage",
         tournament_id
     )))
 }
 
-#[post("/tournaments/<tournament_id>/feedback/manage/down", data = "<form>")]
 pub async fn move_feedback_question_down(
-    tournament_id: &str,
+    Path(tournament_id): Path<String>,
     user: User<true>,
     mut conn: Conn<true>,
-    form: Form<ReorderQuestionForm>,
+    Form(form): Form<ReorderQuestionForm>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
@@ -429,7 +430,7 @@ pub async fn move_feedback_question_down(
         .unwrap();
 
     let next_question = feedback_questions::table
-        .filter(feedback_questions::tournament_id.eq(tournament_id))
+        .filter(feedback_questions::tournament_id.eq(&tournament_id))
         .filter(feedback_questions::seq.gt(current_question.seq))
         .order_by(feedback_questions::seq.asc())
         .first::<FeedbackQuestion>(&mut *conn)
@@ -451,7 +452,7 @@ pub async fn move_feedback_question_down(
             .unwrap();
     }
 
-    see_other_ok(Redirect::to(format!(
+    see_other_ok(Redirect::to(&format!(
         "/tournaments/{}/feedback/manage",
         tournament_id
     )))

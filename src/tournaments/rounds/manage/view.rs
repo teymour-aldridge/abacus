@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
+use axum::extract::Path;
 use diesel::prelude::*;
 use hypertext::{Renderable, maud, prelude::*};
-use rocket::get;
 
 use crate::{
     auth::User,
@@ -21,14 +21,12 @@ use crate::{
     util_resp::{StandardResponse, success},
 };
 
-#[get("/tournaments/<tid>/rounds/<rid>", rank = 2)]
 pub async fn view_tournament_rounds_page(
-    tid: &str,
-    rid: i64,
+    Path((tid, rid)): Path<(String, i64)>,
     user: User<true>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tid, &mut *conn)?;
+    let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
     let rounds = tournament_rounds::table

@@ -1,6 +1,11 @@
+use axum::{
+    Extension,
+    extract::{Path, Query},
+    response::Redirect,
+};
 use diesel::prelude::*;
 use hypertext::prelude::*;
-use rocket::{State, get, post, response::Redirect};
+use serde::Deserialize;
 use tokio::task::spawn_blocking;
 
 use crate::{
@@ -22,17 +27,17 @@ use crate::{
     widgets::alert::ErrorAlert,
 };
 
-#[get(
-    "/tournaments/<tournament_id>/rounds/<round_id>/draws/create",
-    rank = 1
-)]
+#[derive(Deserialize)]
+pub struct DrawCreateQuery {
+    force: Option<bool>,
+}
+
 pub async fn generate_draw_page(
-    tournament_id: &str,
-    round_id: &str,
+    Path((tournament_id, round_id)): Path<(String, String)>,
     user: User<true>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
+    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
     let round = match tournament_rounds::table
@@ -79,18 +84,16 @@ pub async fn generate_draw_page(
     )
 }
 
-#[post("/tournaments/<tournament_id>/rounds/<round_id>/draws/create?<force>")]
 pub async fn do_generate_draw(
-    tournament_id: &str,
-    round_id: &str,
+    Path((tournament_id, round_id)): Path<(String, String)>,
+    Query(query): Query<DrawCreateQuery>,
     user: User<false>,
-    pool: &State<DbPool>,
-    force: Option<bool>,
+    Extension(pool): Extension<DbPool>,
 ) -> StandardResponse {
-    let pool: DbPool = pool.inner().clone();
+    let pool: DbPool = pool.clone();
     let round_id = round_id.to_string();
     let tournament_id = tournament_id.to_string();
-    let force = force.unwrap_or(false);
+    let force = query.force.unwrap_or(false);
 
     spawn_blocking(move || {
         let mut conn = pool.get().unwrap();
@@ -119,7 +122,7 @@ pub async fn do_generate_draw(
         );
 
         match draw_result {
-            Ok(()) => see_other_ok(Redirect::to(format!(
+            Ok(()) => see_other_ok(Redirect::to(&format!(
                 "/tournaments/{tournament_id}/rounds/{}", round.seq
             ))),
             Err(e) => {

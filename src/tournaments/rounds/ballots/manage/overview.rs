@@ -1,7 +1,7 @@
+use axum::extract::Path;
 use diesel::prelude::*;
 use hypertext::prelude::*;
 use itertools::Itertools;
-use rocket::get;
 
 use crate::{
     auth::User,
@@ -20,14 +20,12 @@ use crate::{
     util_resp::{StandardResponse, err_not_found, success},
 };
 
-#[get("/tournaments/<tournament_id>/rounds/<seq>/ballots")]
 pub async fn admin_ballot_of_seq_overview(
-    tournament_id: &str,
-    seq: i64,
+    Path((tournament_id, seq)): Path<(String, i64)>,
     user: User<true>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
+    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
     let all_rounds =

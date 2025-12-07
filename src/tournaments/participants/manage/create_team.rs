@@ -1,6 +1,10 @@
+use axum::{
+    extract::{Extension, Form, Path},
+    response::Redirect,
+};
 use diesel::prelude::*;
 use hypertext::prelude::*;
-use rocket::{FromForm, form::Form, get, post, response::Redirect};
+use serde::Deserialize;
 use tokio::sync::broadcast::Sender;
 use uuid::Uuid;
 
@@ -20,13 +24,12 @@ use crate::{
     util_resp::{StandardResponse, bad_request, see_other_ok, success},
 };
 
-#[get("/tournaments/<tid>/teams/create", rank = 1)]
 pub async fn create_teams_page(
-    tid: &str,
+    Path(tid): Path<String>,
     user: User<true>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tid, &mut *conn)?;
+    let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_has_permission(
         &user.id,
         crate::permission::Permission::ManageParticipants,
@@ -68,27 +71,37 @@ pub async fn create_teams_page(
         .render())
 }
 
-#[derive(FromForm)]
+#[derive(Deserialize)]
 pub struct CreateTeamForm {
-    #[field(validate = len(4..=32))]
     pub name: String,
     pub institution_id: String,
 }
 
-#[post("/tournaments/<tid>/teams/create", data = "<form>")]
 pub async fn do_create_team(
-    tid: &str,
+    Path(tid): Path<String>,
     user: User<true>,
-    form: Form<CreateTeamForm>,
-    tx: &rocket::State<Sender<Msg>>,
+    Extension(tx): Extension<Sender<Msg>>,
     mut conn: Conn<true>,
+    Form(form): Form<CreateTeamForm>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(tid, &mut *conn)?;
+    let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_has_permission(
         &user.id,
         crate::permission::Permission::ManageParticipants,
         &mut *conn,
     )?;
+
+    if form.name.len() < 4 || form.name.len() > 32 {
+        return bad_request(
+            Page::new()
+                .user(user)
+                .tournament(tournament)
+                .body(maud! {
+                    "Error: Team name must be between 4 and 32 characters."
+                })
+                .render(),
+        );
+    }
 
     let id = match form.institution_id.as_str() {
         "-----" => None,
@@ -151,7 +164,7 @@ pub async fn do_create_team(
     }
 
     let next_number = tournament_teams::table
-        .filter(tournament_teams::tournament_id.eq(tid))
+        .filter(tournament_teams::tournament_id.eq(&tid))
         .order_by(tournament_teams::number.desc())
         .select(tournament_teams::number)
         .first::<i64>(&mut *conn)
@@ -174,14 +187,14 @@ pub async fn do_create_team(
         .unwrap();
     assert_eq!(n, 1);
 
-    take_snapshot(tid, &mut *conn);
+    take_snapshot(&tid, &mut *conn);
 
     let _ = tx.send(Msg {
         tournament: tournament.clone(),
         inner: MsgContents::ParticipantsUpdate,
     });
 
-    see_other_ok(Redirect::to(format!(
+    see_other_ok(Redirect::to(&format!(
         "/tournaments/{}/participants",
         tournament.id
     )))

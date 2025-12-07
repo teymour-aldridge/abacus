@@ -3,65 +3,81 @@ use std::{
     sync::Arc,
 };
 
+use axum::{
+    async_trait,
+    extract::{FromRef, FromRequestParts},
+    http::{StatusCode, request::Parts},
+    middleware::Next,
+    response::Response,
+};
+use axum_extra::extract::cookie::Key;
 use diesel::{
-    SqliteConnection,
+    Connection, SqliteConnection,
     connection::TransactionManager,
     r2d2::{ConnectionManager, Pool, PooledConnection},
-};
-use rocket::{
-    Request, Response,
-    fairing::{Fairing, Info, Kind},
-    http::StatusClass,
-    outcome::Outcome,
-    request::{self, FromRequest},
 };
 
 pub type DbPool = Pool<ConnectionManager<SqliteConnection>>;
 
-/// This fairing commits opened transactions, after each request has been
-/// handled.
-pub struct TxCommitFairing;
+#[derive(Clone)]
+pub struct AppState {
+    pub pool: DbPool,
+    pub key: Key,
+}
 
-#[rocket::async_trait]
-impl Fairing for TxCommitFairing {
-    fn info(&self) -> Info {
-        Info {
-            name: "tx_commit",
-            kind: Kind::Response,
-        }
-    }
-
-    async fn on_response<'r>(
-        &self,
-        req: &'r Request<'_>,
-        res: &mut Response<'r>,
-    ) {
-        let conn = req.local_cache::<Option<RequestSpecificTxConn>, _>(|| None);
-
-        if let Some(conn) = conn {
-            let mut conn = conn.0.try_lock().unwrap();
-
-            if matches!(
-                res.status().class(),
-                StatusClass::Success
-                    | StatusClass::Redirection
-                    | StatusClass::Informational
-            ) {
-                <PooledConnection<ConnectionManager<SqliteConnection>> as diesel::Connection>
-                    ::TransactionManager
-                    ::commit_transaction(&mut conn).unwrap();
-            } else {
-                <PooledConnection<ConnectionManager<SqliteConnection>> as diesel::Connection>
-                    ::TransactionManager
-                    ::rollback_transaction(&mut conn).unwrap();
-            }
-        }
+impl FromRef<AppState> for DbPool {
+    fn from_ref(state: &AppState) -> Self {
+        state.pool.clone()
     }
 }
 
+impl FromRef<AppState> for Key {
+    fn from_ref(state: &AppState) -> Self {
+        state.key.clone()
+    }
+}
+
+/// Container for the connection used in a transaction.
+/// This is inserted into request extensions by the middleware.
+#[derive(Clone, Default)]
+pub struct TxHandle(
+    pub  Arc<
+        tokio::sync::Mutex<
+            Option<PooledConnection<ConnectionManager<SqliteConnection>>>,
+        >,
+    >,
+);
+
+pub async fn transaction_middleware(
+    mut req: axum::extract::Request,
+    next: Next,
+) -> Response {
+    let tx_handle = TxHandle::default();
+    req.extensions_mut().insert(tx_handle.clone());
+
+    let response = next.run(req).await;
+
+    let mut guard = tx_handle.0.lock().await;
+    if let Some(mut conn) = guard.take() {
+        if response.status().is_success()
+            || response.status().is_redirection()
+            || response.status().is_informational()
+        {
+            let _ = <PooledConnection<ConnectionManager<SqliteConnection>> as Connection>::TransactionManager::commit_transaction(&mut conn);
+        } else {
+            let _ = <PooledConnection<ConnectionManager<SqliteConnection>> as Connection>::TransactionManager::rollback_transaction(&mut conn);
+        }
+    }
+
+    response
+}
+
+/// A wrapper around a connection that may or may not be part of a transaction.
+/// For TX=true, it holds the lock on the middleware's TxHandle.
+/// For TX=false, it holds a lock on a standalone (or shared) mutex.
 pub struct Conn<const TX: bool> {
     inner: tokio::sync::OwnedMutexGuard<
-        PooledConnection<ConnectionManager<SqliteConnection>>,
+        Option<PooledConnection<ConnectionManager<SqliteConnection>>>,
     >,
 }
 
@@ -69,34 +85,13 @@ impl<const TX: bool> Deref for Conn<TX> {
     type Target = PooledConnection<ConnectionManager<SqliteConnection>>;
 
     fn deref(&self) -> &Self::Target {
-        self.inner.deref()
+        self.inner.as_ref().unwrap()
     }
 }
 
 impl<const TX: bool> DerefMut for Conn<TX> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.inner.deref_mut()
-    }
-}
-
-#[rocket::async_trait]
-impl<'r, const TX: bool> FromRequest<'r> for Conn<TX> {
-    type Error = ();
-    async fn from_request(
-        request: &'r Request<'_>,
-    ) -> request::Outcome<Self, Self::Error> {
-        request::Outcome::Success({
-            let conn = request.guard::<ThreadSafeConn<TX>>().await;
-            match conn {
-                rocket::outcome::Outcome::Success(conn) => Conn {
-                    inner: conn.inner.clone().try_lock_owned().unwrap(),
-                },
-                rocket::outcome::Outcome::Error(e) => return Outcome::Error(e),
-                rocket::outcome::Outcome::Forward(f) => {
-                    return Outcome::Forward(f);
-                }
-            }
-        })
+        self.inner.as_mut().unwrap()
     }
 }
 
@@ -104,70 +99,105 @@ impl<'r, const TX: bool> FromRequest<'r> for Conn<TX> {
 pub struct ThreadSafeConn<const TX: bool> {
     pub inner: Arc<
         tokio::sync::Mutex<
-            PooledConnection<ConnectionManager<SqliteConnection>>,
+            Option<PooledConnection<ConnectionManager<SqliteConnection>>>,
         >,
     >,
 }
 
-#[derive(Clone)]
-struct RequestSpecificTxConn(
-    Arc<
-        tokio::sync::Mutex<
-            PooledConnection<ConnectionManager<SqliteConnection>>,
-        >,
-    >,
-);
+#[async_trait]
+impl<const TX: bool, S> FromRequestParts<S> for ThreadSafeConn<TX>
+where
+    S: Send + Sync,
+    DbPool: FromRef<S>,
+{
+    type Rejection = (StatusCode, String);
 
-impl std::fmt::Debug for RequestSpecificTxConn {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("RequestSpecificTxConn").finish()
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        if TX {
+            // Transaction mode: Use the handle provided by middleware
+            if let Some(handle) = parts.extensions.get::<TxHandle>() {
+                let inner = handle.0.clone();
+                // Ensure connection exists and transaction is started
+                {
+                    let mut guard = inner.lock().await;
+                    if guard.is_none() {
+                        let pool = DbPool::from_ref(state);
+                        let mut conn = pool.get().map_err(|e| {
+                            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+                        })?;
+
+                        <PooledConnection<ConnectionManager<SqliteConnection>> as Connection>::TransactionManager::begin_transaction(&mut conn).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+                        *guard = Some(conn);
+                    }
+                }
+                Ok(ThreadSafeConn { inner })
+            } else {
+                // Middleware not present - this is an error for TX=true if we expect automatic commit
+                // But we can fallback to just creating one, though commit won't happen automatically by middleware
+                // For now, assume middleware is always there.
+                Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Transaction middleware missing".to_string(),
+                ))
+            }
+        } else {
+            // Non-transaction mode
+            // We can cache it in extensions to share between User and Conn if needed
+            // But since TX=false just needs a connection, we can create one.
+            // However, to support `ThreadSafeConn` sharing (e.g. User reads, then Conn reads), we better cache it.
+
+            // Note: We need a distinct type key for Non-TX handle in extensions to avoid collision with TxHandle?
+            // TxHandle is the struct. We can define another struct or just use specific logic.
+            // Let's use a private type for caching non-tx conn.
+            #[derive(Clone)]
+            struct NonTxHandle(
+                Arc<
+                    tokio::sync::Mutex<
+                        Option<
+                            PooledConnection<
+                                ConnectionManager<SqliteConnection>,
+                            >,
+                        >,
+                    >,
+                >,
+            );
+
+            if let Some(handle) = parts.extensions.get::<NonTxHandle>() {
+                Ok(ThreadSafeConn {
+                    inner: handle.0.clone(),
+                })
+            } else {
+                let pool = DbPool::from_ref(state);
+                let conn = pool.get().map_err(|e| {
+                    (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+                })?;
+                let inner = Arc::new(tokio::sync::Mutex::new(Some(conn)));
+                parts.extensions.insert(NonTxHandle(inner.clone()));
+                Ok(ThreadSafeConn { inner })
+            }
+        }
     }
 }
 
-#[rocket::async_trait]
-impl<'r, const TX: bool> FromRequest<'r> for ThreadSafeConn<TX> {
-    type Error = ();
-    async fn from_request(
-        request: &'r Request<'_>,
-    ) -> request::Outcome<Self, Self::Error> {
-        request::Outcome::Success({
-            if TX {
-                let inner = request
-                    .local_cache_async(async {
-                        let pool =
-                            request.rocket().state::<DbPool>().unwrap().clone();
+#[async_trait]
+impl<const TX: bool, S> FromRequestParts<S> for Conn<TX>
+where
+    S: Send + Sync,
+    DbPool: FromRef<S>,
+{
+    type Rejection = (StatusCode, String);
 
-                        let mut conn = tokio::task::spawn_blocking(move || {
-                            pool.get().unwrap()
-                        })
-                        .await
-                        .unwrap();
-
-                        <PooledConnection<ConnectionManager<SqliteConnection>> as diesel::Connection>
-                            ::TransactionManager
-                            ::begin_transaction(&mut conn).unwrap();
-
-                        let t = Arc::new(tokio::sync::Mutex::new(conn));
-
-                        Some(RequestSpecificTxConn(t))
-                    })
-                    .await
-                    .clone()
-                    .unwrap();
-
-                ThreadSafeConn { inner: inner.0 }
-            } else {
-                let pool = request.rocket().state::<DbPool>().unwrap().clone();
-
-                let conn =
-                    tokio::task::spawn_blocking(move || pool.get().unwrap())
-                        .await
-                        .unwrap();
-
-                let t = Arc::new(tokio::sync::Mutex::new(conn));
-
-                ThreadSafeConn { inner: t }
-            }
-        })
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        let ts_conn =
+            ThreadSafeConn::<TX>::from_request_parts(parts, state).await?;
+        let inner = ts_conn.inner.lock_owned().await;
+        Ok(Conn { inner })
     }
 }

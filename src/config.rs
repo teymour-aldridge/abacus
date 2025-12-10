@@ -155,17 +155,27 @@ pub async fn run() {
         .route("/tournaments/:id", get(crate::tournaments::view::view_tournament_page))
 
         // Participants
+        .route("/tournaments/:id/participants", get(crate::tournaments::participants::manage::manage_tournament_participants))
+        .route("/tournaments/:id/participants/ws", get(crate::tournaments::participants::manage::tournament_participant_updates))
+        .route("/tournaments/:id/participants/private_urls", get(crate::tournaments::participants::manage::manage_private_urls::view_private_urls))
+
+        // Teams
+        .route("/tournaments/:id/teams/create", get(crate::tournaments::participants::manage::create_team::create_teams_page).post(crate::tournaments::participants::manage::create_team::do_create_team))
+        .route("/tournaments/:id/teams/:team_id", get(crate::tournaments::participants::manage::manage_team::manage_team_page))
+        .route("/tournaments/:id/teams/:team_id/edit", get(crate::tournaments::participants::manage::manage_team::edit_team_details_page).post(crate::tournaments::participants::manage::manage_team::do_edit_team_details))
+        .route("/tournaments/:id/teams/:team_id/speakers/create", get(crate::tournaments::participants::manage::create_speaker::create_speaker_page).post(crate::tournaments::participants::manage::create_speaker::do_create_speaker))
+
+        // Judges
+        .route("/tournaments/:id/judges/create", get(crate::tournaments::participants::manage::create_judge::create_judge_page).post(crate::tournaments::participants::manage::create_judge::do_create_judge))
+        .route("/tournaments/:id/judges/:judge_id/edit", get(crate::tournaments::participants::manage::manage_judge::edit_judge_details_page).post(crate::tournaments::participants::manage::manage_judge::do_edit_judge_details))
+
+        // Legacy routes (for backwards compatibility)
         .route("/tournaments/:id/participants/team", get(crate::tournaments::participants::manage::manage_team::manage_team_page))
         .route("/tournaments/:id/participants/team/create", get(crate::tournaments::participants::manage::create_team::create_teams_page).post(crate::tournaments::participants::manage::create_team::do_create_team))
         .route("/tournaments/:id/participants/team/edit", get(crate::tournaments::participants::manage::manage_team::edit_team_details_page).post(crate::tournaments::participants::manage::manage_team::do_edit_team_details))
-
         .route("/tournaments/:id/participants/judge/create", get(crate::tournaments::participants::manage::create_judge::create_judge_page).post(crate::tournaments::participants::manage::create_judge::do_create_judge))
         .route("/tournaments/:id/participants/judge/edit", get(crate::tournaments::participants::manage::manage_judge::edit_judge_details_page).post(crate::tournaments::participants::manage::manage_judge::do_edit_judge_details))
-
         .route("/tournaments/:id/participants/speaker/create", get(crate::tournaments::participants::manage::create_speaker::create_speaker_page).post(crate::tournaments::participants::manage::create_speaker::do_create_speaker))
-
-        .route("/tournaments/:id/participants/private_urls", get(crate::tournaments::participants::manage::manage_private_urls::view_private_urls))
-        // WebSocket for participants
         .route("/tournaments/:id/participants/updates", get(crate::tournaments::participants::manage::tournament_participant_updates))
 
         // Configuration
@@ -220,6 +230,7 @@ pub async fn run() {
         .route("/tournaments/:id/privateurls/:url/rounds/:round_id/submit", get(crate::tournaments::rounds::ballots::public::submit::submit_ballot_page).post(crate::tournaments::rounds::ballots::public::submit::do_submit_ballot))
 
         .layer(axum::Extension(tx))
+        .layer(axum::Extension(state.pool.clone()))
         .with_state(state)
         .layer(
             ServiceBuilder::new()

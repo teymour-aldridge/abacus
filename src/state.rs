@@ -37,8 +37,6 @@ impl FromRef<AppState> for Key {
     }
 }
 
-/// Container for the connection used in a transaction.
-/// This is inserted into request extensions by the middleware.
 #[derive(Clone, Default)]
 pub struct TxHandle(
     pub  Arc<
@@ -72,9 +70,6 @@ pub async fn transaction_middleware(
     response
 }
 
-/// A wrapper around a connection that may or may not be part of a transaction.
-/// For TX=true, it holds the lock on the middleware's TxHandle.
-/// For TX=false, it holds a lock on a standalone (or shared) mutex.
 pub struct Conn<const TX: bool> {
     inner: tokio::sync::OwnedMutexGuard<
         Option<PooledConnection<ConnectionManager<SqliteConnection>>>,
@@ -117,10 +112,8 @@ where
         state: &S,
     ) -> Result<Self, Self::Rejection> {
         if TX {
-            // Transaction mode: Use the handle provided by middleware
             if let Some(handle) = parts.extensions.get::<TxHandle>() {
                 let inner = handle.0.clone();
-                // Ensure connection exists and transaction is started
                 {
                     let mut guard = inner.lock().await;
                     if guard.is_none() {
@@ -136,23 +129,12 @@ where
                 }
                 Ok(ThreadSafeConn { inner })
             } else {
-                // Middleware not present - this is an error for TX=true if we expect automatic commit
-                // But we can fallback to just creating one, though commit won't happen automatically by middleware
-                // For now, assume middleware is always there.
                 Err((
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "Transaction middleware missing".to_string(),
                 ))
             }
         } else {
-            // Non-transaction mode
-            // We can cache it in extensions to share between User and Conn if needed
-            // But since TX=false just needs a connection, we can create one.
-            // However, to support `ThreadSafeConn` sharing (e.g. User reads, then Conn reads), we better cache it.
-
-            // Note: We need a distinct type key for Non-TX handle in extensions to avoid collision with TxHandle?
-            // TxHandle is the struct. We can define another struct or just use specific logic.
-            // Let's use a private type for caching non-tx conn.
             #[derive(Clone)]
             struct NonTxHandle(
                 Arc<

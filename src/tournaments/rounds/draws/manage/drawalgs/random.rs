@@ -7,6 +7,7 @@ use crate::tournaments::rounds::draws::manage::drawalgs::{
 };
 
 /// Generates a random draw.
+#[tracing::instrument(skip(rng))]
 pub fn gen_random(
     DrawInput {
         tournament,
@@ -49,6 +50,8 @@ pub fn gen_random(
         output
             .push((pick_random_teams_for_side(), pick_random_teams_for_side()))
     }
+
+    tracing::debug!("Generated draw: {output:?}");
 
     Ok(output)
 }

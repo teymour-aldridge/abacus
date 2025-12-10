@@ -1,7 +1,5 @@
 use chrono::NaiveDateTime;
-use diesel::{
-    connection::LoadConnection, prelude::*, sql_types::Text, sqlite::Sqlite,
-};
+use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
 use serde::{Deserialize, Serialize};
 
 #[derive(Queryable, Serialize, Deserialize)]
@@ -14,18 +12,12 @@ pub struct Snapshot {
     schema_id: String,
 }
 
-/// This struct can be deserialized
 pub struct SnapshotData {}
 
+#[tracing::instrument(skip(_conn))]
 pub fn take_snapshot(
     _tid: &str,
     _conn: &mut impl LoadConnection<Backend = Sqlite>,
 ) {
     // todo: implement
-}
-
-#[derive(QueryableByName)]
-struct JsonResult {
-    #[diesel(sql_type = Text)]
-    _json: String,
 }

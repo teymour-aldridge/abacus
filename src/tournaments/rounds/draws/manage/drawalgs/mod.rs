@@ -51,6 +51,7 @@ pub struct DrawInput {
 ///
 /// **Important**: this function is long-running and should always be executed
 /// on a background thread (i.e. not the async executor).
+#[tracing::instrument(skip(draw_generator, conn))]
 pub fn do_draw(
     tournament: Tournament,
     round: &Round,
@@ -118,6 +119,8 @@ pub fn do_draw(
         })
         .unwrap()?;
 
+    tracing::info!("Obtained ticket {} for draw", ticket_id);
+
     let available_teams = tournament_teams::table
         .filter(tournament_teams::tournament_id.eq(&tournament.id))
         .inner_join(tournament_team_availability::table)
@@ -129,6 +132,8 @@ pub fn do_draw(
         .select(tournament_teams::all_columns)
         .load::<Team>(conn)
         .unwrap();
+
+    tracing::info!("Found {} available teams", available_teams.len());
 
     let standings = TeamStandings::fetch(&tournament.id, conn);
     let history = TeamHistory::fetch(&tournament.id, conn);
@@ -148,7 +153,8 @@ pub fn do_draw(
 
     let generated = match catch_unwind(move || (draw_generator)(input)) {
         Ok(generated) => generated,
-        Err(_) => {
+        Err(e) => {
+            tracing::error!("Draw generator panicked: {e:?}");
             diesel::update(
                 tournament_round_tickets::table
                     .filter(tournament_round_tickets::id.eq(&ticket_id)),
@@ -163,6 +169,7 @@ pub fn do_draw(
     let draw = match generated {
         Ok(generated) => generated,
         Err(failed) => {
+            tracing::error!("Draw generator failed: {failed:?}");
             diesel::update(
                 tournament_round_tickets::table
                     .filter(tournament_round_tickets::id.eq(&ticket_id)),
@@ -213,6 +220,7 @@ pub fn do_draw(
 
             let response = if !exists_active_ticket_with_higher_seq {
                 if force {
+                    tracing::info!("Force flag set, deleting existing debates for round: {}", round.id);
                     diesel::delete(
                         tournament_debate_judges::table.filter(
                             tournament_debate_judges::debate_id.eq_any(
@@ -336,6 +344,8 @@ pub fn do_draw(
             .set(tournament_round_tickets::released.eq(true))
             .execute(conn)
             .unwrap();
+
+            tracing::info!("Released ticket {} for draw", ticket_id);
 
             take_snapshot(&tournament.id, conn);
 

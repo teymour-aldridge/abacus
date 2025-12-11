@@ -351,19 +351,21 @@ fn get_refreshable_part(
             h3 {
                 "Unallocated Judges"
             }
-            div id="unallocatedJudges" class="mb-4" {
-                @for judge in participants.judges.values().filter(|j| !allocated_judge_ids.contains(&j.id)) {
-                    div class="judge-badge"
-                        data-judge-id=(judge.id)
-                        data-judge-number=(judge.number)
-                        data-role="P"
-                        draggable="true"
-                    {
-                        (judge.name) " (j" (judge.number) ")"
+            div class="mb-4 sticky-top unallocated-judges-container" {
+                div id="unallocatedJudges" class="" {
+                    @for judge in participants.judges.values().filter(|j| !allocated_judge_ids.contains(&j.id)) {
+                        div class="judge-badge"
+                            data-judge-id=(judge.id)
+                            data-judge-number=(judge.number)
+                            data-role="P"
+                            draggable="true"
+                        {
+                            (judge.name) " (j" (judge.number) ")"
+                        }
                     }
-                }
-                @if participants.judges.values().all(|j| allocated_judge_ids.contains(&j.id)) {
-                    span class="text-muted" { "All judges are allocated" }
+                    @if participants.judges.values().all(|j| allocated_judge_ids.contains(&j.id)) {
+                        span class="text-muted" { "All judges are allocated" }
+                    }
                 }
             }
 

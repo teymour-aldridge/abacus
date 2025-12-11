@@ -144,16 +144,27 @@ $primary: #281733;
     }
 }
 
-#unallocatedJudges {
-    min-height: 3.75rem;
-    padding: 0.75rem;
-    background-color: var(--bs-white);
+.unallocated-judges-container {
+    background-color: var(--bs-body-bg, #fff);
     border: 1px solid var(--bs-border-color);
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    gap: 0.25rem;
-    margin-bottom: 1.5rem;
+    border-radius: .25rem;
+    padding: 0.75rem;
+    top: 0;
+    z-index: 1020;
+
+    #unallocatedJudges {
+        max-height: 25vh;
+        overflow-y: auto;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        gap: 0.25rem;
+        min-height: auto;
+        padding: 0;
+        background-color: transparent;
+        border: none;
+        margin-bottom: 0;
+    }
 }
 
 .draw-error {

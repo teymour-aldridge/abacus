@@ -198,6 +198,8 @@ pub async fn run() {
         .route("/tournaments/:id/rounds/create_top", post(crate::tournaments::rounds::manage::create::create_new_round))
         .route("/tournaments/:id/rounds/:round_id", get(crate::tournaments::rounds::manage::view::view_tournament_rounds_page))
         .route("/tournaments/:id/rounds/:round_id/edit", get(crate::tournaments::rounds::manage::edit::edit_round_page).post(crate::tournaments::rounds::manage::edit::do_edit_round))
+        .route("/tournaments/:id/rounds/:seq/briefing", get(crate::tournaments::rounds::manage::briefing::get_briefing_room))
+        .route("/tournaments/:id/rounds/:id/draws/setreleased", post(crate::tournaments::rounds::manage::briefing::set_draw_published))
 
         // Availability
         .route("/tournaments/:id/rounds/:round_seq/availability", get(crate::tournaments::rounds::manage::availability::manage_round_availability))

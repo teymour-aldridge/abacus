@@ -88,7 +88,7 @@ impl<'r> Renderable for Sidebar<'r> {
                                     }
 
                                     li {
-                                        a class="link-light" href=(format!("/tournaments/{}/rounds/{}", self.tournament.id, level[0].seq)) {
+                                        a class="link-light" href=(format!("/tournaments/{}/rounds/{}/briefing", self.tournament.id, level[0].seq)) {
                                             "Briefing room"
                                         }
                                     }

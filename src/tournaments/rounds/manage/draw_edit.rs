@@ -797,7 +797,6 @@ impl Cmd {
     }
 }
 
-
 #[derive(Deserialize)]
 pub struct MoveJudgeForm {
     judge_id: String,

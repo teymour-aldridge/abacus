@@ -16,10 +16,10 @@ impl<R: Renderable> Renderable for SidebarWrapper<'_, R> {
         buffer: &mut hypertext::Buffer<hypertext::context::Node>,
     ) {
         maud! {
-            div class="container-fluid" {
-                div class="row" {
+            div class="container-fluid h-100" {
+                div class="row h-100" {
                     Sidebar tournament=(&self.tournament) rounds=(&self.rounds);
-                    div class="col" {
+                    div class="col-12 col-md-9 col-lg-10" {
                         div class="p-3" {
                             (self.children)
                         }
@@ -45,7 +45,7 @@ impl<'r> Renderable for Sidebar<'r> {
 
         maud! {
             div class="col-12 col-md-3 col-lg-2 order-last order-md-first p-0" {
-                div class="p-3 text-white flex-shrink-0" style="background-color: #3b224c;" {
+                div class="p-3 text-white flex-shrink-0 h-100" style="background-color: #3b224c;" {
                     a href="/" class="d-flex align-items-center pb-3 mb-3 link-dark text-decoration-none border-bottom" {
                         span class="fs-5 fw-semibold text-white" {
                             "Navigation"

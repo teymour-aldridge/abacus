@@ -72,7 +72,7 @@ impl<R1: Renderable, R2: Renderable, const TX: bool> Renderable
                         (extra)
                     }
                 }
-                body {
+                body class="d-flex flex-column vh-100" {
                     nav class="navbar navbar-expand"
                         style="background-color: #452859; display: flex; justify-content: space-between; align-items: center;"
                         data-bs-theme="dark" {
@@ -111,8 +111,10 @@ impl<R1: Renderable, R2: Renderable, const TX: bool> Renderable
                             }
                         }
                     }
-                    @if let Some(body) = &self.body {
-                        (body)
+                    div class="flex-grow-1" {
+                        @if let Some(body) = &self.body {
+                            (body)
+                        }
                     }
                 }
             }

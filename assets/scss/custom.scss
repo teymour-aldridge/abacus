@@ -43,3 +43,125 @@ $primary: #281733;
 @import "bootstrap/scss/helpers";
 
 @import "bootstrap/scss/utilities/api";
+
+// Draw Editor Drag & Drop Styles
+.sortable-ghost {
+    opacity: 0.3;
+    background-color: var(--bs-gray-200) !important;
+    border: 2px dashed var(--bs-border-color) !important;
+}
+
+.sortable-chosen {
+    background-color: var(--bs-white) !important;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+.sortable-drag {
+    opacity: 1;
+}
+
+.judge-badge {
+    cursor: grab;
+    user-select: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    margin: 0.125rem;
+    font-size: 0.875rem;
+    background-color: var(--bs-white);
+    color: var(--bs-body-color);
+    border: 1px solid var(--bs-border-color);
+    transition: all 0.15s ease;
+
+    &:hover {
+        background-color: var(--bs-gray-100);
+        border-color: var(--bs-gray-400);
+    }
+
+    &:active {
+        cursor: grabbing;
+    }
+}
+
+.debate-judges-container {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+}
+
+.judge-role-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.role-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--bs-secondary);
+    text-transform: uppercase;
+    margin-bottom: 0.25rem;
+}
+
+.judge-drop-zone {
+    min-height: 2.5rem;
+    padding: 0.375rem 0.5rem;
+    border: 1px solid var(--bs-border-color);
+    background-color: var(--bs-gray-100);
+    transition: all 0.15s ease;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.25rem;
+
+    &:hover {
+        border-color: var(--bs-gray-400);
+        background-color: var(--bs-gray-200);
+    }
+}
+
+.drop-placeholder {
+    font-size: 0.75rem;
+    color: var(--bs-secondary);
+    font-style: italic;
+}
+
+.judge-remove-btn {
+    cursor: pointer;
+    opacity: 0.5;
+    font-weight: 400;
+    font-size: 1.25rem;
+    line-height: 1;
+    transition: opacity 0.15s ease;
+
+    &:hover {
+        opacity: 1;
+    }
+}
+
+#unallocatedJudges {
+    min-height: 3.75rem;
+    padding: 0.75rem;
+    background-color: var(--bs-white);
+    border: 1px solid var(--bs-border-color);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.25rem;
+    margin-bottom: 1.5rem;
+}
+
+.draw-error {
+    background-color: var(--bs-white);
+    border: 1px solid var(--bs-danger);
+    border-left: 4px solid var(--bs-danger);
+    color: var(--bs-danger);
+    font-size: 0.875rem;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+}

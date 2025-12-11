@@ -1,7 +1,4 @@
 //! Code to edit the draw.
-//!
-//! TODO: at some point it will be necessary to create a proper user interface
-//! for draw editing
 
 use std::fmt::Write;
 
@@ -12,7 +9,7 @@ use axum::{
 };
 use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
 use futures::{sink::SinkExt, stream::StreamExt};
-use hypertext::prelude::*;
+use hypertext::{Raw, prelude::*};
 use itertools::Itertools;
 use serde::Deserialize;
 use tokio::{sync::broadcast::Receiver, task::spawn_blocking};
@@ -95,68 +92,254 @@ pub async fn edit_multiple_draws_page(
             .user(user)
             .body(maud! {
                 SidebarWrapper rounds=(&all_rounds) tournament=(&tournament) {
+                    script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.3/Sortable.min.js" {}
                     script src="https://cdn.jsdelivr.net/npm/htmx-ext-response-targets@2.0.2" {
                     }
 
-                    h1 {
-                        "Edit draw for rounds "
-                        @for (i, repr) in reprs.iter().enumerate() {
-                            @if i > 0 {
-                                ", "
+                    div class="draw-editor" {
+                        h1 {
+                            "Edit Draw"
+                            span style="font-weight: 400; font-size: 1.25rem; display: block; margin-top: 0.5rem; color: #666666;" {
+                                @for (i, repr) in reprs.iter().enumerate() {
+                                    @if i > 0 {
+                                        ", "
+                                    }
+                                    (repr.round.name)
+                                }
                             }
-                            (repr.round.name)
                         }
+
+                        (renderer_of_drag_drop_instructions(&tournament, &reprs))
+
+                        (get_refreshable_part(&tournament, &reprs, &participants))
+
+                        // Config element with tournament/round data
+                        div id="dragDropConfig"
+                            style="display:none"
+                            data-tournament-id=(tournament.id)
+                            data-round-ids=(reprs.iter().map(|repr| repr.round.id.clone()).join(","))
+                        {}
                     }
 
-                    (renderer_of_command_bar(&tournament, &reprs))
+                    // Initialize Sortable.js for drag and drop functionality
+                    script {
+                        (Raw::dangerously_create(
+                        r#"
+                        (function() {
+                            console.log('Draw edit script loaded');
 
-                    (get_refreshable_part(&tournament, &reprs, &participants))
+                            function initializeSortables() {
+                                var config = document.getElementById('dragDropConfig');
+                                if (!config) {
+                                    console.error('Config element not found');
+                                    return;
+                                }
+                                var tournamentId = config.dataset.tournamentId;
+                                var roundIds = config.dataset.roundIds;
+
+                                console.log('Initializing with tournament: ' + tournamentId + ', rounds: ' + roundIds);
+
+                                if (typeof Sortable === 'undefined') {
+                                    console.error('Sortable.js not loaded');
+                                    return;
+                                }
+
+                                // Make unallocated judges sortable
+                                var unallocatedContainer = document.getElementById('unallocatedJudges');
+                                if (unallocatedContainer) {
+                                    console.log('Creating Sortable for unallocated judges');
+                                    Sortable.create(unallocatedContainer, {
+                                        group: 'judges',
+                                        animation: 150,
+                                        ghostClass: 'sortable-ghost',
+                                        chosenClass: 'sortable-chosen',
+                                        dragClass: 'sortable-drag',
+                                        sort: false,
+                                        onEnd: function(evt) {
+                                            console.log('Drag ended from unallocated');
+                                            handleJudgeDrop(evt, tournamentId, roundIds);
+                                        }
+                                    });
+                                }
+
+                                // Make each role-specific drop zone sortable
+                                var dropZones = document.querySelectorAll('.judge-drop-zone');
+                                console.log('Found drop zones: ' + dropZones.length);
+
+                                dropZones.forEach(function(el, index) {
+                                    console.log('Creating Sortable for drop zone ' + index);
+                                    Sortable.create(el, {
+                                        group: 'judges',
+                                        animation: 150,
+                                        ghostClass: 'sortable-ghost',
+                                        chosenClass: 'sortable-chosen',
+                                        dragClass: 'sortable-drag',
+                                        onEnd: function(evt) {
+                                            console.log('Drag ended to drop zone');
+                                            handleJudgeDrop(evt, tournamentId, roundIds);
+                                        }
+                                    });
+                                });
+
+                                // Add click handlers for remove buttons
+                                document.querySelectorAll('.judge-remove-btn').forEach(function(btn) {
+                                    btn.onclick = function(e) {
+                                        e.stopPropagation();
+                                        e.preventDefault();
+                                        var badge = this.closest('.judge-badge');
+                                        var judgeId = badge.dataset.judgeId;
+                                        var container = badge.closest('.judge-drop-zone');
+                                        var debateId = container ? container.dataset.debateId : '';
+                                        console.log('Remove clicked: ' + judgeId + ' from ' + debateId);
+                                        if (debateId) {
+                                            removeJudge(judgeId, debateId, tournamentId, roundIds);
+                                        }
+                                    };
+                                });
+
+                                console.log('Sortables initialized');
+                            }
+
+                            function handleJudgeDrop(evt, tournamentId, roundIds) {
+                                var judgeId = evt.item.dataset.judgeId;
+                                var toContainer = evt.to;
+                                var toDebateId = toContainer.dataset.debateId || '';
+                                var toRole = toContainer.dataset.role || 'P';
+
+                                // Prevent multiple chairs - if dropping into chair slot, check if it already has a chair
+                                if (toRole === 'C') {
+                                    var existingChairs = toContainer.querySelectorAll('.judge-badge');
+                                    // If there's already a chair (other than the one we're dragging), prevent the drop
+                                    var otherChairs = Array.from(existingChairs).filter(function(badge) {
+                                        return badge.dataset.judgeId !== judgeId;
+                                    });
+                                    if (otherChairs.length > 0) {
+                                        // Show error and revert
+                                        var errDiv = document.getElementById('dragDropErrMsg');
+                                        if (errDiv) {
+                                            errDiv.innerHTML = '<div class="draw-error">Only one chair per debate. Remove the existing chair first.</div>';
+                                            setTimeout(function() { errDiv.innerHTML = ''; }, 3000);
+                                        }
+                                        // Reload to restore original state
+                                        setTimeout(function() { window.location.reload(); }, 500);
+                                        return;
+                                    }
+                                }
+
+                                console.log('handleJudgeDrop - judgeId: ' + judgeId + ', toDebateId: ' + toDebateId + ', toRole: ' + toRole);
+
+                                var body = new URLSearchParams();
+                                body.append('judge_id', judgeId);
+                                body.append('to_debate_id', toDebateId);
+                                body.append('role', toRole);
+                                body.append('rounds', roundIds);
+
+                                console.log('Sending request');
+
+                                fetch('/tournaments/' + tournamentId + '/rounds/draws/edit/move', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/x-www-form-urlencoded'
+                                    },
+                                    body: body.toString()
+                                }).then(function(response) {
+                                    console.log('Response status: ' + response.status);
+                                    if (response.ok) {
+                                        return response.text();
+                                    } else {
+                                        throw new Error('Move failed: ' + response.status);
+                                    }
+                                }).then(function(html) {
+                                    console.log('Got HTML response');
+                                    var container = document.getElementById('tableContainer');
+                                    if (container) {
+                                        container.outerHTML = html;
+                                        setTimeout(initializeSortables, 100);
+                                    }
+                                }).catch(function(err) {
+                                    console.error('Error: ' + err);
+                                    var errDiv = document.getElementById('dragDropErrMsg');
+                                    if (errDiv) {
+                                        errDiv.innerHTML = '<div class="draw-error">Failed to move judge</div>';
+                                    }
+                                    setTimeout(function() { window.location.reload(); }, 2000);
+                                });
+                            }
+
+                            function removeJudge(judgeId, debateId, tournamentId, roundIds) {
+                                console.log('removeJudge: ' + judgeId);
+
+                                var body = new URLSearchParams();
+                                body.append('judge_id', judgeId);
+                                body.append('to_debate_id', '');
+                                body.append('role', 'P');
+                                body.append('rounds', roundIds);
+
+                                fetch('/tournaments/' + tournamentId + '/rounds/draws/edit/move', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/x-www-form-urlencoded'
+                                    },
+                                    body: body.toString()
+                                }).then(function(response) {
+                                    if (response.ok) {
+                                        return response.text();
+                                    } else {
+                                        throw new Error('Remove failed');
+                                    }
+                                }).then(function(html) {
+                                    var container = document.getElementById('tableContainer');
+                                    if (container) {
+                                        container.outerHTML = html;
+                                        setTimeout(initializeSortables, 100);
+                                    }
+                                }).catch(function(err) {
+                                    console.error('Error: ' + err);
+                                    window.location.reload();
+                                });
+                            }
+
+                            if (document.readyState === 'loading') {
+                                document.addEventListener('DOMContentLoaded', initializeSortables);
+                            } else {
+                                initializeSortables();
+                            }
+                        })();
+                        "#))
+                    }
                 }
             })
             .render(),
     )
 }
 
-fn renderer_of_command_bar(
-    tournament: &Tournament,
-    rounds: &[RoundDrawRepr],
+fn renderer_of_drag_drop_instructions(
+    _tournament: &Tournament,
+    _rounds: &[RoundDrawRepr],
 ) -> impl Renderable {
     maud! {
-        div id="cmdBar" hx-ext="response-targets" {
-            div id = "cmdErrMsg" {}
-            form method="post"
-                action=(
-                    format!("/tournaments/{}/rounds/draws/edit?rounds={}",
-                        tournament.id,
-                        rounds.iter().map(|repr| repr.round.id.clone()).join(",")
-                    )
-                ) {
-                div class="mb-3" {
-                  label for="cmd" class="form-label" { "Enter a command" }
-                  input type="text"
-                        class="form-control"
-                        id="cmd"
-                        aria-describedby="cmdHelp"
-                        name="cmd";
-                  div id="cmdHelp" class="form-text" {
-                      "Enter a command to modify the draw."
-                  }
-                }
-                button type="submit" class="btn btn-primary" { "Submit" }
-            }
-        }
+        div id="dragDropErrMsg" {}
     }
 }
 
-/// Returns an item that returns the part that is "refreshable"
 fn get_refreshable_part(
     tournament: &Tournament,
     reprs: &[RoundDrawRepr],
     participants: &TournamentParticipants,
 ) -> impl Renderable {
+    let allocated_judge_ids: std::collections::HashSet<String> = reprs
+        .iter()
+        .flat_map(|repr| {
+            repr.debates.iter().flat_map(|debate| {
+                debate.judges_of_debate.iter().map(|dj| dj.judge_id.clone())
+            })
+        })
+        .collect();
+
     maud! {
         div id="tableContainer"
             hx-swap-oob="morphdom"
+            data-tournament-rounds=(reprs.iter().map(|repr| repr.round.id.clone()).join(","))
             "ws-connect"=(
                 format!(
                     "/tournaments/{}/rounds/draws/edit/ws?rounds={}",
@@ -165,6 +348,25 @@ fn get_refreshable_part(
                 )
             )
         {
+            h3 {
+                "Unallocated Judges"
+            }
+            div id="unallocatedJudges" class="mb-4" {
+                @for judge in participants.judges.values().filter(|j| !allocated_judge_ids.contains(&j.id)) {
+                    div class="judge-badge"
+                        data-judge-id=(judge.id)
+                        data-judge-number=(judge.number)
+                        data-role="P"
+                        draggable="true"
+                    {
+                        (judge.name) " (j" (judge.number) ")"
+                    }
+                }
+                @if participants.judges.values().all(|j| allocated_judge_ids.contains(&j.id)) {
+                    span class="text-muted" { "All judges are allocated" }
+                }
+            }
+
             table class="table" {
                 DrawTableHeaders tournament=(&tournament);
 
@@ -591,4 +793,161 @@ impl Cmd {
             .parse(input)
             .map_err(|e| e.to_string())
     }
+}
+
+
+#[derive(Deserialize)]
+pub struct MoveJudgeForm {
+    judge_id: String,
+    #[serde(rename = "from_debate_id")]
+    #[allow(dead_code)]
+    _from_debate_id: Option<String>,
+    to_debate_id: Option<String>,
+    role: String,
+    rounds: String,
+}
+
+pub async fn move_judge(
+    Path(tournament_id): Path<String>,
+    user: User<true>,
+    mut conn: Conn<true>,
+    Form(form): Form<MoveJudgeForm>,
+) -> StandardResponse {
+    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
+    tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+
+    let round_ids: Vec<String> = form
+        .rounds
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    let judge = match tournament_judges::table
+        .filter(tournament_judges::id.eq(&form.judge_id))
+        .first::<Judge>(&mut *conn)
+        .optional()
+        .unwrap()
+    {
+        Some(j) => j,
+        None => {
+            return bad_request(maud! { "Judge not found" }.render());
+        }
+    };
+
+    diesel::delete(
+        tournament_debate_judges::table.filter(
+            tournament_debate_judges::judge_id.eq(&judge.id).and(
+                tournament_debate_judges::debate_id.eq_any(
+                    tournament_debates::table
+                        .filter(tournament_debates::round_id.eq_any(&round_ids))
+                        .select(tournament_debates::id),
+                ),
+            ),
+        ),
+    )
+    .execute(&mut *conn)
+    .unwrap();
+
+    if let Some(to_debate_id) = form.to_debate_id.filter(|s| !s.is_empty()) {
+        let debate = match tournament_debates::table
+            .filter(
+                tournament_debates::id
+                    .eq(&to_debate_id)
+                    .and(tournament_debates::round_id.eq_any(&round_ids)),
+            )
+            .first::<Debate>(&mut *conn)
+            .optional()
+            .unwrap()
+        {
+            Some(d) => d,
+            None => {
+                return bad_request(maud! { "Debate not found" }.render());
+            }
+        };
+
+        let role = match form.role.as_str() {
+            "C" => Role::Chair,
+            "P" => Role::Panelist,
+            "T" => Role::Trainee,
+            _ => Role::Panelist,
+        };
+
+        diesel::insert_into(tournament_debate_judges::table)
+            .values((
+                tournament_debate_judges::debate_id.eq(debate.id),
+                tournament_debate_judges::judge_id.eq(judge.id),
+                tournament_debate_judges::status.eq(role.to_string()),
+            ))
+            .execute(&mut *conn)
+            .unwrap();
+    }
+
+    let rounds = match tournament_rounds::table
+        .filter(tournament_rounds::id.eq_any(&round_ids))
+        .load::<Round>(&mut *conn)
+        .optional()
+        .unwrap()
+    {
+        Some(r) => r,
+        None => return err_not_found(),
+    };
+
+    let reprs: Vec<RoundDrawRepr> = rounds
+        .into_iter()
+        .map(|round| RoundDrawRepr::of_round(round, &mut *conn))
+        .collect();
+
+    let participants = TournamentParticipants::load(&tournament_id, &mut *conn);
+
+    success(get_refreshable_part(&tournament, &reprs, &participants).render())
+}
+
+#[derive(Deserialize)]
+pub struct ChangeRoleForm {
+    judge_id: String,
+    debate_id: String,
+    role: String,
+    rounds: String,
+}
+
+/// Handles changing a judge's role in a debate
+pub async fn change_judge_role(
+    Path(tournament_id): Path<String>,
+    user: User<true>,
+    mut conn: Conn<true>,
+    Form(form): Form<ChangeRoleForm>,
+) -> StandardResponse {
+    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
+    tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+
+    let round_ids: Vec<String> = form
+        .rounds
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    let role = match form.role.as_str() {
+        "C" => Role::Chair,
+        "P" => Role::Panelist,
+        "T" => Role::Trainee,
+        _ => Role::Panelist,
+    };
+
+    diesel::update(
+        tournament_debate_judges::table.filter(
+            tournament_debate_judges::judge_id
+                .eq(&form.judge_id)
+                .and(tournament_debate_judges::debate_id.eq(&form.debate_id)),
+        ),
+    )
+    .set(tournament_debate_judges::status.eq(role.to_string()))
+    .execute(&mut *conn)
+    .unwrap();
+
+    see_other_ok(Redirect::to(&format!(
+        "/tournaments/{tournament_id}/rounds/draws/edit?rounds={}",
+        round_ids.join(",")
+    )))
 }

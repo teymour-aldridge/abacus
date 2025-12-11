@@ -214,6 +214,8 @@ pub async fn run() {
         // Draw Edit
         .route("/tournaments/:id/rounds/draws/edit", get(crate::tournaments::rounds::manage::draw_edit::edit_multiple_draws_page).post(crate::tournaments::rounds::manage::draw_edit::submit_cmd))
         .route("/tournaments/:id/rounds/draws/edit/ws", get(crate::tournaments::rounds::manage::draw_edit::draw_updates))
+        .route("/tournaments/:id/rounds/draws/edit/move", post(crate::tournaments::rounds::manage::draw_edit::move_judge))
+        .route("/tournaments/:id/rounds/draws/edit/role", post(crate::tournaments::rounds::manage::draw_edit::change_judge_role))
 
         // Draw Generation
         .route("/tournaments/:id/rounds/:round_id/draws/create", get(crate::tournaments::rounds::draws::manage::create::generate_draw_page).post(crate::tournaments::rounds::draws::manage::create::do_generate_draw))

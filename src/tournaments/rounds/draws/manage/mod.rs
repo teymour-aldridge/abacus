@@ -30,7 +30,7 @@ where
             h3 {
                 "Unallocated judges"
             }
-            div class="container" {
+            div id="unallocatedJudges" class="container mb-3" {
                 @for judge in self.participants.judges.values().filter(|judge| {
                     // todo: could do this using SQLite
                     let is_allocated_on_draw =
@@ -41,8 +41,13 @@ where
                         });
                     !is_allocated_on_draw
                 }) {
-                    span class="badge rounded-pill text-bg-secondary m-1" {
-                        (judge.name) "(j" (judge.number) ")"
+                    div class="judge-badge"
+                        data-judge-id=(judge.id)
+                        data-judge-number=(judge.number)
+                        data-role="P"
+                        draggable="true"
+                    {
+                        (judge.name) " (j" (judge.number) ")"
                     }
                 }
             }
@@ -91,17 +96,89 @@ where
                             }
                         }
                     }
-                    td {
-                        @for debate_judge in &debate.judges_of_debate {
-                            @let judge = &debate.judges.get(&debate_judge.judge_id).unwrap();
-                            @let class = match debate_judge.status.as_str() {
-                                "C" => "badge rounded-pill text-bg-danger m-1",
-                                "P" => "badge rounded-pill text-bg-info m-1",
-                                "T" => "badge rounded-pill text-bg-secondary m-1",
-                                _ => unreachable!()
-                            };
-                            div class=(class) {
-                                (judge.name) " (" (debate_judge.status) ", " "j" (judge.number) ")"
+                    td class="debate-judges-container" data-debate-id=(debate.debate.id) {
+                        // Chair slot (single)
+                        div class="judge-role-section" {
+                            label class="role-label" { "Chair:" }
+                            div class="chair-slot judge-drop-zone"
+                                data-debate-id=(debate.debate.id)
+                                data-role="C"
+                            {
+                                @for debate_judge in debate.judges_of_debate.iter().filter(|dj| dj.status == "C") {
+                                    @let judge = &debate.judges.get(&debate_judge.judge_id).unwrap();
+                                    div class="judge-badge"
+                                        data-judge-id=(judge.id)
+                                        data-judge-number=(judge.number)
+                                        data-role="C"
+                                        draggable="true"
+                                    {
+                                        span class="judge-name" {
+                                            (judge.name) " (j" (judge.number) ")"
+                                        }
+                                        span class="judge-remove-btn" title="Remove" {
+                                            "×"
+                                        }
+                                    }
+                                }
+                                @if debate.judges_of_debate.iter().all(|dj| dj.status != "C") {
+                                    span class="drop-placeholder" { "Drop chair here" }
+                                }
+                            }
+                        }
+                        // Panelists slot (multiple)
+                        div class="judge-role-section" {
+                            label class="role-label" { "Panelists:" }
+                            div class="panelist-slot judge-drop-zone"
+                                data-debate-id=(debate.debate.id)
+                                data-role="P"
+                            {
+                                @for debate_judge in debate.judges_of_debate.iter().filter(|dj| dj.status == "P") {
+                                    @let judge = &debate.judges.get(&debate_judge.judge_id).unwrap();
+                                    div class="judge-badge"
+                                        data-judge-id=(judge.id)
+                                        data-judge-number=(judge.number)
+                                        data-role="P"
+                                        draggable="true"
+                                    {
+                                        span class="judge-name" {
+                                            (judge.name) " (j" (judge.number) ")"
+                                        }
+                                        span class="judge-remove-btn" title="Remove" {
+                                            "×"
+                                        }
+                                    }
+                                }
+                                @if debate.judges_of_debate.iter().all(|dj| dj.status != "P") {
+                                    span class="drop-placeholder" { "Drop panelists here" }
+                                }
+                            }
+                        }
+                        // Trainees slot (multiple)
+                        div class="judge-role-section" {
+                            label class="role-label" { "Trainees:" }
+                            div class="trainee-slot judge-drop-zone"
+                                data-debate-id=(debate.debate.id)
+                                data-role="T"
+                            {
+                                @for debate_judge in debate.judges_of_debate.iter().filter(|dj| dj.status == "T") {
+                                    @let judge = &debate.judges.get(&debate_judge.judge_id).unwrap();
+                                    div class="judge-badge"
+                                        data-judge-id=(judge.id)
+                                        data-judge-number=(judge.number)
+                                        data-role="T"
+                                        draggable="true"
+                                    {
+                                        span class="judge-name" {
+                                            (judge.name) " (j" (judge.number) ")"
+                                        }
+                                        span class="judge-remove-btn" title="Remove" {
+                                            "×"
+                                        }
+                                    }
+                                }
+                                @if debate.judges_of_debate.iter().all(|dj| dj.status != "T") {
+                                    span class="drop-placeholder" { "Drop trainees here" }
+                                }
                             }
                         }
                     }

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use axum::{
     Form,
     extract::{
-        Extension, Path,
+        Extension, Path, Query,
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
     response::{IntoResponse, Redirect},
@@ -31,8 +31,12 @@ use crate::{
         tournament_judges, tournament_rounds,
     },
     state::Conn,
-    tournaments::{Tournament, participants::Judge, rounds::Round},
-    util_resp::{StandardResponse, err_not_found},
+    tournaments::{
+        Tournament,
+        participants::{Judge, TournamentParticipants},
+        rounds::Round,
+    },
+    util_resp::{StandardResponse, bad_request, err_not_found},
 };
 
 pub struct JudgeAvailabilityTable<'r> {
@@ -193,8 +197,9 @@ pub async fn view_judge_availability(
         })
         .collect();
 
+    let tournament_id_clone = tournament_id.clone();
     let table = JudgeAvailabilityTable {
-        tournament_id: &tournament_id,
+        tournament_id: &tournament_id_clone,
         judges: &tournament_judges,
         rounds: &current_rounds.clone(),
         judge_availability: &judge_availability,
@@ -204,6 +209,14 @@ pub async fn view_judge_availability(
         Page::new()
             .user(user)
             .tournament(tournament.clone())
+            .extra_head(
+                maud! {
+                    script src="https://cdn.jsdelivr.net/npm/htmx-ext-ws@2.0.2" crossorigin="anonymous" {
+                    }
+                }
+                .render()
+                .into_inner()
+            )
             .body(maud! {
                 SidebarWrapper tournament=(&tournament) rounds=(&rounds) {
                     h1 {
@@ -213,6 +226,24 @@ pub async fn view_judge_availability(
                                 ", "
                             }
                             (round.name)
+                        }
+                    }
+                    div class = "row mt-3 mb-3" {
+                        @for round in &current_rounds {
+                            div class="col-md-auto" {
+                                form method="post" action=(format!("/tournaments/{tournament_id}/rounds/{}/availability/judges/all?check=in", round.id)) {
+                                    button type="submit" class="btn btn-primary" {
+                                        "Check in all for " (round.name)
+                                    }
+                                }
+                            }
+                            div class="col-md-auto" {
+                                form method="post" action=(format!("/tournaments/{tournament_id}/rounds/{}/availability/judges/all?check=out", round.id)) {
+                                    button type="submit" class="btn btn-primary" {
+                                        "Check out all for " (round.name)
+                                    }
+                                }
+                            }
                         }
                     }
                     (table)
@@ -555,4 +586,102 @@ pub async fn update_judge_availability(
         "/tournaments/{tournament_id}/rounds/{}/availability/judges",
         round.seq
     )));
+}
+
+#[derive(Deserialize)]
+pub struct CheckQuery {
+    check: String,
+}
+
+pub async fn update_judge_availability_for_all(
+    Path((tournament_id, round_id)): Path<(String, String)>,
+    Query(query): Query<CheckQuery>,
+    user: User<true>,
+    mut conn: Conn<true>,
+    Extension(tx): Extension<Sender<Msg>>,
+) -> StandardResponse {
+    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
+    tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+
+    let round = Round::fetch(&round_id, &mut *conn)?;
+
+    match query.check.as_str() {
+        "in" => {
+            // todo: there is a more efficient way to do this
+            let participants =
+                TournamentParticipants::load(&tournament.id, &mut *conn);
+
+            for (_, judge) in participants.judges {
+                let n =
+                    diesel::insert_into(tournament_judge_availability::table)
+                        .values((
+                            tournament_judge_availability::id
+                                .eq(Uuid::now_v7().to_string()),
+                            tournament_judge_availability::round_id
+                                .eq(&round.id),
+                            tournament_judge_availability::judge_id
+                                .eq(&judge.id),
+                            tournament_judge_availability::available.eq(true),
+                        ))
+                        .on_conflict((
+                            tournament_judge_availability::round_id,
+                            tournament_judge_availability::judge_id,
+                        ))
+                        .do_update()
+                        .set(tournament_judge_availability::available.eq(true))
+                        .execute(&mut *conn)
+                        .unwrap();
+                assert_eq!(n, 1);
+            }
+
+            diesel::update(
+                tournament_judge_availability::table.filter(
+                    tournament_judge_availability::round_id.eq_any(
+                        tournament_rounds::table
+                            .filter(
+                                tournament_rounds::tournament_id
+                                    .eq(&round.tournament_id)
+                                    .and(tournament_rounds::seq.eq(round.seq))
+                                    // don't want to mark unavailable for
+                                    // current round
+                                    .and(tournament_rounds::id.ne(&round.id)),
+                            )
+                            .select(tournament_rounds::id),
+                    ),
+                ),
+            )
+            .set(tournament_judge_availability::available.eq(false))
+            .execute(&mut *conn)
+            .unwrap();
+        }
+        "out" => {
+            diesel::update(
+                tournament_judge_availability::table.filter(
+                    tournament_judge_availability::round_id.eq(&round.id),
+                ),
+            )
+            .set(tournament_judge_availability::available.eq(false))
+            .execute(&mut *conn)
+            .unwrap();
+        }
+        _ => {
+            // todo: proper page (but should not be encountered in standard use)
+            return bad_request(
+                maud! {
+                    "Invalid check-in option."
+                }
+                .render(),
+            );
+        }
+    }
+
+    let _ = tx.send(Msg {
+        tournament,
+        inner: MsgContents::JudgeAvailabilityUpdate,
+    });
+
+    see_other_ok(Redirect::to(&format!(
+        "/tournaments/{}/rounds/{}/availability/judges",
+        tournament_id, round.seq
+    )))
 }

@@ -68,12 +68,13 @@ pub async fn admin_view_tournament(
                         ),
                         (
                             format!(
-                                "/tournaments/{}/rounds/draws/edit?rounds={}",
+                                "/tournaments/{}/rounds/draws/edit?{}",
                                 &tournament.id,
                                 active_rounds
                                     .iter()
-                                    .map(|r| &r.id)
-                                    .join("&rounds=")
+                                    .enumerate()
+                                    .map(|(i, r)| format!("rounds[{}]={}", i, r.id))
+                                    .join("&")
                             )
                             .as_str(),
                             "Edit draws for all active rounds concurrently."

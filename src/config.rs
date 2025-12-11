@@ -200,10 +200,11 @@ pub async fn run() {
         .route("/tournaments/:id/rounds/:round_id/edit", get(crate::tournaments::rounds::manage::edit::edit_round_page).post(crate::tournaments::rounds::manage::edit::do_edit_round))
 
         // Availability
-        .route("/tournaments/:id/rounds/availability", get(crate::tournaments::rounds::manage::availability::manage_round_availability))
+        .route("/tournaments/:id/rounds/:round_seq/availability", get(crate::tournaments::rounds::manage::availability::manage_round_availability))
         .route("/tournaments/:id/rounds/:round_seq/availability/judges", get(crate::tournaments::rounds::manage::availability::judges::view_judge_availability))
         .route("/tournaments/:id/rounds/:round_seq/availability/judges/ws", get(crate::tournaments::rounds::manage::availability::judges::judge_availability_updates))
         .route("/tournaments/:id/rounds/:round_id/update_judge_availability", post(crate::tournaments::rounds::manage::availability::judges::update_judge_availability)) // Uses round_id in POST URL in `judges.rs`
+        .route("/tournaments/:id/rounds/:round_id/availability/judges/all", post(crate::tournaments::rounds::manage::availability::judges::update_judge_availability_for_all))
 
         .route("/tournaments/:id/rounds/:round_seq/availability/teams", get(crate::tournaments::rounds::manage::availability::teams::view_team_availability))
         .route("/tournaments/:id/rounds/:round_seq/availability/teams/ws", get(crate::tournaments::rounds::manage::availability::teams::team_availability_updates))
@@ -215,7 +216,7 @@ pub async fn run() {
         .route("/tournaments/:id/rounds/draws/edit/ws", get(crate::tournaments::rounds::manage::draw_edit::draw_updates))
 
         // Draw Generation
-        .route("/tournaments/:id/rounds/:round_id/draw/create", get(crate::tournaments::rounds::draws::manage::create::generate_draw_page).post(crate::tournaments::rounds::draws::manage::create::do_generate_draw))
+        .route("/tournaments/:id/rounds/:round_id/draws/create", get(crate::tournaments::rounds::draws::manage::create::generate_draw_page).post(crate::tournaments::rounds::draws::manage::create::do_generate_draw))
 
         // Standings
         .route("/tournaments/:id/standings/teams", get(crate::tournaments::standings::manage::admin_team_standings::admin_view_team_standings))

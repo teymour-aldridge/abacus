@@ -21,7 +21,7 @@ use crate::{
 };
 
 pub async fn admin_ballot_of_seq_overview(
-    Path((tournament_id, seq)): Path<(String, i64)>,
+    Path((tournament_id, round_seq)): Path<(String, i64)>,
     user: User<true>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
@@ -32,7 +32,7 @@ pub async fn admin_ballot_of_seq_overview(
         TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
 
     let rounds = tournament_rounds::table
-        .filter(tournament_rounds::seq.eq(seq))
+        .filter(tournament_rounds::seq.eq(round_seq))
         .load::<Round>(&mut *conn)
         .unwrap();
 
@@ -43,7 +43,7 @@ pub async fn admin_ballot_of_seq_overview(
     let debates = tournament_debates::table
         .inner_join(
             tournament_rounds::table.on(tournament_rounds::seq
-                .eq(seq)
+                .eq(round_seq)
                 .and(tournament_debates::round_id.eq(tournament_rounds::id))),
         )
         .order_by((
@@ -69,49 +69,91 @@ pub async fn admin_ballot_of_seq_overview(
             .tournament(tournament.clone())
             .body(maud! {
                 SidebarWrapper rounds=(&all_rounds) tournament=(&tournament) {
-                    table class="table" {
-                        thead {
-                            tr {
-                                th scope="col" {
-                                    "Round"
-                                }
-                                th scope="col" {
-                                    "Debate #"
-                                }
-                                th scope="col" {
-                                    "Ballot statuses"
-                                }
+                    // Page Header
+                    div class="mb-4 pb-3 border-bottom border-2 border-dark" {
+                        h1 class="mb-2" { "Ballot Status" }
+                        p class="text-muted mb-0" { (rounds[0].name) }
+                    }
+
+                    @let total_ballots = ballot_sets.iter().map(|(_, ballots)| ballots.len()).sum::<usize>();
+                    @let total_expected = ballot_sets.iter().map(|(debate, _)| debate.judges_of_debate.len()).sum::<usize>();
+                    @let completion_rate = if total_expected > 0 {
+                        (total_ballots as f64 / total_expected as f64 * 100.0) as i32
+                    } else {
+                        0
+                    };
+
+                    div class="row g-3 mb-4" {
+                        div class="col-md-4" {
+                            div class="p-3 border border-dark" {
+                                div class="text-uppercase small fw-bold text-muted mb-1" style="letter-spacing: 1px;" { "Total Debates" }
+                                div class="fs-3 fw-bold" { (ballot_sets.len()) }
                             }
                         }
-                        tbody {
-                            @for (debate, ballots) in ballot_sets.iter() {
-                                tr {
-                                    th scope="col" {
-                                        (rounds.iter().find(|round| round.id == debate.debate.round_id).unwrap().name)
-                                    }
-                                    th scope="col" {
-                                        (debate.debate.number)
-                                    }
-                                    td {
-                                        @if ballots.is_empty() {
-                                            div class="badge rounded-pill bg-warning text-dark" {
-                                                "No ballots yet"
-                                            }
-                                        } @else {
-                                            // todo: warnings
+                        div class="col-md-4" {
+                            div class="p-3 border border-dark" {
+                                div class="text-uppercase small fw-bold text-muted mb-1" style="letter-spacing: 1px;" { "Ballots Submitted" }
+                                div class="fs-3 fw-bold" { (total_ballots) " / " (total_expected) }
+                            }
+                        }
+                        div class="col-md-4" {
+                            div class="p-3 border border-dark" {
+                                div class="text-uppercase small fw-bold text-muted mb-1" style="letter-spacing: 1px;" { "Completion" }
+                                div class="fs-3 fw-bold" { (completion_rate) "%" }
+                            }
+                        }
+                    }
 
-                                            @for judge in &debate.judges_of_debate {
-                                                @match ballots.iter().find(|ballot| ballot.ballot.judge_id == judge.judge_id) {
-                                                    Some(ballot) => {
-                                                        div class="badge rounded-pill bg-success text-white" {
-                                                            (debate.judges[&judge.judge_id].name) ": submitted @ " (ballot.ballot.submitted_at.format("%Y-%m-%d %H:%M:%S").to_string())
+                    // Ballots Table
+                    div class="table-responsive" {
+                        table class="table table-hover table-borderless align-middle" {
+                            thead class="border-bottom border-dark" {
+                                tr {
+                                    th scope="col" class="text-uppercase small fw-bold text-muted py-3" style="width: 80px;" { "Debate" }
+                                    th scope="col" class="text-uppercase small fw-bold text-muted py-3" { "Teams" }
+                                    th scope="col" class="text-uppercase small fw-bold text-muted py-3" { "Judge" }
+                                    th scope="col" class="text-uppercase small fw-bold text-muted py-3" style="width: 120px;" { "Status" }
+                                    th scope="col" class="text-uppercase small fw-bold text-muted py-3 text-end" style="width: 100px;" { "Actions" }
+                                }
+                            }
+                            tbody {
+                                @for (debate, ballots) in ballot_sets.iter() {
+                                    @let num_judges = debate.judges_of_debate.len();
+                                    @for (idx, judge_in_debate) in debate.judges_of_debate.iter().enumerate() {
+                                        @let judge = &debate.judges[&judge_in_debate.judge_id];
+                                        @let ballot_opt = ballots.iter().find(|b| b.ballot.judge_id == judge.id);
+                                        tr class="border-bottom" {
+                                            @if idx == 0 {
+                                                td rowspan=(num_judges) class="text-center py-4 fw-bold fs-5" {
+                                                    (debate.debate.number)
+                                                }
+                                                td rowspan=(num_judges) class="py-4" {
+                                                    div class="d-flex flex-column gap-1" {
+                                                        @for team in &debate.teams_of_debate {
+                                                            div class="small" {
+                                                                span class="fw-bold" { (debate.teams[&team.team_id].name) }
+                                                            }
                                                         }
                                                     }
+                                                }
+                                            }
+                                            td class="py-3" {
+                                                div class="fw-bold" { (judge.name) }
+                                            }
+                                            td class="py-3" {
+                                                @match ballot_opt {
+                                                    Some(_) => {
+                                                        span class="badge bg-success text-uppercase small" style="letter-spacing: 0.5px;" { "Submitted" }
+                                                    },
                                                     None => {
-                                                        div class="badge rounded-pill bg-secondary text-white" {
-                                                            (debate.judges[&judge.judge_id].name) ": no ballot"
-                                                        }
-                                                    }
+                                                        span class="badge bg-danger text-uppercase small" style="letter-spacing: 0.5px;" { "Missing" }
+                                                    },
+                                                }
+                                            }
+                                            td class="text-end py-3" {
+                                                @if ballot_opt.is_some() {
+                                                    a href=(format!("/tournaments/{}/debates/{}/ballots", tournament.id, debate.debate.id))
+                                                        class="btn btn-sm btn-outline-dark" { "View" }
                                                 }
                                             }
                                         }
@@ -121,7 +163,6 @@ pub async fn admin_ballot_of_seq_overview(
                         }
                     }
                 }
-
             })
             .render(),
     )

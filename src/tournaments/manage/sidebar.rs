@@ -1,6 +1,5 @@
 use hypertext::prelude::*;
 use hypertext::{Renderable, maud};
-use itertools::Itertools;
 
 use crate::tournaments::{Tournament, rounds::TournamentRounds};
 
@@ -65,22 +64,18 @@ impl<'r> Renderable for Sidebar<'r> {
 
                                 ul class="list-unstyled fw-normal pb-1 small" {
                                     li {
-                                        a class="link-light" href=(format!("/tournaments/{}/rounds/{}", self.tournament.id, level[0].seq)) {
+                                        a class="link-light" href=(format!("/tournaments/{}/rounds/{}/setup", self.tournament.id, level[0].seq)) {
                                             "Setup"
                                         }
                                     }
 
                                     li {
-                                        // TODO: add this route
-                                        // TODO: make it possible to edit the draw
-                                        // for arbitrary (uncompleted) rounds at
-                                        // the same time
                                         a class="link-light"
                                           href=(
                                             format!(
-                                              "/tournaments/{}/rounds/draws/edit?rounds={}",
+                                              "/tournaments/{}/rounds/{}/draw",
                                               self.tournament.id,
-                                              level.iter().map(|l| l.id.clone()).join(",")
+                                              level[0].seq
                                             )
                                           ) {
                                             "Manage draws"
@@ -94,7 +89,7 @@ impl<'r> Renderable for Sidebar<'r> {
                                     }
 
                                     li {
-                                        a class="link-light" href=(format!("/tournaments/{}/rounds/{}", self.tournament.id, level[0].seq)) {
+                                        a class="link-light" href=(format!("/tournaments/{}/rounds/{}/ballots", self.tournament.id, level[0].seq)) {
                                             "Manage ballots"
                                         }
                                     }

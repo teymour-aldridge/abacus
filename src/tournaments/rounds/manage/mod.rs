@@ -24,7 +24,9 @@ pub mod availability;
 pub mod briefing;
 pub mod create;
 pub mod draw_edit;
+pub mod draw_view;
 pub mod edit;
+pub mod setup;
 pub mod view;
 
 pub async fn manage_rounds_page(
@@ -128,6 +130,16 @@ pub async fn manage_rounds_page(
                                                         a class="btn btn-primary" href=(format!("/tournaments/{tid}/rounds/{}/edit", prelim.id))
                                                         {
                                                             "Edit"
+                                                        }
+
+                                                        a class="btn btn-secondary" href=(format!("/tournaments/{tid}/rounds/{}/setup", prelim.seq))
+                                                        {
+                                                            "Setup"
+                                                        }
+
+                                                        a class="btn btn-info" href=(format!("/tournaments/{tid}/rounds/{}/ballots", prelim.seq))
+                                                        {
+                                                            "Manage Ballots"
                                                         }
                                                     }
                                                 }

@@ -1,8 +1,6 @@
-use std::collections::HashMap;
-
 use axum::extract::Path;
 use diesel::prelude::*;
-use hypertext::{Renderable, maud, prelude::*};
+use hypertext::{maud, prelude::*};
 
 use crate::{
     auth::User,
@@ -12,11 +10,7 @@ use crate::{
     tournaments::{
         Tournament,
         manage::sidebar::SidebarWrapper,
-        participants::TournamentParticipants,
-        rounds::{
-            Round, TournamentRounds,
-            draws::{DebateRepr, RoundDrawRepr, manage::DrawForRound},
-        },
+        rounds::{Round, TournamentRounds},
     },
     util_resp::{StandardResponse, success},
 };
@@ -35,21 +29,8 @@ pub async fn view_tournament_rounds_page(
         .load::<Round>(&mut *conn)
         .unwrap();
 
-    let reprs = {
-        let mut map = HashMap::new();
-        for round in &rounds {
-            if round.draw_status != "N" {
-                let repr = RoundDrawRepr::of_round(round.clone(), &mut *conn);
-
-                map.insert(round.id.clone(), repr);
-            }
-        }
-        map
-    };
-
     let all_rounds =
         TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
-    let participants = TournamentParticipants::load(&tournament.id, &mut *conn);
 
     success(
         Page::new()
@@ -66,55 +47,10 @@ pub async fn view_tournament_rounds_page(
                                 (round.name)
                             }
                     }
-                    @for round in &rounds {
-                        h3 {
-                            (round.name)
-                        }
-
-                        @let repr = if round.draw_status != "N" {
-                            Some(reprs.get(&round.id).unwrap())
-                        } else {
-                            None
-                        };
-
-                        ul class="list-group list-group-horizontal" {
-                            li class="list-group-item" {
-                                a href=(format!("/tournaments/{}/rounds/{}/edit",
-                                        tournament.id,
-                                        round.id))
-                                {
-                                    "Edit round details"
-                                }
-                            }
-                            @if round.draw_status == "D" {
-                                li class="list-group-item" {
-                                    a href=(format!("/tournaments/{}/rounds/draws/edit?rounds={}",
-                                            tournament.id,
-                                            round.id))
-                                    {
-                                        "Edit draw"
-                                    }
-                                }
-                            }
-                        }
-
-                        @if round.draw_status != "N" {
-                            @let renderer = DrawForRound {
-                                tournament: &tournament,
-                                repr: &repr.as_ref().unwrap(),
-                                actions: |_: &DebateRepr| maud! {
-                                    "TODO"
-                                },
-                                participants: &participants
-                            };
-                            (renderer)
-                        } @else {
-                            a href=(format!("/tournaments/{}/rounds/{}/draws/create",
-                                    tournament.id,
-                                    round.id)) class="btn btn-primary" {
-                                "Generate Draw"
-                            }
-                        }
+                    a href=(format!("/tournaments/{}/rounds/{}/setup",
+                            tournament.id,
+                            rid)) class="btn btn-primary" {
+                        "Go to Setup"
                     }
                 }
             })

@@ -194,23 +194,23 @@ pub async fn run() {
 
         // Rounds
         .route("/tournaments/:id/rounds", get(crate::tournaments::rounds::manage::manage_rounds_page))
+        .route("/tournaments/:id/rounds/:round_seq/setup", get(crate::tournaments::rounds::manage::setup::setup_round_page))
         .route("/tournaments/:id/rounds/create", get(crate::tournaments::rounds::manage::create::create_new_round_of_specific_category_page).post(crate::tournaments::rounds::manage::create::do_create_new_round_of_specific_category))
         .route("/tournaments/:id/rounds/create_top", post(crate::tournaments::rounds::manage::create::create_new_round))
-        .route("/tournaments/:id/rounds/:round_id", get(crate::tournaments::rounds::manage::view::view_tournament_rounds_page))
+        .route("/tournaments/:id/rounds/:round_seq", get(crate::tournaments::rounds::manage::view::view_tournament_rounds_page))
+        .route("/tournaments/:id/rounds/:round_seq/draw", get(crate::tournaments::rounds::manage::draw_view::view_draws_page))
         .route("/tournaments/:id/rounds/:round_id/edit", get(crate::tournaments::rounds::manage::edit::edit_round_page).post(crate::tournaments::rounds::manage::edit::do_edit_round))
-        .route("/tournaments/:id/rounds/:seq/briefing", get(crate::tournaments::rounds::manage::briefing::get_briefing_room))
+        .route("/tournaments/:id/rounds/:round_seq/briefing", get(crate::tournaments::rounds::manage::briefing::get_briefing_room))
         .route("/tournaments/:id/rounds/:id/draws/setreleased", post(crate::tournaments::rounds::manage::briefing::set_draw_published))
 
-        // Availability
-        .route("/tournaments/:id/rounds/:round_seq/availability", get(crate::tournaments::rounds::manage::availability::manage_round_availability))
-        .route("/tournaments/:id/rounds/:round_seq/availability/judges", get(crate::tournaments::rounds::manage::availability::judges::view_judge_availability))
-        .route("/tournaments/:id/rounds/:round_seq/availability/judges/ws", get(crate::tournaments::rounds::manage::availability::judges::judge_availability_updates))
-        .route("/tournaments/:id/rounds/:round_id/update_judge_availability", post(crate::tournaments::rounds::manage::availability::judges::update_judge_availability)) // Uses round_id in POST URL in `judges.rs`
-        .route("/tournaments/:id/rounds/:round_id/availability/judges/all", post(crate::tournaments::rounds::manage::availability::judges::update_judge_availability_for_all))
+                 // Availability
+                .route("/tournaments/:id/rounds/:round_seq/availability/judges", get(crate::tournaments::rounds::manage::availability::judges::view_judge_availability))
+                .route("/tournaments/:id/rounds/:round_seq/availability/judges/ws", get(crate::tournaments::rounds::manage::availability::judges::judge_availability_updates))
+                .route("/tournaments/:id/rounds/:round_id/update_judge_availability", post(crate::tournaments::rounds::manage::availability::judges::update_judge_availability)) // Uses round_id in POST URL in `judges.rs`
+                .route("/tournaments/:id/rounds/:round_id/availability/judges/all", post(crate::tournaments::rounds::manage::availability::judges::update_judge_availability_for_all))
 
-        .route("/tournaments/:id/rounds/:round_seq/availability/teams", get(crate::tournaments::rounds::manage::availability::teams::view_team_availability))
-        .route("/tournaments/:id/rounds/:round_seq/availability/teams/ws", get(crate::tournaments::rounds::manage::availability::teams::team_availability_updates))
-        .route("/tournaments/:id/rounds/:round_id/update_team_eligibility", post(crate::tournaments::rounds::manage::availability::teams::update_team_eligibility))
+                .route("/tournaments/:id/rounds/:round_seq/availability/teams", get(crate::tournaments::rounds::manage::availability::teams::view_team_availability))
+                .route("/tournaments/:id/rounds/:round_seq/availability/teams/ws", get(crate::tournaments::rounds::manage::availability::teams::team_availability_updates))        .route("/tournaments/:id/rounds/:round_id/update_team_eligibility", post(crate::tournaments::rounds::manage::availability::teams::update_team_eligibility))
         .route("/tournaments/:id/rounds/:round_id/availability/teams/all", post(crate::tournaments::rounds::manage::availability::teams::update_eligibility_for_all))
 
         // Draw Edit
@@ -230,7 +230,8 @@ pub async fn run() {
         .route("/tournaments/:id/draw", get(crate::tournaments::rounds::draws::public::view::view_active_draw_page))
 
         // Ballots
-        .route("/tournaments/:id/rounds/:seq/ballots", get(crate::tournaments::rounds::ballots::manage::overview::admin_ballot_of_seq_overview))
+        .route("/tournaments/:id/rounds/:round_seq/ballots", get(crate::tournaments::rounds::ballots::manage::overview::admin_ballot_of_seq_overview))
+        .route("/tournaments/:id/debates/:debate_id/ballots", get(crate::tournaments::rounds::ballots::manage::view_ballot_set::view_ballot_set_page))
         .route("/tournaments/:id/privateurls/:private_url", get(crate::tournaments::privateurls::view::private_url_page))
         .route("/tournaments/:id/privateurls/:url/rounds/:round_id/submit", get(crate::tournaments::rounds::ballots::public::submit::submit_ballot_page).post(crate::tournaments::rounds::ballots::public::submit::do_submit_ballot))
 

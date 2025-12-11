@@ -1,5 +1,4 @@
 use hypertext::prelude::*;
-use itertools::Itertools;
 
 use crate::{
     auth::User,
@@ -48,75 +47,17 @@ pub async fn admin_view_tournament(
                     (format!("/tournaments/{}/feedback/manage", tournament.id).as_str(), "Manage feedback questions")
                 ]);
 
-                @if active_rounds.is_empty() {
-                    p {
-                        "Currently, there are no active rounds"
-                    }
-                } @else {
+                @if !active_rounds.is_empty() {
                     h1 {
                         "Currently active rounds"
                     }
-                    Actions options=(&[
-                        (
-                            format!(
-                                "/tournaments/{}/rounds/{}/availability",
-                                &tournament.id,
-                                active_rounds[0].seq
-                            )
-                            .as_str(),
-                            "Manage availability for current rounds"
-                        ),
-                        (
-                            format!(
-                                "/tournaments/{}/rounds/draws/edit?{}",
-                                &tournament.id,
-                                active_rounds
-                                    .iter()
-                                    .enumerate()
-                                    .map(|(i, r)| format!("rounds[{}]={}", i, r.id))
-                                    .join("&")
-                            )
-                            .as_str(),
-                            "Edit draws for all active rounds concurrently."
-                        )
-                    ]);
-                    div class = "row" {
-                        @for round in &active_rounds {
-                            div class = "col" {
-                                div class="card" {
-                                    div class="card-body" {
-                                        h5 class="card-title" {
-                                            (round.name)
-                                        }
-                                    }
-                                    div class="card-body" {
-                                        @let status = &rounds.statuses[&round.id];
-                                        @match status {
-                                            crate::tournaments::rounds::RoundStatus::NotStarted => {
-                                                a class="btn btn-primary" href = (format!("/tournaments/{tid}/rounds/{}/draws/create", round.id)) {
-                                                    "Create draw"
-                                                }
-                                            },
-                                            crate::tournaments::rounds::RoundStatus::InProgress => {
-                                                a class="btn btn-primary" href = (format!("/tournaments/{tid}/rounds/{}", round.id)) {
-                                                    "View draw"
-                                                }
-                                            },
-                                            crate::tournaments::rounds::RoundStatus::Completed => {
-                                                a class="btn btn-primary" href = (format!("/tournaments/{tid}/rounds/{}/draws/create", round.id)) {
-                                                    "View draw"
-                                                }
-                                            },
-                                            crate::tournaments::rounds::RoundStatus::Draft => {
-                                                a class="btn btn-primary" href = (format!("/tournaments/{tid}/rounds/draws/edit?rounds={}", round.id)) {
-                                                    "Edit draw"
-                                                }
-                                            },
-                                        }
-                                    }
-                                }
-                            }
-                        }
+
+                    a class="btn btn-primary" href=(format!("/tournaments/{}/rounds/{}", &tournament.id, active_rounds[0].seq)) {
+                        "Manage current round"
+                    }
+                } @else {
+                    p {
+                        "Currently, there are no active rounds"
                     }
                 }
             }

@@ -9,6 +9,130 @@ use crate::tournaments::{
 pub mod create;
 pub mod drawalgs;
 
+pub struct ImmutableDrawForRound<'a> {
+    pub tournament: &'a Tournament,
+    pub repr: &'a RoundDrawRepr,
+    pub participants: &'a TournamentParticipants,
+}
+
+impl<'a> Renderable for ImmutableDrawForRound<'a> {
+    fn render_to(
+        &self,
+        buffer: &mut hypertext::Buffer<hypertext::context::Node>,
+    ) {
+        maud! {
+            ImmutableRoomsOfRoundTable tournament=(&self.tournament) repr=(&self.repr)
+                                participants=(&self.participants)
+                                body_only=(false);
+
+        }
+        .render_to(buffer);
+    }
+}
+
+pub struct ImmutableRoomsOfRoundTable<'r> {
+    pub tournament: &'r Tournament,
+    pub repr: &'r RoundDrawRepr,
+    pub participants: &'r TournamentParticipants,
+    pub body_only: bool,
+}
+
+impl<'a> Renderable for ImmutableRoomsOfRoundTable<'a> {
+    fn render_to(
+        &self,
+
+        buffer: &mut hypertext::Buffer<hypertext::context::Node>,
+    ) {
+        let table_body_contents = maud! {
+
+            @for debate in self.repr.debates.iter() {
+
+                tr {
+
+                    th scope="row" {
+
+                        (debate.debate.number)
+
+                    }
+
+                    @for debate_team in &debate.teams_of_debate {
+
+                        td {
+
+                            a href = (format!("/tournaments/{}/teams/{}", &self.tournament.id, debate_team.team_id)) {
+
+                                ({
+
+                                    let team = self.participants.teams.get(&debate_team.team_id).unwrap();
+
+                                    self.participants.canonical_name_of_team(&team)
+
+                                })
+
+                            }
+
+                        }
+
+                    }
+
+                    td {
+
+                        ul class="list-unstyled" {
+
+                            @for debate_judge in debate.judges_of_debate.iter() {
+
+                                @let judge = &debate.judges.get(&debate_judge.judge_id).unwrap();
+
+                                li {
+
+                                    (judge.name)
+
+                                }
+
+                            }
+
+                        }
+
+                    }
+
+                }
+
+            }
+
+        };
+
+        maud! {
+
+            @if !self.body_only {
+
+                table class="table table-striped" {
+
+                    DrawTableHeaders tournament=(&self.tournament) editable=(false);
+
+                    tbody {
+
+                        (table_body_contents)
+
+                    }
+
+                }
+
+            } @else {
+
+                tbody class="table-group-divider" {
+
+                    (table_body_contents)
+
+                }
+
+            }
+
+        }
+
+        .render_to(buffer);
+    }
+}
+
 /// Renders the provided draw as a table.
 pub struct DrawForRound<'a, F> {
     pub tournament: &'a Tournament,
@@ -193,7 +317,7 @@ where
         maud! {
             @if !self.body_only {
                 table class = "table" {
-                    DrawTableHeaders tournament=(&self.tournament);
+                    DrawTableHeaders tournament=(&self.tournament) editable=(true);
                     tbody {
                         (table_body_contents)
                     }
@@ -210,6 +334,7 @@ where
 
 pub struct DrawTableHeaders<'r> {
     pub tournament: &'r Tournament,
+    pub editable: bool,
 }
 
 impl Renderable for DrawTableHeaders<'_> {
@@ -235,8 +360,10 @@ impl Renderable for DrawTableHeaders<'_> {
                     th scope="col" {
                         "Judges"
                     }
-                    th scope="col" {
-                        "Manage"
+                    @if self.editable {
+                        th scope="col" {
+                            "Manage"
+                        }
                     }
                 }
             }

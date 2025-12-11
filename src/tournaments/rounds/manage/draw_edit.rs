@@ -41,28 +41,26 @@ use crate::{
     widgets::alert::ErrorAlert,
 };
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct RoundsQuery {
-    rounds: Option<String>,
+    #[serde(default)]
+    rounds: Vec<String>,
 }
 
+#[tracing::instrument(skip(conn))]
 pub async fn edit_multiple_draws_page(
     Path(tournament_id): Path<String>,
-    Query(query): Query<RoundsQuery>,
+    axum_extra::extract::Query(query): axum_extra::extract::Query<RoundsQuery>,
     user: User<true>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
-    let rounds_vec: Vec<String> = query
-        .rounds
-        .as_deref()
-        .unwrap_or("")
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect();
+    if query.rounds.is_empty() {
+        return err_not_found();
+    }
+    let rounds_vec = query.rounds;
 
     let all_rounds =
         TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
@@ -78,6 +76,8 @@ pub async fn edit_multiple_draws_page(
             return err_not_found();
         }
     };
+
+    tracing::debug!("Retrieved {} rounds to edit", rounds2edit.len());
 
     let reprs = rounds2edit
         .into_iter()
@@ -232,7 +232,7 @@ pub async fn edit_multiple_draws_page(
                                 body.append('judge_id', judgeId);
                                 body.append('to_debate_id', toDebateId);
                                 body.append('role', toRole);
-                                body.append('rounds', roundIds);
+                                roundIds.split(',').forEach(id => body.append('rounds', id));
 
                                 console.log('Sending request');
 
@@ -273,7 +273,7 @@ pub async fn edit_multiple_draws_page(
                                 body.append('judge_id', judgeId);
                                 body.append('to_debate_id', '');
                                 body.append('role', 'P');
-                                body.append('rounds', roundIds);
+                                roundIds.split(',').forEach(id => body.append('rounds', id));
 
                                 fetch('/tournaments/' + tournamentId + '/rounds/draws/edit/move', {
                                     method: 'POST',
@@ -370,7 +370,7 @@ fn get_refreshable_part(
             }
 
             table class="table" {
-                DrawTableHeaders tournament=(&tournament);
+                DrawTableHeaders tournament=(&tournament) editable=(true);
 
                 @for repr in reprs {
                     @if repr.debates.is_empty() {
@@ -805,7 +805,7 @@ pub struct MoveJudgeForm {
     _from_debate_id: Option<String>,
     to_debate_id: Option<String>,
     role: String,
-    rounds: String,
+    rounds: Vec<String>,
 }
 
 pub async fn move_judge(
@@ -817,12 +817,7 @@ pub async fn move_judge(
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
-    let round_ids: Vec<String> = form
-        .rounds
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect();
+    let round_ids = form.rounds;
 
     let judge = match tournament_judges::table
         .filter(tournament_judges::id.eq(&form.judge_id))
@@ -909,7 +904,7 @@ pub struct ChangeRoleForm {
     judge_id: String,
     debate_id: String,
     role: String,
-    rounds: String,
+    rounds: Vec<String>,
 }
 
 /// Handles changing a judge's role in a debate
@@ -922,12 +917,7 @@ pub async fn change_judge_role(
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
-    let round_ids: Vec<String> = form
-        .rounds
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect();
+    let round_ids = form.rounds;
 
     let role = match form.role.as_str() {
         "C" => Role::Chair,
@@ -948,7 +938,7 @@ pub async fn change_judge_role(
     .unwrap();
 
     see_other_ok(Redirect::to(&format!(
-        "/tournaments/{tournament_id}/rounds/draws/edit?rounds={}",
-        round_ids.join(",")
+        "/tournaments/{tournament_id}/rounds/draws/edit?{}",
+        round_ids.iter().map(|r| format!("rounds={}", r)).join("&")
     )))
 }

@@ -6,10 +6,11 @@ use axum::{
 use diesel::prelude::*;
 use hypertext::prelude::*;
 use serde::Deserialize;
-use tokio::task::spawn_blocking;
+use tokio::{sync::broadcast::Sender, task::spawn_blocking};
 
 use crate::{
     auth::User,
+    msg::{Msg, MsgContents},
     schema::tournament_rounds,
     state::{Conn, DbPool},
     template::Page,
@@ -89,27 +90,43 @@ pub async fn do_generate_draw(
     Query(query): Query<DrawCreateQuery>,
     user: User<false>,
     Extension(pool): Extension<DbPool>,
+    Extension(tx): Extension<Sender<Msg>>,
 ) -> StandardResponse {
     let pool: DbPool = pool.clone();
-    let round_id = round_id.to_string();
-    let tournament_id = tournament_id.to_string();
+    let round_id_clone = round_id.to_string();
+    let tournament_id_clone = tournament_id.to_string();
     let force = query.force.unwrap_or(false);
 
-    spawn_blocking(move || {
+    enum DrawResult {
+        Success(Tournament, Round),
+        DrawError(MakeDrawError, Tournament, Round),
+        AuthError(StandardResponse),
+    }
+
+    let user_id = user.id.clone();
+
+    let result = spawn_blocking(move || {
         let mut conn = pool.get().unwrap();
 
-        let tournament = Tournament::fetch(&tournament_id, &mut conn)?;
-        tournament.check_user_is_superuser(&user.id, &mut conn)?;
+        let tournament =
+            match Tournament::fetch(&tournament_id_clone, &mut conn) {
+                Ok(t) => t,
+                Err(e) => return DrawResult::AuthError(Err(e)),
+            };
+        if let Err(e) = tournament.check_user_is_superuser(&user_id, &mut conn)
+        {
+            return DrawResult::AuthError(Err(e));
+        }
 
         let round = match tournament_rounds::table
-            .filter(tournament_rounds::id.eq(&round_id))
+            .filter(tournament_rounds::id.eq(&round_id_clone))
             .first::<Round>(&mut conn)
             .optional()
             .unwrap()
         {
             Some(t) => t,
             None => {
-                return err_not_found();
+                return DrawResult::AuthError(err_not_found());
             }
         };
 
@@ -122,57 +139,71 @@ pub async fn do_generate_draw(
         );
 
         match draw_result {
-            Ok(()) => see_other_ok(Redirect::to(&format!(
-                "/tournaments/{tournament_id}/rounds/{}", round.seq
-            ))),
-            Err(e) => {
-                let msg = match e {
-                    MakeDrawError::InvalidConfiguration(str) => {
-                        format!("Invalid configuration: {str}")
-                    }
-                    MakeDrawError::InvalidTeamCount(str) => {
-                        format!("Wrong number of teams: {str}")
-                    }
-                    MakeDrawError::AlreadyInProgress => {
-                        return bad_request(
-                            Page::new()
-                                .user(user)
-                                .tournament(tournament)
-                                .body(maud! {
-                                    p {
-                                        "Draw generation already in progress."
-                                    }
-                                    form method="post" action=(format!("/tournaments/{}/rounds/{}/draws/create?force=true", tournament_id, round_id)) {
-                                        button type="submit" class="btn btn-danger" {
-                                            "Override and generate new draw"
-                                        }
-                                    }
-                                })
-                                .render(),
-                        );
-                    }
-                    MakeDrawError::TicketExpired => {
-                        "Draw generation was cancelled.".to_string()
-                    }
-                    MakeDrawError::Panic => {
-                        "Internal application error.".to_string()
-                    }
-                };
-
-                bad_request(
-                    Page::new()
-                        .user(user)
-                        .tournament(tournament)
-                        .body(maud! {
-                            p {
-                                "We encountered the following error: " (msg)
-                            }
-                        })
-                        .render(),
-                )
-            }
+            Ok(()) => DrawResult::Success(tournament, round),
+            Err(e) => DrawResult::DrawError(e, tournament, round),
         }
     })
     .await
-    .unwrap()
+    .unwrap();
+
+    match result {
+        DrawResult::Success(tournament, round) => {
+            // Broadcast draw update to all connected clients
+            let _ = tx.send(Msg {
+                tournament: tournament.clone(),
+                inner: MsgContents::DrawUpdated(round.id.clone()),
+            });
+            see_other_ok(Redirect::to(&format!(
+                "/tournaments/{tournament_id}/rounds/{}",
+                round.seq
+            )))
+        }
+        DrawResult::AuthError(response) => response,
+        DrawResult::DrawError(e, tournament, _round) => {
+            let msg = match e {
+                MakeDrawError::InvalidConfiguration(str) => {
+                    format!("Invalid configuration: {str}")
+                }
+                MakeDrawError::InvalidTeamCount(str) => {
+                    format!("Wrong number of teams: {str}")
+                }
+                MakeDrawError::AlreadyInProgress => {
+                    return bad_request(
+                        Page::new()
+                            .user(user)
+                            .tournament(tournament)
+                            .body(maud! {
+                                p {
+                                    "Draw generation already in progress."
+                                }
+                                form method="post" action=(format!("/tournaments/{}/rounds/{}/draws/create?force=true", tournament_id, round_id)) {
+                                    button type="submit" class="btn btn-danger" {
+                                        "Override and generate new draw"
+                                    }
+                                }
+                            })
+                            .render(),
+                    );
+                }
+                MakeDrawError::TicketExpired => {
+                    "Draw generation was cancelled.".to_string()
+                }
+                MakeDrawError::Panic => {
+                    "Internal application error.".to_string()
+                }
+            };
+
+            bad_request(
+                Page::new()
+                    .user(user)
+                    .tournament(tournament)
+                    .body(maud! {
+                        p {
+                            "We encountered the following error: " (msg)
+                        }
+                    })
+                    .render(),
+            )
+        }
+    }
 }

@@ -265,6 +265,7 @@ diesel::table! {
         completed -> Bool,
         draw_status -> Text,
         draw_released_at -> Nullable<Timestamp>,
+        motions_released_at -> Nullable<Timestamp>,
     }
 }
 
@@ -374,6 +375,7 @@ diesel::table! {
         created_at -> Timestamp,
         team_tab_public -> Bool,
         speaker_tab_public -> Bool,
+        standings_public -> Bool,
         teams_per_side -> BigInt,
         substantive_speakers -> BigInt,
         reply_speakers -> Bool,

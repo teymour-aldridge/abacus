@@ -12,7 +12,10 @@ use futures::{sink::SinkExt, stream::StreamExt};
 use hypertext::{Raw, prelude::*};
 use itertools::Itertools;
 use serde::Deserialize;
-use tokio::{sync::broadcast::Receiver, task::spawn_blocking};
+use tokio::{
+    sync::broadcast::{Receiver, Sender},
+    task::spawn_blocking,
+};
 
 use crate::{
     auth::User,
@@ -87,9 +90,12 @@ pub async fn edit_multiple_draws_page(
     let participants = TournamentParticipants::load(&tournament_id, &mut *conn);
 
     success(
-        Page::new()
+        Page::default()
             .tournament(tournament.clone())
             .user(user)
+            .extra_head(maud! {
+                script src="https://cdn.jsdelivr.net/npm/htmx-ext-ws@2.0.2" crossorigin="anonymous" {}
+            })
             .body(maud! {
                 SidebarWrapper rounds=(&all_rounds) tournament=(&tournament) {
                     script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.3/Sortable.min.js" {}
@@ -111,7 +117,19 @@ pub async fn edit_multiple_draws_page(
 
                         (renderer_of_drag_drop_instructions(&tournament, &reprs))
 
-                        (get_refreshable_part(&tournament, &reprs, &participants))
+                        // WebSocket wrapper - this element stays and holds the WS connection
+                        div hx-ext="ws"
+                            "ws-connect"=(
+                                format!(
+                                    "/tournaments/{}/rounds/draws/edit/ws?rounds={}",
+                                    tournament.id,
+                                    reprs.iter().map(|repr| repr.round.id.clone()).join(",")
+                                )
+                            )
+                        {
+                            // Inner content gets replaced via OOB swap
+                            (get_refreshable_part(&tournament, &reprs, &participants))
+                        }
 
                         // Config element with tournament/round data
                         div id="dragDropConfig"
@@ -126,8 +144,6 @@ pub async fn edit_multiple_draws_page(
                         (Raw::dangerously_create(
                         r#"
                         (function() {
-                            console.log('Draw edit script loaded');
-
                             function initializeSortables() {
                                 var config = document.getElementById('dragDropConfig');
                                 if (!config) {
@@ -137,8 +153,6 @@ pub async fn edit_multiple_draws_page(
                                 var tournamentId = config.dataset.tournamentId;
                                 var roundIds = config.dataset.roundIds;
 
-                                console.log('Initializing with tournament: ' + tournamentId + ', rounds: ' + roundIds);
-
                                 if (typeof Sortable === 'undefined') {
                                     console.error('Sortable.js not loaded');
                                     return;
@@ -147,7 +161,6 @@ pub async fn edit_multiple_draws_page(
                                 // Make unallocated judges sortable
                                 var unallocatedContainer = document.getElementById('unallocatedJudges');
                                 if (unallocatedContainer) {
-                                    console.log('Creating Sortable for unallocated judges');
                                     Sortable.create(unallocatedContainer, {
                                         group: 'judges',
                                         animation: 150,
@@ -162,12 +175,10 @@ pub async fn edit_multiple_draws_page(
                                     });
                                 }
 
-                                // Make each role-specific drop zone sortable
                                 var dropZones = document.querySelectorAll('.judge-drop-zone');
                                 console.log('Found drop zones: ' + dropZones.length);
 
                                 dropZones.forEach(function(el, index) {
-                                    console.log('Creating Sortable for drop zone ' + index);
                                     Sortable.create(el, {
                                         group: 'judges',
                                         animation: 150,
@@ -181,7 +192,6 @@ pub async fn edit_multiple_draws_page(
                                     });
                                 });
 
-                                // Add click handlers for remove buttons
                                 document.querySelectorAll('.judge-remove-btn').forEach(function(btn) {
                                     btn.onclick = function(e) {
                                         e.stopPropagation();
@@ -206,21 +216,17 @@ pub async fn edit_multiple_draws_page(
                                 var toDebateId = toContainer.dataset.debateId || '';
                                 var toRole = toContainer.dataset.role || 'P';
 
-                                // Prevent multiple chairs - if dropping into chair slot, check if it already has a chair
                                 if (toRole === 'C') {
                                     var existingChairs = toContainer.querySelectorAll('.judge-badge');
-                                    // If there's already a chair (other than the one we're dragging), prevent the drop
                                     var otherChairs = Array.from(existingChairs).filter(function(badge) {
                                         return badge.dataset.judgeId !== judgeId;
                                     });
                                     if (otherChairs.length > 0) {
-                                        // Show error and revert
                                         var errDiv = document.getElementById('dragDropErrMsg');
                                         if (errDiv) {
                                             errDiv.innerHTML = '<div class="draw-error">Only one chair per debate. Remove the existing chair first.</div>';
                                             setTimeout(function() { errDiv.innerHTML = ''; }, 3000);
                                         }
-                                        // Reload to restore original state
                                         setTimeout(function() { window.location.reload(); }, 500);
                                         return;
                                     }
@@ -304,6 +310,11 @@ pub async fn edit_multiple_draws_page(
                             } else {
                                 initializeSortables();
                             }
+
+                            // Re-initialize Sortables after WebSocket content updates
+                            document.body.addEventListener('htmx:wsAfterMessage', function() {
+                                setTimeout(initializeSortables, 100);
+                            });
                         })();
                         "#))
                     }
@@ -340,13 +351,6 @@ fn get_refreshable_part(
         div id="tableContainer"
             hx-swap-oob="morphdom"
             data-tournament-rounds=(reprs.iter().map(|repr| repr.round.id.clone()).join(","))
-            "ws-connect"=(
-                format!(
-                    "/tournaments/{}/rounds/draws/edit/ws?rounds={}",
-                    tournament.id,
-                    reprs.iter().map(|repr| repr.round.id.clone()).join(",")
-                )
-            )
         {
             h3 {
                 "Unallocated Judges"
@@ -797,12 +801,9 @@ impl Cmd {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct MoveJudgeForm {
     judge_id: String,
-    #[serde(rename = "from_debate_id")]
-    #[allow(dead_code)]
-    _from_debate_id: Option<String>,
     to_debate_id: Option<String>,
     role: String,
     rounds: Vec<String>,
@@ -811,8 +812,9 @@ pub struct MoveJudgeForm {
 pub async fn move_judge(
     Path(tournament_id): Path<String>,
     user: User<true>,
+    Extension(tx): Extension<Sender<Msg>>,
     mut conn: Conn<true>,
-    Form(form): Form<MoveJudgeForm>,
+    axum_extra::extract::Form(form): axum_extra::extract::Form<MoveJudgeForm>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
@@ -821,6 +823,7 @@ pub async fn move_judge(
 
     let judge = match tournament_judges::table
         .filter(tournament_judges::id.eq(&form.judge_id))
+        .filter(tournament_judges::tournament_id.eq(&tournament.id))
         .first::<Judge>(&mut *conn)
         .optional()
         .unwrap()
@@ -896,7 +899,16 @@ pub async fn move_judge(
 
     let participants = TournamentParticipants::load(&tournament_id, &mut *conn);
 
-    success(get_refreshable_part(&tournament, &reprs, &participants).render())
+    for round_id in &round_ids {
+        let _ = tx.send(Msg {
+            tournament: tournament.clone(),
+            inner: MsgContents::DrawUpdated(round_id.clone()),
+        });
+    }
+
+    let render =
+        get_refreshable_part(&tournament, &reprs, &participants).render();
+    success(render)
 }
 
 #[derive(Deserialize)]
@@ -911,6 +923,7 @@ pub struct ChangeRoleForm {
 pub async fn change_judge_role(
     Path(tournament_id): Path<String>,
     user: User<true>,
+    Extension(tx): Extension<Sender<Msg>>,
     mut conn: Conn<true>,
     Form(form): Form<ChangeRoleForm>,
 ) -> StandardResponse {
@@ -936,6 +949,13 @@ pub async fn change_judge_role(
     .set(tournament_debate_judges::status.eq(role.to_string()))
     .execute(&mut *conn)
     .unwrap();
+
+    for round_id in &round_ids {
+        let _ = tx.send(Msg {
+            tournament: tournament.clone(),
+            inner: MsgContents::DrawUpdated(round_id.clone()),
+        });
+    }
 
     see_other_ok(Redirect::to(&format!(
         "/tournaments/{tournament_id}/rounds/draws/edit?{}",

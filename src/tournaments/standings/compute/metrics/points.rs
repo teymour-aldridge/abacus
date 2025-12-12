@@ -2,8 +2,12 @@ use std::collections::HashMap;
 
 use diesel::prelude::*;
 
-use crate::schema::{
-    tournament_debate_team_results, tournament_debates, tournament_rounds,
+use crate::{
+    schema::{
+        tournament_debate_team_results, tournament_debates, tournament_rounds,
+        tournament_teams,
+    },
+    tournaments::teams::Team,
 };
 
 pub fn points_of_team(
@@ -36,6 +40,15 @@ pub fn points_of_team(
 
     for (team_id, points) in results {
         *team_points.entry(team_id).or_insert(0i64) += points;
+    }
+
+    let teams = tournament_teams::table
+        .filter(tournament_teams::tournament_id.eq(&tid))
+        .load::<Team>(&mut *conn)
+        .unwrap();
+
+    for team in teams {
+        team_points.entry(team.id).or_insert(0i64);
     }
 
     team_points

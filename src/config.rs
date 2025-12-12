@@ -179,7 +179,7 @@ pub async fn run() {
         .route("/tournaments/:id/participants/updates", get(crate::tournaments::participants::manage::tournament_participant_updates))
 
         // Configuration
-        .route("/tournaments/:id/config", get(crate::tournaments::manage::config::view_tournament_configuration).post(crate::tournaments::manage::config::update_tournament_configuration))
+        .route("/tournaments/:id/configuration", get(crate::tournaments::manage::config::view_tournament_configuration).post(crate::tournaments::manage::config::update_tournament_configuration))
         .route("/tournaments/:id/manage", get(crate::tournaments::manage::view::admin_view_tournament))
 
         // Feedback
@@ -228,10 +228,10 @@ pub async fn run() {
 
         // Public Draw
         .route("/tournaments/:id/draw", get(crate::tournaments::rounds::draws::public::view::view_active_draw_page))
-        
+
         // Public Participants
         .route("/tournaments/:id/participants/public", get(crate::tournaments::participants::public::public_participants_page))
-        
+
         // Public Motions
         .route("/tournaments/:id/motions", get(crate::tournaments::motions::public_motions_page))
 
@@ -243,6 +243,7 @@ pub async fn run() {
 
         .layer(axum::Extension(tx))
         .layer(axum::Extension(state.pool.clone()))
+        .layer(TraceLayer::new_for_http())
         .with_state(state)
         .layer(
             ServiceBuilder::new()

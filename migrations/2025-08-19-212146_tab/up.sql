@@ -20,6 +20,9 @@ create table if not exists tournaments (
     team_tab_public boolean not null default 'f',
     -- whether to publish the speaker tab
     speaker_tab_public boolean not null default 'f',
+    -- whether to publish the standings (i.e. the ranking of teams
+    -- based on team points, but NOT any other metrics)
+    standings_public boolean not null default 'f',
 
     -- 1 for Australs/WSDC, 2 for BP
     teams_per_side integer not null,
@@ -192,6 +195,7 @@ create table if not exists tournament_rounds (
     completed boolean not null,
     draw_status text not null default 'N' check (draw_status in ('D', 'C', 'R', 'N')),
     draw_released_at timestamp,
+    motions_released_at timestamp,
     unique (tournament_id, name)
 );
 

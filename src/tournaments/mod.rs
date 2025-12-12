@@ -21,6 +21,7 @@ pub mod config;
 pub mod create;
 pub mod feedback;
 pub mod manage;
+pub mod motions;
 pub mod participants;
 pub mod privateurls;
 pub mod public;

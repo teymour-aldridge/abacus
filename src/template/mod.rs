@@ -5,7 +5,10 @@
 
 use hypertext::prelude::*;
 
-use crate::{auth::User, tournaments::Tournament};
+use crate::{
+    auth::User,
+    tournaments::{Tournament, rounds::Round},
+};
 
 pub mod form;
 
@@ -14,6 +17,7 @@ pub struct Page<R1: Renderable, R2: Renderable, const TX: bool> {
     user: Option<User<TX>>,
     extra_head: Option<R2>,
     tournament: Option<Tournament>,
+    current_rounds: Option<Vec<Round>>,
 }
 
 impl<R1: Renderable, const TX: bool> Page<R1, String, TX> {
@@ -45,6 +49,11 @@ impl<R1: Renderable, R2: Renderable, const TX: bool> Page<R1, R2, TX> {
 
     pub fn user_opt(mut self, user: Option<User<TX>>) -> Self {
         self.user = user;
+        self
+    }
+
+    pub fn current_rounds(mut self, rounds: Vec<Round>) -> Self {
+        self.current_rounds = Some(rounds);
         self
     }
 }
@@ -85,6 +94,38 @@ impl<R1: Renderable, R2: Renderable, const TX: bool> Renderable
                             } @else {
                                 a class="navbar-brand text-white" href="/" {
                                     "Home"
+                                }
+                            }
+                            @if let Some(tournament) = &self.tournament {
+                                ul class="navbar-nav" style="display: flex; gap: 1rem;" data-bs-theme="dark" {
+                                    @if let Some(rounds) = &self.current_rounds {
+                                        @if !rounds.is_empty() && rounds.iter().any(|r| r.draw_status == "R") {
+                                            li class="nav-item" {
+                                                a class="nav-link text-white" href=(format!("/tournaments/{}/draw", tournament.id)) {
+                                                    @if rounds.len() == 1 {
+                                                        (format!("Draw for {}", rounds[0].name))
+                                                    } @else {
+                                                        "Current Draws"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    li class="nav-item" {
+                                        a class="nav-link text-white" href=(format!("/tournaments/{}/participants/public", tournament.id)) {
+                                            "Participants"
+                                        }
+                                    }
+                                    li class="nav-item" {
+                                        a class="nav-link text-white" href=(format!("/tournaments/{}/tab/team", tournament.id)) {
+                                            "Team Standings"
+                                        }
+                                    }
+                                    li class="nav-item" {
+                                        a class="nav-link text-white" href=(format!("/tournaments/{}/motions", tournament.id)) {
+                                            "Motions"
+                                        }
+                                    }
                                 }
                             }
                             div {
@@ -131,6 +172,7 @@ impl<R1: Renderable, R2: Renderable, const TX: bool> Default
             user: Default::default(),
             tournament: Default::default(),
             extra_head: Default::default(),
+            current_rounds: Default::default(),
         }
     }
 }

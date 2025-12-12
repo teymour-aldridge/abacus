@@ -228,6 +228,12 @@ pub async fn run() {
 
         // Public Draw
         .route("/tournaments/:id/draw", get(crate::tournaments::rounds::draws::public::view::view_active_draw_page))
+        
+        // Public Participants
+        .route("/tournaments/:id/participants/public", get(crate::tournaments::participants::public::public_participants_page))
+        
+        // Public Motions
+        .route("/tournaments/:id/motions", get(crate::tournaments::motions::public_motions_page))
 
         // Ballots
         .route("/tournaments/:id/rounds/:round_seq/ballots", get(crate::tournaments::rounds::ballots::manage::overview::admin_ballot_of_seq_overview))

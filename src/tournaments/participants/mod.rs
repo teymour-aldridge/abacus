@@ -14,6 +14,7 @@ use crate::{
 };
 
 pub mod manage;
+pub mod public;
 
 pub enum Participant {
     Speaker(Speaker),

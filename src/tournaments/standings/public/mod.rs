@@ -11,8 +11,8 @@ use crate::{
 
 pub async fn public_team_tab_page(
     Path(tournament_id): Path<String>,
-    mut conn: Conn<true>,
     user: Option<User<true>>,
+    mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
 

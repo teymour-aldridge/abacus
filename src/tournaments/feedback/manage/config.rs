@@ -242,10 +242,6 @@ impl Renderable for EditFeedbackQuestionRenderer {
 pub struct AddQuestionForm {
     question: String,
     kind: String,
-    // HTML checkboxes don't send anything if unchecked. Axum's Form helper can handle Option<bool> or we can default.
-    // However, basic HTML checkboxes usually send "on" or their value if checked.
-    // Rocket's FromForm is lenient. Serde needs specific handling.
-    // The easiest for bools is often `#[serde(default)]` if missing means false.
     #[serde(default)]
     for_judges: bool,
     #[serde(default)]
@@ -263,7 +259,7 @@ pub async fn add_feedback_question(
     Path(tournament_id): Path<String>,
     user: User<true>,
     mut conn: Conn<true>,
-    Form(form): Form<AddQuestionForm>,
+    axum_extra::extract::Form(form): axum_extra::extract::Form<AddQuestionForm>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
@@ -323,7 +319,9 @@ pub async fn edit_feedback_question(
     Path((tournament_id, _question_id)): Path<(String, String)>,
     user: User<true>,
     mut conn: Conn<true>,
-    Form(form): Form<EditQuestionForm>,
+    axum_extra::extract::Form(form): axum_extra::extract::Form<
+        EditQuestionForm,
+    >,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
@@ -352,7 +350,9 @@ pub async fn delete_feedback_question(
     Path(tournament_id): Path<String>,
     user: User<true>,
     mut conn: Conn<true>,
-    Form(form): Form<DeleteQuestionForm>,
+    axum_extra::extract::Form(form): axum_extra::extract::Form<
+        DeleteQuestionForm,
+    >,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
@@ -376,7 +376,9 @@ pub async fn move_feedback_question_up(
     Path(tournament_id): Path<String>,
     user: User<true>,
     mut conn: Conn<true>,
-    Form(form): Form<ReorderQuestionForm>,
+    axum_extra::extract::Form(form): axum_extra::extract::Form<
+        ReorderQuestionForm,
+    >,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;

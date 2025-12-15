@@ -366,16 +366,7 @@ async fn handle_socket(
                                 case_when(
                                     tournament_judge_stated_eligibility::available
                                         .nullable()
-                                        .is_null(), // Correction: is_null() check logic was swapped in original? Wait.
-                                        // Original: is_not_null() -> assume_not_null(). otherwise(false).
-                                        // If stated eligibility row exists (not null), utilize it.
-                                        // Wait, the original code had:
-                                        // case_when(avail.nullable().is_not_null(), avail.nullable().assume_not_null()).otherwise(false)
-                                        // This means if eligibility is present, use it. If not, false.
-                                        // BUT in `handle_socket` original (lines 342-350):
-                                        // case_when(stated.is_null(), stated.assume_not_null()) -- this looks like a bug in original or confused logic? 
-                                        // "is_null()" -> "assume_not_null()" would panic if it is null.
-                                        // Let's stick to the logic in `view_judge_availability` which seems correct: is_not_null -> assume_not_null.
+                                        .is_null(),
                                     tournament_judge_stated_eligibility::available
                                         .nullable()
                                         .assume_not_null(),
@@ -384,10 +375,7 @@ async fn handle_socket(
                                 case_when(
                                     tournament_judge_availability::available
                                         .nullable()
-                                        .is_null(), // Same here, let's fix this potential bug or copy `view` logic
-                                        // Original `view` logic: is_not_null -> assume_not_null
-                                        // Original `socket` logic: is_null -> assume_not_null (Wait, if is_null is true, then assume_not_null will panic!)
-                                        // I will use `is_not_null` to be safe and consistent with `view`.
+                                        .is_null(),
                                     tournament_judge_availability::available
                                         .nullable()
                                         .assume_not_null(),
@@ -434,21 +422,7 @@ async fn handle_socket(
 pub struct JudgeAvailabilityForm {
     #[serde(default)]
     #[allow(dead_code)]
-    available: bool, // checkbox sends "on" or nothing. Serde can handle bool if trained?
-                     // HTML checkboxes don't send anything if unchecked.
-                     // If checked, they send "on".
-                     // Axum Form with serde: `bool` expects true/false literals usually?
-                     // Actually `serde_html_form` or `axum::Form` (which uses `serde_urlencoded`) might not handle "on" as true by default without deserializer magic.
-                     // However, I see `available` in `create_judge.rs` (or similar) was handled.
-                     // Wait, `rocket` handled check boxes easily.
-                     // Let's use `String` and check if it is "on" or use a custom deserializer if needed.
-                     // But `available` creates a boolean.
-                     // If I use `#[serde(default)]`, it will be false if missing.
-                     // If present, it will be "on". "on" does not deserialize to `true` automatically in serde_urlencoded usually.
-                     // I should check `create_judge.rs` or others.
-                     // Actually, widespread practice in this codebase (if any) or standard Rust web: custom deserializer or `String`.
-                     // Let's use `String` and parse.
-                     // Original: `available: bool`. Rocket magic.
+    available: bool,
 }
 
 // Re-defining for correct checkbox handling
@@ -503,44 +477,7 @@ pub async fn update_judge_availability(
             tournament_judge_availability::id.eq(Uuid::now_v7().to_string()),
             tournament_judge_availability::round_id.eq(&round.id),
             tournament_judge_availability::judge_id.eq(&judge.id),
-            tournament_judge_availability::available.eq(!available), // Logic preserved from original: !form.available?
-                                                                     // Original: `available.eq(!form.available)`
-                                                                     // Wait. In the table:
-                                                                     // If actual is true -> checkbox checked.
-                                                                     // If I click uncheck -> form sends nothing (available=None/false). !false = true. So it sets to true?
-                                                                     // If I click check -> form sends "on" (available=true). !true = false. So it sets to false?
-                                                                     // This seems inverted!
-                                                                     // Let's look at the HTML:
-                                                                     /*
-                                                                         @if actual {
-                                                                             input type="checkbox" checked name="available";
-                                                                         } @else {
-                                                                             input type="checkbox" name="available";
-                                                                         }
-                                                                     */
-                                                                     // If I verify the original logic:
-                                                                     // `tournament_judge_availability::available.eq(!form.available)`
-                                                                     // If I am available (checkbox checked), I want to be available. form sends "on". logic sets stored `available` to `!true = false`.
-                                                                     // Means "Not Available"?
-                                                                     // Maybe the field means "Is Unavailable"?
-                                                                     // Schema: `tournament_judge_availability` table. Column `available`.
-                                                                     // In `view`: `available.nullable().assume_not_null().otherwise(false)`.
-                                                                     // So true means available.
-                                                                     // Why does the update handler negate it?
-                                                                     // Maybe purely primarily acting as a toggle?
-                                                                     // But it's a checkbox form submission.
-                                                                     // Ah, wait. The form submission happens via... HTMX? No, `form method="post"`.
-                                                                     // The submit button is an overlay: `input type="submit" ... opacity: 0; position: absolute ...`
-                                                                     // When you click the checkbox, you actually click the submit button?
-                                                                     // If you click the submit button, the form is submitted.
-                                                                     // If the checkbox was checked, and you click it (the overlay), the checkbox state *toggle* happens in the browser *before* submission?
-                                                                     // No, the submit button is on top. You click the submit button. The checkbox state might not change visually until reload?
-                                                                     // But if the checkbox is checked, and you click, you submit the form with "available=on" (if it was checked).
-                                                                     // If it was validly "available", you want to toggle to "unavailable".
-                                                                     // So if you submit "on", you want to set "false".
-                                                                     // If you submit "off" (missing), you want to set "true".
-                                                                     // So `!form.available` makes sense if the intention is to toggle state based on *current* state (which is reflected by the checkbox 'checked' attribute).
-                                                                     // So yes, `!available` is likely correct for toggling.
+            tournament_judge_availability::available.eq(!available),
         ))
         .on_conflict((
             tournament_judge_availability::round_id,

@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use axum::extract::{Form, Path};
+use axum::extract::Path;
 use diesel::{
     connection::LoadConnection,
     prelude::*,
@@ -23,7 +23,7 @@ use crate::{
     template::Page,
     tournaments::{
         Tournament,
-        participants::{Judge, Speaker},
+        participants::Judge,
         rounds::{
             Motion, Round,
             draws::{Debate, DebateRepr},
@@ -109,84 +109,124 @@ impl Renderable for BallotFormRenderer {
         buffer: &mut hypertext::Buffer<hypertext::context::Node>,
     ) {
         maud! {
-            form method="post" {
-                @if self.motions.len() > 1 {
-                    select class = "form-select" name="motion" {
-                        option selected value = "-----" {
-                            "-- Select motion --"
-                        }
-                        @for motion in &self.motions {
-                            option value = (motion.id) {
-                                (motion.motion)
-                            }
-                        }
+            div class="private-url-container" {
+                header class="private-url-header" {
+                    h1 class="private-url-title" {
+                        "Submit Ballot"
+                    }
+                    p class="private-url-subtitle" {
+                        "Round " (self.debate.debate.round_id)
                     }
                 }
 
-                @for seq in 0..self.tournament.teams_per_side {
-                    @for row in 0..(self.tournament.substantive_speakers as usize) {
-                        div class = "row" {
-                            div class = "col" {
-                                @let team = &self.debate.teams_of_debate[2 * (seq as usize)];
-                                @let speakers = self.debate.speakers_of_team.get(&team.id).unwrap();
-                                (TeamSpeakerChoice {
-                                    _team_pos: 2*(seq as usize),
-                                    _speaker_pos: row,
-                                    speakers_on_team: speakers
-                                })
+                form method="post" {
+                    @if self.motions.len() > 1 {
+                        section class="private-url-section" {
+                            h2 class="private-url-section-title" {
+                                "Motion"
                             }
-                            div class = "col" {
-                                @let team = &self.debate.teams_of_debate[2 * (seq as usize) + 1];
-                                @let speakers = self.debate.speakers_of_team.get(&team.id).unwrap();
-                                (TeamSpeakerChoice {
-                                    _team_pos: 2*(seq as usize) + 1,
-                                    _speaker_pos: row,
-                                    speakers_on_team: speakers
-                                })
+                            select class="form-select" name="motion" required {
+                                option selected value="" {
+                                    "Select motion"
+                                }
+                                @for motion in &self.motions {
+                                    option value=(motion.id) {
+                                        (motion.motion)
+                                    }
+                                }
                             }
                         }
                     }
-                }
 
-                button type="submit" class="btn btn-primary mt-3" { "Submit Ballot" }
+                    section class="private-url-section" {
+                        h2 class="private-url-section-title" {
+                            "Speaker Scores"
+                        }
+
+                        @for seq in 0..self.tournament.teams_per_side {
+                            @for row in 0..(self.tournament.substantive_speakers as usize) {
+                                div class="row mb-3" {
+                                    div class="col-md-6" {
+                                        @let debate_team = &self.debate.teams_of_debate[2 * (seq as usize)];
+                                        @let speakers = self.debate.speakers_of_team.get(&debate_team.team_id).unwrap_or_else(|| {
+                                            panic!(
+                                                "Unable to retrieve speakers for team ID {} in debate ID {}. Debug info: {:?}",
+                                                debate_team.id,
+                                                self.debate.debate.id,
+                                                self.debate.speakers_of_team
+                                            );
+                                        });
+                                        @let team = self.debate.teams.get(&debate_team.team_id).unwrap();
+
+                                        div class="mb-2" {
+                                            label class="form-label" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--bs-gray-700);" {
+                                                (team.name) " - Speaker " (row + 1)
+                                            }
+                                            select class="form-select mb-2" name="speakers" required {
+                                                option selected value="" {
+                                                    "Select speaker"
+                                                }
+                                                @for speaker in speakers {
+                                                    option value=(speaker.id) {
+                                                        (speaker.name)
+                                                    }
+                                                }
+                                            }
+                                            input
+                                                required
+                                                name="scores"
+                                                type="number"
+                                                class="form-control"
+                                                min="50" max="99" step="1"
+                                                placeholder="Score (50-99)";
+                                        }
+                                    }
+
+                                    div class="col-md-6" {
+                                        @let debate_team = &self.debate.teams_of_debate[2 * (seq as usize) + 1];
+                                        @let speakers = self.debate.speakers_of_team.get(&debate_team.team_id).unwrap_or_else(|| {
+                                            panic!(
+                                                "Unable to retrieve speakers for team ID {} in debate ID {}. Debug info: {:?}",
+                                                debate_team.id,
+                                                self.debate.debate.id,
+                                                self.debate.speakers_of_team
+                                            );
+                                        });
+                                        @let team = self.debate.teams.get(&debate_team.team_id).unwrap();
+
+                                        div class="mb-2" {
+                                            label class="form-label" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--bs-gray-700);" {
+                                                (team.name) " - Speaker " (row + 1)
+                                            }
+                                            select class="form-select mb-2" name="speakers" required {
+                                                option selected value="" {
+                                                    "Select speaker"
+                                                }
+                                                @for speaker in speakers {
+                                                    option value=(speaker.id) {
+                                                        (speaker.name)
+                                                    }
+                                                }
+                                            }
+                                            input
+                                                required
+                                                name="scores"
+                                                type="number"
+                                                class="form-control"
+                                                min="50" max="99" step="1"
+                                                placeholder="Score (50-99)";
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    button type="submit" class="private-url-button" {
+                        "Submit Ballot"
+                    }
+                }
             }
-        }
-        .render_to(buffer);
-    }
-}
-
-struct TeamSpeakerChoice<'r> {
-    _team_pos: usize,
-    /// Position on the team
-    _speaker_pos: usize,
-    speakers_on_team: &'r Vec<Speaker>,
-    // TODO: reply speakers
-}
-
-impl Renderable for TeamSpeakerChoice<'_> {
-    fn render_to(
-        &self,
-        buffer: &mut hypertext::Buffer<hypertext::context::Node>,
-    ) {
-        maud! {
-            select class="form-select"
-                name="speakers" {
-                option selected value="-----" {
-                    "-----"
-                }
-                @for speaker in self.speakers_on_team {
-                    option value=(speaker.id) {
-                        (speaker.name)
-                    }
-                }
-            }
-
-            input
-                required
-                  name="scores"
-                  type="number"
-                  // todo: adjust per tournament
-                  min="50" max="99" step="1" placeholder="Speaker score";
         }
         .render_to(buffer);
     }
@@ -215,7 +255,9 @@ pub async fn do_submit_ballot(
     )>,
     user: Option<User<true>>,
     mut conn: Conn<true>,
-    Form(form): Form<BallotSubmissionForm>,
+    axum_extra::extract::Form(form): axum_extra::extract::Form<
+        BallotSubmissionForm,
+    >,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     let judge = match tournament_judges::table
@@ -275,9 +317,6 @@ pub async fn do_submit_ballot(
         }
     };
 
-    // Reconstruct nested structure
-    // form.speakers contains [T0S0, T1S0, T0S1, T1S1, ... T2S0, T3S0 ...]
-    // We want nested_speakers[team_idx][speaker_idx]
     let mut nested_speakers: Vec<Vec<String>> =
         vec![vec![String::default(); speakers_count]; teams_count];
     let mut nested_scores: Vec<Vec<f64>> =
@@ -288,7 +327,6 @@ pub async fn do_submit_ballot(
 
     for seq in 0..tournament.teams_per_side {
         for row in 0..speakers_count {
-            // First col (Team 2*seq)
             let t1_idx = (seq as usize * 2) as usize;
             let s1 = speaker_iter.next().unwrap();
             let sc1 = score_iter.next().unwrap();
@@ -296,7 +334,6 @@ pub async fn do_submit_ballot(
             nested_speakers[t1_idx][row] = s1;
             nested_scores[t1_idx][row] = sc1;
 
-            // Second col (Team 2*seq+1)
             let t2_idx = (seq as usize * 2 + 1) as usize;
             let s2 = speaker_iter.next().unwrap();
             let sc2 = score_iter.next().unwrap();
@@ -352,9 +389,9 @@ pub async fn do_submit_ballot(
     for (i, (speakers_on_team, scores_of_speakers)) in
         nested_speakers.iter().zip(nested_scores.iter()).enumerate()
     {
-        let actual_team = &actual_teams[i];
+        let actual_debate_team = &actual_teams[i];
         let actual_team_speakers =
-            &debate_repr.speakers_of_team[&actual_team.id];
+            &debate_repr.speakers_of_team[&actual_debate_team.team_id];
 
         let mut scores = Vec::new();
 
@@ -387,7 +424,7 @@ pub async fn do_submit_ballot(
 
         scoresheets.push(TeamScoresheet {
             entries: scores,
-            team_id: actual_team.id.clone(),
+            team_id: actual_debate_team.team_id.clone(),
         });
     }
 
@@ -487,9 +524,20 @@ pub async fn do_submit_ballot(
             .user_opt(user)
             .tournament(tournament.clone())
             .body(maud! {
-                div class="container" {
-                    div class="alert alert-success" role="alert" {
-                        "Ballot submitted successfully."
+                div class="private-url-container" {
+                    header class="private-url-header" {
+                        h1 class="private-url-title" {
+                            "Ballot Submitted"
+                        }
+                    }
+
+                    div class="private-url-info-card" {
+                        h2 class="private-url-info-title" {
+                            "Success"
+                        }
+                        p class="private-url-info-text" {
+                            "Your ballot has been submitted successfully."
+                        }
                     }
                 }
             })

@@ -1,6 +1,7 @@
 use axum::extract::Path;
 use diesel::{connection::LoadConnection, prelude::*};
 use hypertext::{Renderable, maud, prelude::*};
+use itertools::Itertools;
 
 use crate::{
     auth::User,
@@ -93,26 +94,31 @@ fn private_url_page_of_speaker(
             let debate = DebateRepr::fetch(&team_debate.debate_id, conn);
 
             Some(maud! {
-                div class="card" {
-                    div class="card-body" {
-                        h5 class="card-title" {
-                            "You are debating as the "
-                            (name_of_side(&tournament, team_debate.side, team_debate.seq, false))
-                            " team "
-                            @match &debate.room {
-                                Some(room) => {
-                                    @if let Some(url) = &room.url {
-                                        a href=(url) {
-                                            (room.name)
-                                        }
-                                    } @else {
+                div class="private-url-info-card" {
+                    h2 class="private-url-info-title" {
+                        "In this round"
+                    }
+                    p class="private-url-info-text" {
+                        "You are debating as the "
+                        (name_of_side(&tournament, team_debate.side, team_debate.seq, false))
+                        " team"
+                        @match &debate.room {
+                            Some(room) => {
+                                " in "
+                                @if let Some(url) = &room.url {
+                                    a href=(url) class="private-url-room-link" {
+                                        (room.name)
+                                    }
+                                } @else {
+                                    span {
                                         (room.name)
                                     }
                                 }
-                                None => " (note: no room assigned)"
+                            }
+                            None => {
+                                " (no room assigned)"
                             }
                         }
-
                     }
                 }
             })
@@ -128,8 +134,22 @@ fn private_url_page_of_speaker(
             .user_opt(user)
             .tournament(tournament.clone())
             .body(maud! {
-                // todo: layout with columns
-                (current_debate_info)
+                div class="private-url-container" {
+                    header class="private-url-header" {
+                        h1 class="private-url-title" {
+                            (speaker.name)
+                        }
+                        p class="private-url-subtitle" {
+                            "Speaker"
+                        }
+                    }
+
+                    @if let Some(ref debate_info) = current_debate_info {
+                        section class="private-url-section" {
+                            (debate_info)
+                        }
+                    }
+                }
             })
             .render(),
     )
@@ -142,7 +162,10 @@ fn private_url_page_of_judge(
     conn: &mut impl LoadConnection<Backend = diesel::sqlite::Sqlite>,
 ) -> StandardResponse {
     let rounds = TournamentRounds::fetch(&tournament.id, conn).unwrap();
-    let current_rounds = Round::current_rounds(&tournament.id, conn);
+    let current_rounds = Round::current_rounds(&tournament.id, conn)
+        .into_iter()
+        .filter(|round| round.draw_released_at.is_some())
+        .collect_vec();
 
     let current_debate_info = if !current_rounds.is_empty() {
         let judge_debate = tournament_debate_judges::table
@@ -169,30 +192,45 @@ fn private_url_page_of_judge(
 
         if let Some((debate_id, status)) = judge_debate {
             let debate = DebateRepr::fetch(&debate_id, conn);
+            let round_id = debate.debate.round_id.clone();
+            let tournament_id = tournament.id.clone();
+            let judge_private_url = judge.private_url.clone();
 
             Some(maud! {
-                div class="card" {
-                    div class="card-body" {
-                        h5 class="card-title" {
-                            "You are judging "
-                            @if status == "C" {
-                                "as a Chair"
-                            } @else if status == "P" {
-                                "as a Panelist"
-                            } @else if status == "T" {
-                                "as a Trainee"
-                            }
-                            @match &debate.room {
-                                Some(room) => {
-                                    @if let Some(url) = &room.url {
-                                        " in " a href=(url) { (room.name) }
-                                    } @else {
-                                        " in " (room.name)
+                div class="private-url-info-card" {
+                    h2 class="private-url-info-title" {
+                        "In this round"
+                    }
+                    p class="private-url-info-text" {
+                        "You are judging "
+                        @if status == "C" {
+                            "as the Chair"
+                        } @else if status == "P" {
+                            "as a Panelist"
+                        } @else if status == "T" {
+                            "as a Trainee"
+                        }
+                        @match &debate.room {
+                            Some(room) => {
+                                " in "
+                                @if let Some(url) = &room.url {
+                                    a href=(url) class="private-url-room-link" {
+                                        (room.name)
+                                    }
+                                } @else {
+                                    span {
+                                        (room.name)
                                     }
                                 }
-                                None => " (note: no room assigned)"
+                            }
+                            None => {
+                                " (no room assigned)"
                             }
                         }
+                    }
+                    a href=(format!("/tournaments/{}/privateurls/{}/rounds/{}/submit", tournament_id, judge_private_url, round_id))
+                      class="private-url-button" {
+                        "Submit Ballot"
                     }
                 }
             })
@@ -208,24 +246,41 @@ fn private_url_page_of_judge(
             .user_opt(user)
             .tournament(tournament.clone())
             .body(maud! {
-                div class="row" {
-                    div class="card" {
-                        div class="card-body" {
-                            h5 class="card-title" {
-                                "Private URL for " (judge.name)
+                div class="private-url-container" {
+                    header class="private-url-header" {
+                        h1 class="private-url-title" {
+                            (judge.name)
+                        }
+                        p class="private-url-subtitle" {
+                            "Judge"
+                        }
+                    }
+
+                    @if let Some(ref debate_info) = current_debate_info {
+                        section class="private-url-section" {
+                            (debate_info)
+                        }
+                    }
+
+                    @if rounds.prelim.iter().any(|r| r.completed) {
+                        section class="private-url-section" {
+                            h2 class="private-url-section-title" {
+                                "Feedback Submissions"
                             }
-                            @for round in rounds.prelim.iter().filter(|r| r.completed) {
-                                // todo: check if the person was actually involved in the round
-                                a href=(
-                                    format!("/tournaments/{}/privateurls/{}/rounds/{}/feedback/submit", tournament.id, judge.private_url, round.id)
-                                ) {
-                                    "Submit feedback for " (round.name)
+                            ul class="private-url-list" {
+                                @for round in rounds.prelim.iter().filter(|r| r.completed) {
+                                    li class="private-url-list-item" {
+                                        a href=(
+                                            format!("/tournaments/{}/privateurls/{}/rounds/{}/feedback/submit", tournament.id, judge.private_url, round.id)
+                                        ) class="private-url-link" {
+                                            "Submit feedback for " (round.name)
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
-                (current_debate_info)
             })
             .render(),
     )

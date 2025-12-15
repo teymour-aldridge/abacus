@@ -83,7 +83,6 @@ where
         parts: &mut Parts,
         state: &S,
     ) -> Result<Self, Self::Rejection> {
-        // Extract connection
         let conn_wrapper =
             ThreadSafeConn::<TX>::from_request_parts(parts, state)
                 .await
@@ -94,7 +93,6 @@ where
             .try_lock()
             .map_err(|_| AuthError::NoDatabase)?;
 
-        // Extract cookies
         let jar: PrivateCookieJar<Key> =
             PrivateCookieJar::from_request_parts(parts, state)
                 .await
@@ -109,23 +107,10 @@ where
             match serde_json::from_str::<LoginSession>(login_cookie.value()) {
                 Ok(t) if chrono::Utc::now().naive_utc() < t.expiry => t,
                 _ => {
-                    // If invalid, we should remove the cookie.
-                    // But from_request_parts cannot easily modify response cookies directly unless we return a specific rejection that does so.
-                    // Or we can return AuthError which doesn't remove the cookie but fails.
-                    // The next request will fail again.
-                    // Ideally we remove it.
-                    // Axum's CookieJar is mostly for reading. `PrivateCookieJar` allows modifying too but the changes need to be returned in the response.
-                    // Since this is an extractor, we can't effect the response unless we fail?
-                    // Actually `PrivateCookieJar` updates are handled if the *jar* is returned.
-                    // But we are not returning the jar here.
-                    // For now, just fail. The user might get Stuck if we don't clear it?
-                    // Rocket code did: `request.cookies().remove_private(LOGIN_COOKIE)`.
-                    // In Axum, dealing with cookie removal on auth failure in extractor is tricky.
                     return Err(AuthError::Unauthorized);
                 }
             };
 
-        // If conn is held by MutexGuard, it's Option<PooledConnection>
         let user = if let Some(conn) = conn.as_mut() {
             schema::users::table
                 .filter(schema::users::id.eq(login.id))

@@ -9,7 +9,10 @@ use crate::{
     schema::{
         tournament_debate_speaker_results, tournament_debate_team_results,
     },
-    tournaments::rounds::{ballots::BallotRepr, draws::DebateRepr},
+    tournaments::{
+        Tournament,
+        rounds::{ballots::BallotRepr, draws::DebateRepr},
+    },
 };
 
 #[derive(Queryable)]
@@ -45,6 +48,8 @@ pub enum BallotAggregationMethod {
 pub fn aggregate_ballot_set(
     ballots: &[BallotRepr],
     aggregate_how: BallotAggregationMethod,
+    tournament: &Tournament,
+    debate: &DebateRepr,
     conn: &mut impl LoadConnection<Backend = Sqlite>,
 ) {
     assert!(!ballots.is_empty());
@@ -53,7 +58,7 @@ pub fn aggregate_ballot_set(
         BallotAggregationMethod::Consensus => {
             for a in ballots {
                 for b in ballots {
-                    assert!(a.is_isomorphic(b))
+                    assert!(a.is_isomorphic(b, tournament, debate))
                 }
             }
 

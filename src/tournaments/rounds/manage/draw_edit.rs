@@ -117,7 +117,6 @@ pub async fn edit_multiple_draws_page(
 
                         (renderer_of_drag_drop_instructions(&tournament, &reprs))
 
-                        // WebSocket wrapper - this element stays and holds the WS connection
                         div hx-ext="ws"
                             "ws-connect"=(
                                 format!(
@@ -127,11 +126,9 @@ pub async fn edit_multiple_draws_page(
                                 )
                             )
                         {
-                            // Inner content gets replaced via OOB swap
                             (get_refreshable_part(&tournament, &reprs, &participants))
                         }
 
-                        // Config element with tournament/round data
                         div id="dragDropConfig"
                             style="display:none"
                             data-tournament-id=(tournament.id)
@@ -139,7 +136,7 @@ pub async fn edit_multiple_draws_page(
                         {}
                     }
 
-                    // Initialize Sortable.js for drag and drop functionality
+                    // This script handles the drag-and-drop code.
                     script {
                         (Raw::dangerously_create(
                         r#"

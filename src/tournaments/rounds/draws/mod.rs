@@ -21,6 +21,7 @@ use diesel::prelude::*;
 use diesel::sql_types::BigInt;
 use diesel::sqlite::Sqlite;
 use diesel::{QueryableByName, prelude::Queryable};
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 pub mod manage;
@@ -115,30 +116,37 @@ impl DebateRepr {
 
         let teams = tournament_teams::table
             .filter(tournament_teams::tournament_id.eq(&debate.tournament_id))
+            .filter(
+                tournament_teams::id.eq_any(
+                    debate_teams
+                        .iter()
+                        .map(|dt| dt.team_id.clone())
+                        .collect_vec(),
+                ),
+            )
             .load::<Team>(conn)
             .unwrap();
 
-        let tournament_team_speakers = tournament_team_speakers::table
-            .filter(
-                tournament_team_speakers::team_id.eq_any(
-                    tournament_teams::table
-                        .filter(
-                            tournament_teams::tournament_id
-                                .eq(&debate.tournament_id),
-                        )
-                        .select(tournament_teams::id),
-                ),
-            )
-            .select((
-                tournament_team_speakers::team_id,
-                tournament_team_speakers::speaker_id,
-            ))
-            .load::<(String, String)>(&mut *conn)
-            .unwrap();
+        let tournament_team_speakers =
+            tournament_team_speakers::table
+                .filter(tournament_team_speakers::team_id.eq_any(
+                    teams.iter().map(|team| team.id.clone()).collect_vec(),
+                ))
+                .select((
+                    tournament_team_speakers::team_id,
+                    tournament_team_speakers::speaker_id,
+                ))
+                .load::<(String, String)>(&mut *conn)
+                .unwrap();
 
         let tournament_speakers = tournament_speakers::table
             .filter(
-                tournament_speakers::tournament_id.eq(&debate.tournament_id),
+                tournament_speakers::id.eq_any(
+                    tournament_team_speakers
+                        .iter()
+                        .map(|(_, id)| id.clone())
+                        .collect_vec(),
+                ),
             )
             .load::<Speaker>(&mut *conn)
             .unwrap();
@@ -168,6 +176,14 @@ impl DebateRepr {
 
         let judges = tournament_judges::table
             .filter(tournament_judges::tournament_id.eq(&debate.tournament_id))
+            .filter(
+                tournament_judges::id.eq_any(
+                    judges_of_debate
+                        .iter()
+                        .map(|debate_judge| debate_judge.judge_id.clone())
+                        .collect_vec(),
+                ),
+            )
             .load::<Judge>(conn)
             .unwrap()
             .into_iter()

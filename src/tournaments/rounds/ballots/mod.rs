@@ -7,7 +7,13 @@ use diesel::{
 use itertools::Itertools;
 use rust_decimal::Decimal;
 
-use crate::schema::{tournament_ballots, tournament_speaker_score_entries};
+use crate::{
+    schema::{tournament_ballots, tournament_speaker_score_entries},
+    tournaments::{
+        Tournament,
+        rounds::{draws::DebateRepr, side_names},
+    },
+};
 
 pub mod aggregate;
 pub mod manage;
@@ -19,19 +25,129 @@ pub struct BallotRepr {
 }
 
 impl BallotRepr {
-    pub fn is_isomorphic(&self, other: &BallotRepr) -> bool {
-        for score in &self.scores {
-            let found_matching = other.scores.iter().any(|other_score| {
-                other_score.speaker_position == score.speaker_position
-                    && other_score.speaker_id == score.speaker_id
-                    && (other_score.score - score.score).max(0.0)
-                        <= f32::EPSILON
-            });
-            if !found_matching {
-                return false;
+    pub fn get_human_readable_description_for_problems<'a, 'b>(
+        &'a self,
+        other: &'b BallotRepr,
+        tournament: &Tournament,
+        debate: &DebateRepr,
+    ) -> Vec<String> {
+        let mut problems = Vec::new();
+        for side in 0..=1 {
+            for team in 0..tournament.teams_per_side {
+                for speaker in 0..tournament.substantive_speakers {
+                    let team_in_this_pos =
+                        debate.team_of_side_and_seq(side, team);
+                    let score_of_ballot_a = self
+                        .scores_of_team(&team_in_this_pos.team_id)
+                        .iter()
+                        .find(|score| score.speaker_position == speaker)
+                        .cloned()
+                        .unwrap();
+                    let score_of_ballot_b = other
+                        .scores_of_team(&team_in_this_pos.team_id)
+                        .iter()
+                        .find(|score| score.speaker_position == speaker)
+                        .cloned()
+                        .unwrap();
+
+                    if score_of_ballot_a.speaker_id
+                        != score_of_ballot_b.speaker_id
+                    {
+                        problems.push(ammonia::clean(&format!(
+                            "Error: the ballot from {} has {} as {}, whereas \
+                            the ballot from {} has {} as {}.",
+                            debate
+                                .judges
+                                .get(&self.ballot.judge_id)
+                                .unwrap()
+                                .name,
+                            debate
+                                .speakers_of_team
+                                .get(&team_in_this_pos.team_id)
+                                .unwrap()
+                                .iter()
+                                .find(|s| s.id == score_of_ballot_a.speaker_id)
+                                .unwrap()
+                                .name,
+                            side_names::name_of_side(
+                                &tournament,
+                                side,
+                                speaker,
+                                true
+                            ),
+                            debate
+                                .judges
+                                .get(&other.ballot.judge_id)
+                                .unwrap()
+                                .name,
+                            debate
+                                .speakers_of_team
+                                .get(&team_in_this_pos.team_id)
+                                .unwrap()
+                                .iter()
+                                .find(|s| s.id == score_of_ballot_b.speaker_id)
+                                .unwrap()
+                                .name,
+                            side_names::name_of_side(
+                                &tournament,
+                                side,
+                                speaker,
+                                true
+                            ),
+                        )))
+                    }
+
+                    if (score_of_ballot_a.score - score_of_ballot_b.score)
+                        > f32::EPSILON
+                    {
+                        problems.push(ammonia::clean(&format!(
+                            "Error: the ballot from {} has a score of {} for {} as {}, whereas \
+                            the ballot from {} has a score of {} for {} as {}.",
+                            debate.judges
+                                .get(&self.ballot.judge_id)
+                                .unwrap()
+                                .name,
+                            score_of_ballot_a.score,
+                            debate.speakers_of_team
+                                .get(&team_in_this_pos.team_id)
+                                .unwrap()
+                                .iter()
+                                .find(|s| s.id == score_of_ballot_a.speaker_id)
+                                .unwrap()
+                                .name,
+                            side_names::name_of_side(&tournament, side, speaker, true),
+                            debate.judges
+                                .get(&other.ballot.judge_id)
+                                .unwrap()
+                                .name,
+                            score_of_ballot_b.score,
+                            debate.speakers_of_team
+                                .get(&team_in_this_pos.team_id)
+                                .unwrap()
+                                .iter()
+                                .find(|s| s.id == score_of_ballot_b.speaker_id)
+                                .unwrap()
+                                .name,
+                            side_names::name_of_side(&tournament, side, speaker, true),
+                        )));
+                    }
+                }
             }
         }
-        true
+
+        problems
+    }
+
+    pub fn is_isomorphic(
+        &self,
+        other: &BallotRepr,
+        tournament: &Tournament,
+        debate: &DebateRepr,
+    ) -> bool {
+        self.get_human_readable_description_for_problems(
+            other, tournament, debate,
+        )
+        .is_empty()
     }
 
     pub fn ballot(&self) -> &Ballot {

@@ -157,7 +157,7 @@ pub async fn run() {
         // Participants
         .route("/tournaments/:id/participants", get(crate::tournaments::participants::manage::manage_tournament_participants))
         .route("/tournaments/:id/participants/ws", get(crate::tournaments::participants::manage::tournament_participant_updates))
-        .route("/tournaments/:id/participants/private_urls", get(crate::tournaments::participants::manage::manage_private_urls::view_private_urls))
+        .route("/tournaments/:id/participants/privateurls", get(crate::tournaments::participants::manage::manage_private_urls::view_private_urls))
 
         // Teams
         .route("/tournaments/:id/teams/create", get(crate::tournaments::participants::manage::create_team::create_teams_page).post(crate::tournaments::participants::manage::create_team::do_create_team))

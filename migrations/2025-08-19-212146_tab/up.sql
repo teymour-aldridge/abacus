@@ -23,6 +23,9 @@ create table if not exists tournaments (
     -- whether to publish the standings (i.e. the ranking of teams
     -- based on team points, but NOT any other metrics)
     standings_public boolean not null default 'f',
+    -- whether to show the results for completed (and non-silent) rounds on the
+    -- home page
+    show_round_results boolean not null default 't',
 
     -- 1 for Australs/WSDC, 2 for BP
     teams_per_side integer not null,
@@ -196,6 +199,7 @@ create table if not exists tournament_rounds (
     draw_status text not null default 'N' check (draw_status in ('D', 'C', 'R', 'N')),
     draw_released_at timestamp,
     motions_released_at timestamp,
+    results_published_at timestamp,
     unique (tournament_id, name)
 );
 

@@ -12,6 +12,7 @@ use crate::{
 pub mod ballots;
 pub mod draws;
 pub mod manage;
+pub mod results;
 pub mod side_names;
 
 #[derive(Serialize, Deserialize, Queryable, Clone, Debug)]
@@ -26,6 +27,7 @@ pub struct Round {
     pub draw_status: String,
     pub draw_released_at: Option<chrono::NaiveDateTime>,
     pub motions_released_at: Option<chrono::NaiveDateTime>,
+    pub results_published_at: Option<chrono::NaiveDateTime>,
 }
 
 #[derive(Debug, Copy, Clone)]

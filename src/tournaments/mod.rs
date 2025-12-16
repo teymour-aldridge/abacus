@@ -41,6 +41,7 @@ pub struct Tournament {
     pub team_tab_public: bool,
     pub speaker_tab_public: bool,
     pub standings_public: bool,
+    pub show_round_results: bool,
     pub teams_per_side: i64,
     pub substantive_speakers: i64,
     pub reply_speakers: bool,

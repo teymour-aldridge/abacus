@@ -39,6 +39,9 @@ use uuid::Uuid;
 
 #[derive(Parser)]
 pub struct Import {
+    #[clap(long, value_delimiter = ',')]
+    rounds: Option<Vec<i64>>,
+    #[clap(short, long)]
     database_url: Option<String>,
 }
 
@@ -52,6 +55,8 @@ fn main() {
         )
     };
 
+    tracing_subscriber::fmt::init();
+
     let mut conn = diesel::SqliteConnection::establish(&db_url).unwrap();
     AnsiTransactionManager::begin_transaction(&mut conn).unwrap();
 
@@ -63,7 +68,48 @@ fn main() {
     let all_tournament_rounds =
         TournamentRounds::fetch(&tournament.id, &mut conn).unwrap();
 
+    let rounds_to_simulate_seqs = if let Some(mut r) = args.rounds {
+        r.sort();
+        for window in r.windows(2) {
+            if window[1] != window[0] + 1 {
+                panic!(
+                    "Requested rounds must be consecutive. Found {} and {}",
+                    window[0], window[1]
+                );
+            }
+        }
+
+        let first_seq = r[0];
+        if first_seq > 1 {
+            let prev_seq = first_seq - 1;
+            let prev_rounds =
+                Round::of_seq(prev_seq, &tournament.id, &mut conn);
+
+            let all_prev_completed =
+                prev_rounds.iter().all(|round| round.completed);
+            if !all_prev_completed {
+                panic!(
+                    "Cannot simulate round {}: previous round {} is not completed.",
+                    first_seq, prev_seq
+                );
+            }
+        }
+
+        Some(r.into_iter().collect::<HashSet<_>>())
+    } else {
+        None
+    };
+
     for rounds in all_tournament_rounds.prelims_grouped_by_seq() {
+        if let Some(ref target_seqs) = rounds_to_simulate_seqs {
+            if rounds.is_empty() {
+                continue;
+            }
+            if !target_seqs.contains(&rounds[0].seq) {
+                continue;
+            }
+        }
+
         simulate_concurrent_in_rounds(
             &tournament,
             rounds.as_slice(),
@@ -79,7 +125,7 @@ fn simulate_concurrent_in_rounds(
     rounds: &[Round],
     conn: &mut impl LoadConnection<Backend = Sqlite>,
 ) {
-    println!(
+    tracing::info!(
         "Simulating rounds {}",
         rounds.iter().map(|round| round.name.clone()).join(",")
     );
@@ -88,13 +134,13 @@ fn simulate_concurrent_in_rounds(
         .filter(tournament_teams::tournament_id.eq(&tournament.id))
         .load::<Team>(conn)
         .unwrap();
-    println!(
+    tracing::info!(
         "There are {} teams and {} rounds.",
         teams.len(),
         rounds.len()
     );
 
-    let chunks = teams.iter().chunks(dbg!(teams.len() / rounds.len()));
+    let chunks = teams.iter().chunks(teams.len() / rounds.len());
 
     for (round, teams) in rounds.iter().zip(chunks.into_iter()) {
         for team in teams {
@@ -301,7 +347,17 @@ fn simulate_concurrent_in_rounds(
             tournament_rounds::table
                 .filter(tournament_rounds::id.eq(&round.id)),
         )
-        .set(tournament_rounds::completed.eq(true))
+        .set((
+            tournament_rounds::completed.eq(true),
+            tournament_rounds::draw_released_at.eq(diesel::dsl::now),
+            // todo: the pages showing results should probably check if the
+            // time set here is in the future
+            //
+            // users should not be able to set times in the future because it
+            // will become very awkward (i.e. this is a time set internally
+            // by the application when round results are published)
+            tournament_rounds::results_published_at.eq(diesel::dsl::now),
+        ))
         .execute(&mut *conn)
         .unwrap();
     }

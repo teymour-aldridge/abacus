@@ -1,5 +1,6 @@
 use axum::{
     Router,
+    extract::MatchedPath,
     routing::{get, post},
 };
 use axum_extra::extract::cookie::Key;
@@ -207,7 +208,7 @@ pub async fn run() {
         // Availability
         .route("/tournaments/:id/rounds/:round_seq/availability/judges", get(crate::tournaments::rounds::manage::availability::judges::view_judge_availability))
         .route("/tournaments/:id/rounds/:round_seq/availability/judges/ws", get(crate::tournaments::rounds::manage::availability::judges::judge_availability_updates))
-        .route("/tournaments/:id/rounds/:round_id/update_judge_availability", post(crate::tournaments::rounds::manage::availability::judges::update_judge_availability)) // Uses round_id in POST URL in `judges.rs`
+        .route("/tournaments/:id/rounds/:round_id/update_judge_availability", post(crate::tournaments::rounds::manage::availability::judges::update_judge_availability))
         .route("/tournaments/:id/rounds/:round_id/availability/judges/all", post(crate::tournaments::rounds::manage::availability::judges::update_judge_availability_for_all))
         .route("/tournaments/:id/rounds/:round_seq/availability/teams", get(crate::tournaments::rounds::manage::availability::teams::view_team_availability))
         .route("/tournaments/:id/rounds/:round_seq/availability/teams/ws", get(crate::tournaments::rounds::manage::availability::teams::team_availability_updates))        .route("/tournaments/:id/rounds/:round_id/update_team_eligibility", post(crate::tournaments::rounds::manage::availability::teams::update_team_eligibility))
@@ -243,11 +244,23 @@ pub async fn run() {
 
         .layer(axum::Extension(tx))
         .layer(axum::Extension(state.pool.clone()))
-        .layer(TraceLayer::new_for_http())
         .with_state(state)
         .layer(
             ServiceBuilder::new()
-                .layer(TraceLayer::new_for_http())
+                .layer(TraceLayer::new_for_http()
+                    .make_span_with(|request: &axum::extract::Request<_>| {
+                        let matched_path = request
+                            .extensions()
+                            .get::<MatchedPath>()
+                            .map(MatchedPath::as_str);
+
+                        tracing::info_span!(
+                            "http_request",
+                            method = ?request.method(),
+                            matched_path,
+                            some_other_field = tracing::field::Empty,
+                        )
+                    }))
                 .layer(axum::middleware::from_fn(
                     crate::state::transaction_middleware,
                 )),

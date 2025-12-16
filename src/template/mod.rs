@@ -71,6 +71,7 @@ impl<R1: Renderable, R2: Renderable, const TX: bool> Renderable
                     title { "Abacus" }
                     script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.7/dist/htmx.min.js" integrity="sha384-ZBXiYtYQ6hJ2Y0ZNoYuI+Nq5MqWBr+chMrS/RkXpNzQCApHEhOt2aY8EJgqwHLkJ" crossorigin="anonymous" {
                     }
+                    link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet";
                     style {
                         (include_str!(concat!(env!("OUT_DIR"), "/style.css")))
                     }

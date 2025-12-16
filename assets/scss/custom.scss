@@ -1,6 +1,71 @@
 @import "bootstrap/scss/functions";
 
 $primary: #281733;
+$black: #000000;
+$white: #ffffff;
+$gray-100: #f8f9fa;
+$gray-200: #e9ecef;
+$gray-300: #dee2e6;
+$gray-400: #ced4da;
+$gray-500: #adb5bd;
+$gray-600: #6c757d;
+$gray-700: #495057;
+$gray-800: #343a40;
+$gray-900: #212529;
+
+$font-family-sans-serif:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial,
+    sans-serif;
+$font-size-base: 1rem;
+$line-height-base: 1.6;
+$headings-font-weight: 700;
+$headings-line-height: 1.2;
+
+$spacer: 1rem;
+$spacers: (
+    0: 0,
+    1: $spacer * 0.25,
+    2: $spacer * 0.5,
+    3: $spacer,
+    4: $spacer * 1.5,
+    5: $spacer * 3,
+    6: $spacer * 4.5,
+    7: $spacer * 6,
+);
+
+$border-width: 1px;
+$border-color: $gray-300;
+$border-radius: 0;
+$border-radius-sm: 0;
+$border-radius-lg: 0;
+
+$card-border-radius: 0.375rem;
+$card-border-width: 1px;
+$card-border-color: $gray-900;
+$card-cap-bg: transparent;
+
+$btn-border-radius: 0;
+$btn-border-radius-sm: 0;
+$btn-border-radius-lg: 0;
+$btn-font-weight: 500;
+$btn-text-transform: uppercase;
+$btn-letter-spacing: 0.05em;
+
+$list-group-border-radius: 0;
+$list-group-border-width: 1px;
+
+$badge-font-weight: 600;
+$badge-padding-y: 0.35rem;
+$badge-padding-x: 0.65rem;
+$badge-border-radius: 0;
+
+$alert-border-radius: 0;
+$alert-border-width: 1px;
+
+$progress-border-radius: 0;
+$progress-bg: $gray-200;
+
+$light: $gray-200;
 
 @import "bootstrap/scss/variables";
 @import "bootstrap/scss/variables-dark";
@@ -103,7 +168,7 @@ $primary: #281733;
 .role-label {
     font-size: 0.75rem;
     font-weight: 600;
-    color: var(--bs-secondary);
+    color: var(--bs-gray-900);
     text-transform: uppercase;
     margin-bottom: 0.25rem;
 }
@@ -147,7 +212,7 @@ $primary: #281733;
 .unallocated-judges-container {
     background-color: var(--bs-body-bg, #fff);
     border: 1px solid var(--bs-border-color);
-    border-radius: .25rem;
+    border-radius: 0.25rem;
     padding: 0.75rem;
     top: 0;
     z-index: 1020;
@@ -164,153 +229,5 @@ $primary: #281733;
         background-color: transparent;
         border: none;
         margin-bottom: 0;
-    }
-}
-
-.draw-error {
-    background-color: var(--bs-white);
-    border: 1px solid var(--bs-danger);
-    border-left: 4px solid var(--bs-danger);
-    color: var(--bs-danger);
-    font-size: 0.875rem;
-    padding: 0.75rem 1rem;
-    margin-bottom: 1rem;
-}
-
-// Swiss Design / International Typographic Style for Private URL Page
-.private-url-container {
-    max-width: 960px;
-    margin: 0 auto;
-    padding: 3rem 1.5rem;
-}
-
-.private-url-header {
-    margin-bottom: 3rem;
-    padding-bottom: 1.5rem;
-    border-bottom: 1px solid var(--bs-gray-900);
-}
-
-.private-url-title {
-    font-size: 2rem;
-    font-weight: 400;
-    letter-spacing: -0.02em;
-    line-height: 1.2;
-    margin: 0;
-    color: var(--bs-gray-900);
-    text-transform: none;
-}
-
-.private-url-subtitle {
-    font-size: 0.875rem;
-    font-weight: 400;
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
-    color: var(--bs-gray-600);
-    margin-top: 0.5rem;
-    margin-bottom: 0;
-}
-
-.private-url-section {
-    margin-bottom: 3rem;
-}
-
-.private-url-section-title {
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--bs-gray-900);
-    margin-bottom: 1.5rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid var(--bs-gray-300);
-}
-
-.private-url-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-}
-
-.private-url-list-item {
-    padding: 1rem 0;
-    border-bottom: 1px solid var(--bs-gray-200);
-
-    &:last-child {
-        border-bottom: none;
-    }
-}
-
-.private-url-link {
-    display: block;
-    color: var(--bs-gray-900);
-    text-decoration: none;
-    font-size: 1rem;
-    font-weight: 400;
-    line-height: 1.5;
-    transition: color 0.15s ease;
-
-    &:hover {
-        color: var(--bs-gray-600);
-        text-decoration: none;
-    }
-}
-
-.private-url-info-card {
-    background-color: var(--bs-gray-100);
-    border: none;
-    border-left: 2px solid var(--bs-gray-900);
-    padding: 1.5rem;
-    margin-bottom: 2rem;
-}
-
-.private-url-info-title {
-    font-size: 1rem;
-    font-weight: 600;
-    letter-spacing: -0.01em;
-    line-height: 1.4;
-    margin: 0 0 0.5rem 0;
-    color: var(--bs-gray-900);
-}
-
-.private-url-info-text {
-    font-size: 0.875rem;
-    line-height: 1.6;
-    color: var(--bs-gray-700);
-    margin: 0;
-}
-
-.private-url-room-link {
-    color: var(--bs-gray-900);
-    text-decoration: underline;
-    text-decoration-thickness: 1px;
-    text-underline-offset: 2px;
-
-    &:hover {
-        color: var(--bs-gray-600);
-    }
-}
-
-.private-url-button {
-    display: inline-block;
-    margin-top: 1rem;
-    padding: 0.75rem 1.5rem;
-    background-color: var(--bs-gray-900);
-    color: var(--bs-white);
-    text-decoration: none;
-    font-size: 0.875rem;
-    font-weight: 500;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    border: none;
-    transition: background-color 0.15s ease;
-
-    &:hover {
-        background-color: var(--bs-gray-700);
-        color: var(--bs-white);
-        text-decoration: none;
-    }
-
-    &:active {
-        background-color: var(--bs-gray-800);
     }
 }

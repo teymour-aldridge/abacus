@@ -24,7 +24,7 @@ pub async fn public_participants_page(
             .body(maud! {
                 div class="container-fluid p-3" {
                     h1 { "Participants" }
-                    
+
                     @if !participants.teams.is_empty() {
                         h2 class="mt-4" { "Teams" }
                         div class="table-responsive" {

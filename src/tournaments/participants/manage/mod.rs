@@ -49,18 +49,18 @@ impl Renderable for ParticipantsTable {
             "ws-connect"=(format!("/tournaments/{}/participants/ws", self.0.id)) {
                 // Teams Column
                 div class="flex-fill" {
-                    div class="d-flex justify-content-between align-items-end mb-4 pb-2 border-bottom border-2 border-dark" {
+                    div class="d-flex justify-content-between align-items-end mb-4 pb-2 border-bottom" {
                         h5 class="mb-0 text-uppercase fw-bold" style="letter-spacing: 2px;" { "1. Teams" }
                         a href=(format!("/tournaments/{}/teams/create", self.0.id)) class="btn btn-primary btn-sm" { "+ Team" }
                     }
 
                     div class="table-responsive" {
-                        table class="table table-hover table-borderless align-middle" id="teamsTable" {
-                            thead class="border-bottom border-dark" {
+                        table class="table table-hover align-middle" id="teamsTable" {
+                            thead class="border-bottom" {
                                 tr {
                                     th scope="col" class="text-uppercase small fw-bold text-muted py-3" style="width: 60px;" { "#" }
-                                    th scope="col" class="text-uppercase small fw-bold text-muted py-3" { "Name" }
-                                    th scope="col" class="text-uppercase small fw-bold text-muted py-3 d-none d-lg-table-cell" { "Institution" }
+                                    th scope="col" class="text-uppercase small fw-bold text-muted py-3 pe-1 d-none d-lg-table-cell" { "Institution" }
+                                    th scope="col" class="text-uppercase small fw-bold text-muted py-3 ps-1" { "Name" }
                                     th scope="col" class="text-end text-uppercase small fw-bold text-muted py-3" { "Actions" }
                                 }
                             }
@@ -69,15 +69,15 @@ impl Renderable for ParticipantsTable {
                                     // Main team row with name, institution, and actions
                                     tr {
                                         th scope="row" class="text-center py-3 fw-normal text-muted" { (team.number) }
-                                        td class="py-3" {
-                                            span class="fw-bold fs-5" { (team.name) }
-                                        }
-                                        td class="d-none d-lg-table-cell py-3" {
+                                        td class="d-none d-lg-table-cell py-3 pe-1" {
                                             @if let Some(inst) = &team.institution_id {
-                                                (self.1.institutions[inst.as_str()].name)
+                                                span class="fw-bold fs-5" { (self.1.institutions[inst.as_str()].name) }
                                             } @else {
                                                 span class="text-muted fw-light" { "—" }
                                             }
+                                        }
+                                        td class="py-3 ps-1" {
+                                            span class="fw-bold fs-5" { (team.name) }
                                         }
                                         td class="text-end py-3" {
                                             div class="d-flex justify-content-end gap-2" {
@@ -87,10 +87,10 @@ impl Renderable for ParticipantsTable {
                                         }
                                     }
                                     // Speakers row - displayed below team
-                                    tr class="border-bottom" {
-                                        td { }
+                                    tr {
+                                        td class="p-0" { }
                                         td colspan="3" class="pb-4 pt-2" {
-                                            div class="ps-3 border-start border-2 border-dark" {
+                                            div class="ps-3 border-start" {
                                                 @if self.1.team_speakers.get(&team.id).unwrap_or(&HashSet::default()).is_empty() {
                                                     p class="text-muted mb-0 small fst-italic py-1" { "No speakers" }
                                                 } @else {
@@ -119,14 +119,14 @@ impl Renderable for ParticipantsTable {
 
                 // Judges Column
                 div class="flex-fill" {
-                    div class="d-flex justify-content-between align-items-end mb-4 pb-2 border-bottom border-2 border-dark" {
+                    div class="d-flex justify-content-between align-items-end mb-4 pb-2 border-bottom" {
                         h5 class="mb-0 text-uppercase fw-bold" style="letter-spacing: 2px;" { "2. Judges" }
                         a href=(format!("/tournaments/{}/judges/create", self.0.id)) class="btn btn-primary btn-sm" { "+ Judge" }
                     }
 
                     div class="table-responsive" {
-                        table class="table table-hover table-borderless align-middle" id="judgesTable" {
-                            thead class="border-bottom border-dark" {
+                        table class="table table-hover align-middle" id="judgesTable" {
+                            thead class="border-bottom" {
                                 tr {
                                     th scope="col" class="text-uppercase small fw-bold text-muted py-3" { "Name" }
                                     th scope="col" class="text-uppercase small fw-bold text-muted py-3 d-none d-md-table-cell" { "Institution" }
@@ -135,7 +135,7 @@ impl Renderable for ParticipantsTable {
                             }
                             tbody {
                                 @for judge in self.1.judges.values() {
-                                    tr class="border-bottom" {
+                                    tr {
                                         td class="py-4" {
                                             div class="fw-bold fs-5" { (judge.name) }
                                             div class="text-muted small font-monospace mt-1" { (judge.email) }

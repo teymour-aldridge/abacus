@@ -109,20 +109,20 @@ impl Renderable for BallotFormRenderer {
         buffer: &mut hypertext::Buffer<hypertext::context::Node>,
     ) {
         maud! {
-            div class="private-url-container" {
-                header class="private-url-header" {
-                    h1 class="private-url-title" {
+            div class="container py-5" style="max-width: 800px;" {
+                header class="mb-5" {
+                    h1 class="display-4 fw-bold mb-3" {
                         "Submit Ballot"
                     }
-                    p class="private-url-subtitle" {
+                    span class="badge bg-light text-dark" {
                         "Round " (self.debate.debate.round_id)
                     }
                 }
 
                 form method="post" {
                     @if self.motions.len() > 1 {
-                        section class="private-url-section" {
-                            h2 class="private-url-section-title" {
+                        section class="mb-5" {
+                            h2 class="h4 text-uppercase fw-bold text-secondary mb-4" {
                                 "Motion"
                             }
                             select class="form-select" name="motion" required {
@@ -138,8 +138,8 @@ impl Renderable for BallotFormRenderer {
                         }
                     }
 
-                    section class="private-url-section" {
-                        h2 class="private-url-section-title" {
+                    section class="mb-5" {
+                        h2 class="h4 text-uppercase fw-bold text-secondary mb-4" {
                             "Speaker Scores"
                         }
 
@@ -159,7 +159,7 @@ impl Renderable for BallotFormRenderer {
                                         @let team = self.debate.teams.get(&debate_team.team_id).unwrap();
 
                                         div class="mb-2" {
-                                            label class="form-label" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--bs-gray-700);" {
+                                            label class="form-label text-uppercase fw-bold" {
                                                 (team.name) " - Speaker " (row + 1)
                                             }
                                             select class="form-select mb-2" name="speakers" required {
@@ -195,7 +195,7 @@ impl Renderable for BallotFormRenderer {
                                         @let team = self.debate.teams.get(&debate_team.team_id).unwrap();
 
                                         div class="mb-2" {
-                                            label class="form-label" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--bs-gray-700);" {
+                                            label class="form-label text-uppercase fw-bold" {
                                                 (team.name) " - Speaker " (row + 1)
                                             }
                                             select class="form-select mb-2" name="speakers" required {
@@ -222,7 +222,7 @@ impl Renderable for BallotFormRenderer {
                         }
                     }
 
-                    button type="submit" class="private-url-button" {
+                    button type="submit" class="btn btn-dark btn-lg" {
                         "Submit Ballot"
                     }
                 }
@@ -524,19 +524,21 @@ pub async fn do_submit_ballot(
             .user_opt(user)
             .tournament(tournament.clone())
             .body(maud! {
-                div class="private-url-container" {
-                    header class="private-url-header" {
-                        h1 class="private-url-title" {
+                div class="container py-5" style="max-width: 800px;" {
+                    header class="mb-5" {
+                        h1 class="display-4 fw-bold mb-3" {
                             "Ballot Submitted"
                         }
                     }
 
-                    div class="private-url-info-card" {
-                        h2 class="private-url-info-title" {
-                            "Success"
-                        }
-                        p class="private-url-info-text" {
-                            "Your ballot has been submitted successfully."
+                    div class="card mb-4" {
+                        div class="card-body" {
+                            h2 class="card-title h4 text-uppercase fw-bold text-success mb-3" {
+                                "Success"
+                            }
+                            p class="card-text" {
+                                "Your ballot has been submitted successfully."
+                            }
                         }
                     }
                 }

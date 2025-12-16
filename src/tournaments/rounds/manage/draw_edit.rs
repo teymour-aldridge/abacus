@@ -221,7 +221,7 @@ pub async fn edit_multiple_draws_page(
                                     if (otherChairs.length > 0) {
                                         var errDiv = document.getElementById('dragDropErrMsg');
                                         if (errDiv) {
-                                            errDiv.innerHTML = '<div class="draw-error">Only one chair per debate. Remove the existing chair first.</div>';
+                                            errDiv.innerHTML = '<div class="alert alert-danger">Only one chair per debate. Remove the existing chair first.</div>';
                                             setTimeout(function() { errDiv.innerHTML = ''; }, 3000);
                                         }
                                         setTimeout(function() { window.location.reload(); }, 500);
@@ -263,7 +263,7 @@ pub async fn edit_multiple_draws_page(
                                     console.error('Error: ' + err);
                                     var errDiv = document.getElementById('dragDropErrMsg');
                                     if (errDiv) {
-                                        errDiv.innerHTML = '<div class="draw-error">Failed to move judge</div>';
+                                        errDiv.innerHTML = '<div class="alert alert-danger">Failed to move judge</div>';
                                     }
                                     setTimeout(function() { window.location.reload(); }, 2000);
                                 });

@@ -63,9 +63,9 @@ pub async fn view_ballot_set_page(
             .tournament(tournament.clone())
             .body(maud! {
                 SidebarWrapper rounds=(&all_rounds) tournament=(&tournament) {
-                    div class="private-url-container" {
-                        header class="private-url-header" {
-                            h1 class="private-url-title" {
+                    div class="container py-5" style="max-width: 800px;" {
+                        header class="mb-5" {
+                            h1 class="display-4 fw-bold mb-3" {
                                 "Ballots for Debate " (debate.debate.number)
                             }
                         }
@@ -117,8 +117,8 @@ pub async fn view_ballot_set_page(
                                 })
                                 .unwrap_or("Judge");
 
-                            section class="private-url-section" {
-                                h2 class="private-url-section-title" {
+                            section class="mb-5" {
+                                h2 class="h4 text-uppercase fw-bold text-secondary mb-4" {
                                     "Ballot from " (judge.name) " (" (judge_role) ")"
                                 }
                                 p style="font-size: 0.875rem; color: var(--bs-gray-600); margin-bottom: 1.5rem;" {
@@ -165,18 +165,18 @@ pub async fn view_ballot_set_page(
                                                             strong style="font-weight: 600; margin-right: 0.5rem;" { (position_name) }
                                                             span style="color: var(--bs-gray-900);" { (speaker.name) }
                                                         }
-                                                        span class="badge" style="background-color: var(--bs-gray-700); color: var(--bs-white); font-size: 0.875rem; padding: 0.35rem 0.65rem;" {
+                                                        span class="badge bg-dark" {
                                                             (score.score)
                                                         }
                                                     }
                                                 }
 
                                                 @let total: f32 = ballot.scores_of_team(&team_id).iter().map(|s| s.score).sum();
-                                                li class="list-group-item d-flex justify-content-between align-items-center" style="background-color: var(--bs-gray-100); border-left: 2px solid var(--bs-gray-900); border-right: none; border-top: 2px solid var(--bs-gray-900); border-bottom: 1px solid var(--bs-gray-200);" {
+                                                li class="list-group-item d-flex justify-content-between align-items-center bg-light" style="border-left: 2px solid var(--bs-gray-900); border-right: none; border-top: 2px solid var(--bs-gray-900); border-bottom: 1px solid var(--bs-gray-200);" {
                                                     em style="color: var(--bs-gray-700); font-size: 0.875rem;" {
                                                         "Total for " (full_team_name) " (" (short_name) ")"
                                                     }
-                                                    span class="badge" style="background-color: var(--bs-gray-900); color: var(--bs-white); font-size: 0.875rem; padding: 0.35rem 0.65rem;" {
+                                                    span class="badge bg-dark" {
                                                         (total)
                                                     }
                                                 }

@@ -7,7 +7,7 @@ use crate::{
     auth::User,
     schema::{
         tournament_debate_judges, tournament_debate_teams, tournament_debates,
-        tournament_team_speakers,
+        tournament_institutions, tournament_team_speakers,
     },
     state::Conn,
     template::Page,
@@ -84,7 +84,6 @@ fn private_url_page_of_speaker(
                     )
                     .select(tournament_debates::id)
             }))
-            // .select(tournament_debate_teams::all_columns)
             .first::<DebateTeam>(conn)
             .optional()
             .unwrap();
@@ -94,29 +93,31 @@ fn private_url_page_of_speaker(
             let debate = DebateRepr::fetch(&team_debate.debate_id, conn);
 
             Some(maud! {
-                div class="private-url-info-card" {
-                    h2 class="private-url-info-title" {
-                        "In this round"
-                    }
-                    p class="private-url-info-text" {
-                        "You are debating as the "
-                        (name_of_side(&tournament, team_debate.side, team_debate.seq, false))
-                        " team"
-                        @match &debate.room {
-                            Some(room) => {
-                                " in "
-                                @if let Some(url) = &room.url {
-                                    a href=(url) class="private-url-room-link" {
-                                        (room.name)
-                                    }
-                                } @else {
-                                    span {
-                                        (room.name)
+                div class="card mb-4" {
+                    div class="card-body" {
+                        h2 class="card-title h5 text-uppercase fw-bold text-muted mb-3" {
+                            "In this round"
+                        }
+                        p class="card-text" {
+                            "You are debating as the "
+                            (name_of_side(&tournament, team_debate.side, team_debate.seq, false))
+                            " team"
+                            @match &debate.room {
+                                Some(room) => {
+                                    " in "
+                                    @if let Some(url) = &room.url {
+                                        a href=(url) class="text-dark text-decoration-underline fw-bold" {
+                                            (room.name)
+                                        }
+                                    } @else {
+                                        span {
+                                            (room.name)
+                                        }
                                     }
                                 }
-                            }
-                            None => {
-                                " (no room assigned)"
+                                None => {
+                                    " (no room assigned)"
+                                }
                             }
                         }
                     }
@@ -134,18 +135,18 @@ fn private_url_page_of_speaker(
             .user_opt(user)
             .tournament(tournament.clone())
             .body(maud! {
-                div class="private-url-container" {
-                    header class="private-url-header" {
-                        h1 class="private-url-title" {
+                div class="container py-5" style="max-width: 800px;" {
+                    header class="mb-5" {
+                        h1 class="display-4 fw-bold mb-3" {
                             (speaker.name)
                         }
-                        p class="private-url-subtitle" {
+                        span class="badge bg-light text-dark" {
                             "Speaker"
                         }
                     }
 
                     @if let Some(ref debate_info) = current_debate_info {
-                        section class="private-url-section" {
+                        section class="mb-5" {
                             (debate_info)
                         }
                     }
@@ -166,6 +167,16 @@ fn private_url_page_of_judge(
         .into_iter()
         .filter(|round| round.draw_released_at.is_some())
         .collect_vec();
+
+    let institution_name = if let Some(ref inst_id) = judge.institution_id {
+        tournament_institutions::table
+            .filter(tournament_institutions::id.eq(inst_id))
+            .select(tournament_institutions::name)
+            .first::<String>(conn)
+            .ok()
+    } else {
+        None
+    };
 
     let current_debate_info = if !current_rounds.is_empty() {
         let judge_debate = tournament_debate_judges::table
@@ -197,40 +208,42 @@ fn private_url_page_of_judge(
             let judge_private_url = judge.private_url.clone();
 
             Some(maud! {
-                div class="private-url-info-card" {
-                    h2 class="private-url-info-title" {
-                        "In this round"
-                    }
-                    p class="private-url-info-text" {
-                        "You are judging "
-                        @if status == "C" {
-                            "as the Chair"
-                        } @else if status == "P" {
-                            "as a Panelist"
-                        } @else if status == "T" {
-                            "as a Trainee"
+                div class="card mb-4" {
+                    div class="card-body" {
+                        h2 class="card-title mb-3" {
+                            "In this round"
                         }
-                        @match &debate.room {
-                            Some(room) => {
-                                " in "
-                                @if let Some(url) = &room.url {
-                                    a href=(url) class="private-url-room-link" {
-                                        (room.name)
-                                    }
-                                } @else {
-                                    span {
-                                        (room.name)
+                        p class="card-text" {
+                            "You are judging "
+                            @if status == "C" {
+                                "as the Chair"
+                            } @else if status == "P" {
+                                "as a Panelist"
+                            } @else if status == "T" {
+                                "as a Trainee"
+                            }
+                            @match &debate.room {
+                                Some(room) => {
+                                    " in "
+                                    @if let Some(url) = &room.url {
+                                        a href=(url) class="text-dark text-decoration-underline fw-bold" {
+                                            (room.name)
+                                        }
+                                    } @else {
+                                        span {
+                                            (room.name)
+                                        }
                                     }
                                 }
-                            }
-                            None => {
-                                " (no room assigned)"
+                                None => {
+                                    " (no room assigned)"
+                                }
                             }
                         }
-                    }
-                    a href=(format!("/tournaments/{}/privateurls/{}/rounds/{}/submit", tournament_id, judge_private_url, round_id))
-                      class="private-url-button" {
-                        "Submit Ballot"
+                        a href=(format!("/tournaments/{}/privateurls/{}/rounds/{}/submit", tournament_id, judge_private_url, round_id))
+                          class="btn btn-dark btn-lg mt-3" {
+                            "Submit Ballot"
+                        }
                     }
                 }
             })
@@ -246,33 +259,36 @@ fn private_url_page_of_judge(
             .user_opt(user)
             .tournament(tournament.clone())
             .body(maud! {
-                div class="private-url-container" {
-                    header class="private-url-header" {
-                        h1 class="private-url-title" {
+                div class="container py-5" style="max-width: 800px;" {
+                    header class="mb-5" {
+                        h1 class="display-4 fw-bold mb-3" {
                             (judge.name)
                         }
-                        p class="private-url-subtitle" {
-                            "Judge"
+                        span class="badge bg-light text-dark fs-6 me-2" { "Judge" }
+                        @if let Some(inst) = &institution_name {
+                            span class="badge bg-light text-dark fs-6" { "Institution: " (inst) }
+                        } @else {
+                            span class="badge bg-light text-dark fs-6" { "Independent Adjudicator" }
                         }
                     }
 
                     @if let Some(ref debate_info) = current_debate_info {
-                        section class="private-url-section" {
+                        section class="mb-5" {
                             (debate_info)
                         }
                     }
 
                     @if rounds.prelim.iter().any(|r| r.completed) {
-                        section class="private-url-section" {
-                            h2 class="private-url-section-title" {
+                        section class="mb-5" {
+                            h2 class="h4 text-uppercase fw-bold text-secondary mb-4" {
                                 "Feedback Submissions"
                             }
-                            ul class="private-url-list" {
+                            ul class="list-unstyled" {
                                 @for round in rounds.prelim.iter().filter(|r| r.completed) {
-                                    li class="private-url-list-item" {
+                                    li class="mb-3" {
                                         a href=(
                                             format!("/tournaments/{}/privateurls/{}/rounds/{}/feedback/submit", tournament.id, judge.private_url, round.id)
-                                        ) class="private-url-link" {
+                                        ) class="btn btn-outline-dark" {
                                             "Submit feedback for " (round.name)
                                         }
                                     }

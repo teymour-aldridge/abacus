@@ -283,14 +283,12 @@ fn private_url_page_of_judge(
                             h2 class="h4 text-uppercase fw-bold text-secondary mb-4" {
                                 "Feedback Submissions"
                             }
-                            ul class="list-unstyled" {
+                            div class="d-flex flex-wrap gap-3" {
                                 @for round in rounds.prelim.iter().filter(|r| r.completed) {
-                                    li class="mb-3" {
-                                        a href=(
-                                            format!("/tournaments/{}/privateurls/{}/rounds/{}/feedback/submit", tournament.id, judge.private_url, round.id)
-                                        ) class="btn btn-outline-dark" {
-                                            "Submit feedback for " (round.name)
-                                        }
+                                    a href=(
+                                        format!("/tournaments/{}/privateurls/{}/rounds/{}/feedback/submit", tournament.id, judge.private_url, round.id)
+                                    ) class="btn btn-outline-dark" {
+                                        "Submit feedback for " (round.name)
                                     }
                                 }
                             }

@@ -10,13 +10,11 @@ impl<'r> Renderable for Actions<'r> {
         buffer: &mut hypertext::Buffer<hypertext::context::Node>,
     ) {
         maud! {
-            div class = "row mt-3 mb-3" {
+            div class = "d-flex flex-wrap gap-3 mt-3 mb-3" {
                 @for (link, text) in self.options {
-                    div class = "col-md-auto" {
-                        a class="btn btn-primary"
-                            href=(link) {
-                            (text)
-                        }
+                    a class="btn btn-outline-dark"
+                        href=(link) {
+                        (text)
                     }
                 }
             }

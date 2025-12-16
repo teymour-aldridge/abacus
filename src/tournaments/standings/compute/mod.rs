@@ -202,8 +202,6 @@ impl TeamStandings {
                 .get(&team.id)
                 .map(|t| t.iter().map(|(_k, v)| v).collect::<Vec<_>>());
 
-            dbg!(&team.name, &map);
-
             std::cmp::Reverse(map)
         };
 

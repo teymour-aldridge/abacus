@@ -93,6 +93,12 @@ impl<'r> Renderable for Sidebar<'r> {
                                             "Manage ballots"
                                         }
                                     }
+
+                                    li {
+                                        a class="link-light" href=(format!("/tournaments/{}/rounds/{}/results/manage", self.tournament.id, level[0].seq)) {
+                                            "Results"
+                                        }
+                                    }
                                 }
                             }
                         }

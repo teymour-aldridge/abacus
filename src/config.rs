@@ -204,6 +204,9 @@ pub async fn run() {
         .route("/tournaments/:id/rounds/:round_seq/briefing", get(crate::tournaments::rounds::manage::briefing::get_briefing_room))
         .route("/tournaments/:id/rounds/:id/draws/setreleased", post(crate::tournaments::rounds::manage::briefing::set_draw_published))
         .route("/tournaments/:id/rounds/:round_seq/results", get(crate::tournaments::rounds::results::view_results_page))
+        .route("/tournaments/:id/rounds/:round_seq/results/manage", get(crate::tournaments::rounds::manage::results::manage_results_page))
+        .route("/tournaments/:id/rounds/:round_id/complete", post(crate::tournaments::rounds::manage::results::set_round_completed))
+        .route("/tournaments/:id/rounds/:round_id/results/publish", post(crate::tournaments::rounds::manage::results::set_results_published))
 
         // Availability
         .route("/tournaments/:id/rounds/:round_seq/availability/judges", get(crate::tournaments::rounds::manage::availability::judges::view_judge_availability))

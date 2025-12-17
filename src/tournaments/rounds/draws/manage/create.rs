@@ -101,6 +101,7 @@ pub async fn do_generate_draw(
         Success(Tournament, Round),
         DrawError(MakeDrawError, Tournament, Round),
         AuthError(StandardResponse),
+        PriorIncompleteRoundError(Round, Tournament),
     }
 
     let user_id = user.id.clone();
@@ -129,6 +130,12 @@ pub async fn do_generate_draw(
                 return DrawResult::AuthError(err_not_found());
             }
         };
+
+        if let Some(round) =
+            round.find_first_preceding_incomplete_round(&mut conn)
+        {
+            return DrawResult::PriorIncompleteRoundError(round, tournament);
+        }
 
         let draw_result = do_draw(
             tournament.clone(),
@@ -205,5 +212,17 @@ pub async fn do_generate_draw(
                     .render(),
             )
         }
+        DrawResult::PriorIncompleteRoundError(round, tournament) => bad_request(
+            Page::new()
+                .user(user)
+                .tournament(tournament)
+                .body(maud! {
+                    p {
+                        "Error: previous round " (round.name) " must be marked"
+                        " as completed first!"
+                    }
+                })
+                .render(),
+        ),
     }
 }

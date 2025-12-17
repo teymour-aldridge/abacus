@@ -114,6 +114,18 @@ impl Round {
 
         ret
     }
+
+    pub fn find_first_preceding_incomplete_round(
+        &self,
+        conn: &mut impl LoadConnection<Backend = Sqlite>,
+    ) -> Option<Round> {
+        tournament_rounds::table
+            .filter(tournament_rounds::seq.lt(self.seq))
+            .filter(tournament_rounds::tournament_id.eq(&self.tournament_id))
+            .first::<Round>(conn)
+            .optional()
+            .unwrap()
+    }
 }
 
 #[derive(Clone)]

@@ -373,6 +373,24 @@ pub async fn update_eligibility_for_all(
 
     let round = Round::fetch(&round_id, &mut *conn)?;
 
+    if round.completed {
+        return bad_request(maud! {
+            "Note: the current round has been completed, so judge availability"
+            " can no longer be updated!"
+        }.render());
+    }
+
+    if let Some(prev) = round.find_first_preceding_incomplete_round(&mut *conn)
+    {
+        return bad_request(
+            maud! {
+                "Note: " (prev.name) " should be marked as complete first (it "
+                "precedes the current round)"
+            }
+            .render(),
+        );
+    }
+
     match query.check.as_str() {
         "in" => {
             // todo: there is a more efficient way to do this
@@ -493,6 +511,24 @@ pub async fn update_team_eligibility(
         None => return err_not_found(),
     };
 
+    if round.completed {
+        return bad_request(maud! {
+            "Note: the current round has been completed, so judge availability"
+            " can no longer be updated!"
+        }.render());
+    }
+
+    if let Some(prev) = round.find_first_preceding_incomplete_round(&mut *conn)
+    {
+        return bad_request(
+            maud! {
+                "Note: " (prev.name) " should be marked as complete first (it "
+                "precedes the current round)"
+            }
+            .render(),
+        );
+    }
+
     // TODO: check that a team can't be allocated to multiple concurrent rounds
 
     let n = diesel::insert_into(tournament_team_availability::table)
@@ -536,6 +572,25 @@ pub async fn update_team_eligibility(
     .set(tournament_team_availability::available.eq(false))
     .execute(&mut *conn)
     .unwrap();
+
+    debug_assert!(
+        // check that a team is only ever assigned to one round (where there
+        // are multiple concurrent rounds)
+        tournament_team_availability::table
+            .filter(
+                tournament_team_availability::team_id.eq(&team.id).and(
+                    tournament_team_availability::round_id.eq_any(
+                        tournament_rounds::table
+                            .filter(tournament_rounds::seq.eq(round.seq))
+                            .select(tournament_rounds::id)
+                    )
+                )
+            )
+            .count()
+            .get_result::<i64>(&mut *conn)
+            .unwrap()
+            <= 1
+    );
 
     let _ = tx.send(Msg {
         tournament,

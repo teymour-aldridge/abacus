@@ -458,6 +458,24 @@ pub async fn update_judge_availability(
         None => return err_not_found(),
     };
 
+    if round.completed {
+        return bad_request(maud! {
+            "Note: the current round has been completed, so judge availability"
+            " can no longer be updated!"
+        }.render());
+    }
+
+    if let Some(prev) = round.find_first_preceding_incomplete_round(&mut *conn)
+    {
+        return bad_request(
+            maud! {
+                "Note: " (prev.name) " should be marked as complete first (it "
+                "precedes the current round)"
+            }
+            .render(),
+        );
+    }
+
     let judge = match tournament_judges::table
         .filter(
             tournament_judges::id

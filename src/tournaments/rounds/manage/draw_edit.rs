@@ -588,7 +588,7 @@ pub async fn submit_cmd(
         .filter(|s| !s.is_empty())
         .collect();
 
-    let round = match tournament_rounds::table
+    let rounds = match tournament_rounds::table
         .filter(tournament_rounds::id.eq_any(&round_ids))
         .load::<Round>(&mut *conn)
         .optional()
@@ -610,13 +610,14 @@ pub async fn submit_cmd(
         }
     };
 
-    let (judge_no, debate_no, role) = match cmd {
+    let (judge_number, debate_number, role) = match cmd {
         Cmd::Trainee(judge, debate) => (judge, debate, Role::Trainee),
         Cmd::Panelist(judge, debate) => (judge, debate, Role::Panelist),
         Cmd::Chair(judge, debate) => (judge, debate, Role::Chair),
     };
 
-    let apply_move = apply_move(judge_no, debate_no, role, &round, &mut *conn);
+    let apply_move =
+        apply_move(judge_number, debate_number, role, &rounds, &mut *conn);
     match apply_move {
         Ok(()) => see_other_ok(Redirect::to(&format!(
             "/tournaments/{tournament_id}/rounds/draws/edit?rounds={}",

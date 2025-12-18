@@ -86,7 +86,8 @@ impl Round {
                                 sq.field(tournament_rounds::tournament_id)
                                     .eq(tid)
                                     .and(
-                                        tournament_rounds::completed.eq(false),
+                                        sq.field(tournament_rounds::completed)
+                                            .eq(false),
                                     ),
                             )
                             .select(diesel::dsl::min(
@@ -121,7 +122,12 @@ impl Round {
     ) -> Option<Round> {
         tournament_rounds::table
             .filter(tournament_rounds::seq.lt(self.seq))
+            .filter(tournament_rounds::completed.eq(false))
             .filter(tournament_rounds::tournament_id.eq(&self.tournament_id))
+            .order_by((
+                tournament_rounds::seq.asc(),
+                tournament_rounds::name.asc(),
+            ))
             .first::<Round>(conn)
             .optional()
             .unwrap()

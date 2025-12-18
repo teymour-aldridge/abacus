@@ -73,7 +73,7 @@ impl<'r> Renderable for Sidebar<'r> {
                                         a class="link-light"
                                           href=(
                                             format!(
-                                              "/tournaments/{}/rounds/{}/draw",
+                                              "/tournaments/{}/rounds/{}/draw/manage",
                                               self.tournament.id,
                                               level[0].seq
                                             )

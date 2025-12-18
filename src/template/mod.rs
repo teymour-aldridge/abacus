@@ -109,7 +109,7 @@ impl<R1: Renderable, R2: Renderable, const TX: bool> Renderable
                                     @if let Some(rounds) = &self.current_rounds {
                                         @if !rounds.is_empty() && rounds.iter().any(|r| r.draw_status == "R") {
                                             li class="nav-item" {
-                                                a class="nav-link text-white" href=(format!("/tournaments/{}/draw", tournament.id)) {
+                                                a class="nav-link text-white" href=(format!("/tournaments/{}/rounds/{}/draw", tournament.id, rounds[0].seq)) {
                                                     @if rounds.len() == 1 {
                                                         (format!("Draw for {}", rounds[0].name))
                                                     } @else {

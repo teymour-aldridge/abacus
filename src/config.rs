@@ -199,7 +199,8 @@ pub async fn run() {
         .route("/tournaments/:id/rounds/create", get(crate::tournaments::rounds::manage::create::create_new_round_of_specific_category_page).post(crate::tournaments::rounds::manage::create::do_create_new_round_of_specific_category))
         .route("/tournaments/:id/rounds/create_top", post(crate::tournaments::rounds::manage::create::create_new_round))
         .route("/tournaments/:id/rounds/:round_seq", get(crate::tournaments::rounds::manage::view::view_tournament_rounds_page))
-        .route("/tournaments/:id/rounds/:round_seq/draw", get(crate::tournaments::rounds::manage::draw_view::view_draws_page))
+        .route("/tournaments/:id/rounds/:round_seq/draw", get(crate::tournaments::rounds::draws::public::view::view_active_draw_page))
+        .route("/tournaments/:id/rounds/:round_seq/draw/manage", get(crate::tournaments::rounds::manage::draw_view::view_draws_page))
         .route("/tournaments/:id/rounds/:round_id/edit", get(crate::tournaments::rounds::manage::edit::edit_round_page).post(crate::tournaments::rounds::manage::edit::do_edit_round))
         .route("/tournaments/:id/rounds/:round_seq/briefing", get(crate::tournaments::rounds::manage::briefing::get_briefing_room))
         .route("/tournaments/:id/rounds/:id/draws/setreleased", post(crate::tournaments::rounds::manage::briefing::set_draw_published))
@@ -231,7 +232,7 @@ pub async fn run() {
         .route("/tournaments/:id/tab/team", get(crate::tournaments::standings::public::public_team_tab_page))
 
         // Public Draw
-        .route("/tournaments/:id/draw", get(crate::tournaments::rounds::draws::public::view::view_active_draw_page))
+
 
         // Public Participants
         .route("/tournaments/:id/participants/public", get(crate::tournaments::participants::public::public_participants_page))

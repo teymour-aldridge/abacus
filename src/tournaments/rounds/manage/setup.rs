@@ -131,13 +131,12 @@ pub async fn setup_round_page(
                         "Setup for rounds with sequence "
                         (round_seq)
                     }
-                    a href=(format!("/tournaments/{}/rounds/{}/draw", &tournament.id, round_seq)) class="btn btn-primary" {
+                    a href=(format!("/tournaments/{}/rounds/{}/draw/manage", &tournament.id, round_seq)) class="btn btn-primary" {
                         "Manage Draw →"
                     }
                 }
 
                 div class="d-flex flex-column flex-lg-row gap-4 mt-3" {
-                    // Teams Section
                     div class="flex-fill" {
                         div class="d-flex justify-content-between align-items-end mb-4 pb-2 border-bottom border-2 border-dark" {
                             h5 class="mb-0 text-uppercase fw-bold" style="letter-spacing: 2px;" { "1. Teams" }
@@ -185,7 +184,6 @@ pub async fn setup_round_page(
                         }
                     }
 
-                    // Judges Section
                     div class="flex-fill" {
                         div class="d-flex justify-content-between align-items-end mb-4 pb-2 border-bottom border-2 border-dark" {
                             h5 class="mb-0 text-uppercase fw-bold" style="letter-spacing: 2px;" { "2. Judges" }

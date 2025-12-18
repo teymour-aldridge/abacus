@@ -44,7 +44,7 @@ pub async fn public_tournament_page(
                         div class="col-12" {
                             div class="list-group list-group-flush border-top border-dark" {
                                 @if tournament.show_draws && !released_rounds.is_empty() {
-                                    a href=(format!("/tournaments/{}/draw", tournament.id))
+                                    a href=(format!("/tournaments/{}/rounds/{}/draw", tournament.id, released_rounds[0].seq))
                                       class="list-group-item list-group-item-action py-4 px-0 border-bottom border-dark d-flex align-items-center" {
                                         span class="material-icons me-4 fs-1" { "grid_view" }
                                         div class="flex-grow-1" {

@@ -5,7 +5,9 @@ use crate::{
     auth::User,
     state::Conn,
     template::Page,
-    tournaments::{Tournament, participants::TournamentParticipants},
+    tournaments::{
+        Tournament, participants::TournamentParticipants, rounds::Round,
+    },
     util_resp::{StandardResponse, success},
 };
 
@@ -16,11 +18,13 @@ pub async fn public_participants_page(
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     let participants = TournamentParticipants::load(&tournament_id, &mut *conn);
+    let current_rounds = Round::current_rounds(&tournament_id, &mut *conn);
 
     success(
         Page::new()
             .user_opt(user)
             .tournament(tournament.clone())
+            .current_rounds(current_rounds)
             .body(maud! {
                 div class="container-fluid p-3" {
                     h1 { "Participants" }

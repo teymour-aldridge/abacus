@@ -378,6 +378,7 @@ diesel::table! {
         speaker_tab_public -> Bool,
         standings_public -> Bool,
         show_round_results -> Bool,
+        show_draws -> Bool,
         teams_per_side -> BigInt,
         substantive_speakers -> BigInt,
         reply_speakers -> Bool,

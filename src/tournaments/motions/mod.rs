@@ -43,10 +43,13 @@ pub async fn public_motions_page(
         })
         .collect();
 
+    let current_rounds = Round::current_rounds(&tournament_id, &mut *conn);
+
     success(
         Page::new()
             .user_opt(user)
             .tournament(tournament.clone())
+            .current_rounds(current_rounds)
             .body(maud! {
                 div class="container-fluid p-3" {
                     h1 { "Motions" }

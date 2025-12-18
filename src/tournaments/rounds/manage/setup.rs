@@ -118,9 +118,12 @@ pub async fn setup_round_page(
         vec
     };
 
+    let current_rounds = Round::current_rounds(&tid, &mut *conn);
+
     success(Page::new()
         .user(user)
         .tournament(tournament.clone())
+        .current_rounds(current_rounds)
         .body(maud! {
             SidebarWrapper tournament=(&tournament) rounds=(&all_rounds) {
                 div class="d-flex justify-content-between" {

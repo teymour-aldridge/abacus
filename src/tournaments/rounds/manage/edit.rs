@@ -41,10 +41,13 @@ pub async fn edit_round_page(
 
     let rounds = TournamentRounds::fetch(&tid, &mut *conn).unwrap();
 
+    let current_rounds = Round::current_rounds(&tid, &mut *conn);
+
     Ok(SuccessResponse::Success(
         Page::new()
             .tournament(tournament.clone())
             .user(user)
+            .current_rounds(current_rounds)
             .body(maud! {
                 SidebarWrapper rounds=(&rounds) tournament=(&tournament) {
                     form method="post" {
@@ -132,11 +135,14 @@ pub async fn do_edit_round(
         .unwrap()
         .unwrap_or(1i64);
 
+    let current_rounds = Round::current_rounds(&tid, &mut *conn);
+
     if max + 1 < (form.seq as i64) {
         return Err(FailureResponse::BadRequest(
             Page::new()
                 .user(user)
                 .tournament(tournament)
+                .current_rounds(current_rounds)
                 .body(maud! {
                     p {
                         "Error: round index is too large. It must be at most

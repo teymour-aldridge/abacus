@@ -179,17 +179,21 @@ pub async fn manage_tournament_participants(
     let rounds = TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
     let table = ParticipantsTable(tournament.clone(), participants.clone());
 
+    let current_rounds =
+        crate::tournaments::rounds::Round::current_rounds(&tid, &mut *conn);
+
     if query.table_only.unwrap_or(false) {
         success(table.render())
     } else {
         success(
-            Page::default()
+            Page::new_full()
                 .user(user)
                 .tournament(tournament.clone())
                 .extra_head(maud! {
                     script src="https://cdn.jsdelivr.net/npm/htmx-ext-ws@2.0.2" crossorigin="anonymous" {
                     }
                 })
+                .current_rounds(current_rounds)
                 .body(maud! {
                     SidebarWrapper tournament=(&tournament) rounds=(&rounds) {
                         h1 {

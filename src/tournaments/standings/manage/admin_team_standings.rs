@@ -23,10 +23,16 @@ pub async fn admin_view_team_standings(
 
     let standings = TeamStandings::recompute(&tournament_id, &mut *conn);
 
+    let current_rounds = crate::tournaments::rounds::Round::current_rounds(
+        &tournament_id,
+        &mut *conn,
+    );
+
     success(
         Page::new()
             .user(user)
             .tournament(tournament.clone())
+            .current_rounds(current_rounds)
             .body(maud! {
                 SidebarWrapper tournament=(&tournament) rounds=(&rounds) {
                     table class="table" {

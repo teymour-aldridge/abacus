@@ -33,6 +33,7 @@ pub async fn admin_view_tournament(
     success(Page::new()
         .user(user)
         .tournament(tournament.clone())
+        .current_rounds(active_rounds.clone())
         .body(maud! {
             SidebarWrapper tournament=(&tournament) rounds=(&rounds) {
                 h1 {

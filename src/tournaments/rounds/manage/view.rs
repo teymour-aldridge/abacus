@@ -32,10 +32,13 @@ pub async fn view_tournament_rounds_page(
     let all_rounds =
         TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
 
+    let current_rounds = Round::current_rounds(&tournament.id, &mut *conn);
+
     success(
         Page::new()
             .tournament(tournament.clone())
             .user(user)
+            .current_rounds(current_rounds)
             .body(maud! {
                 SidebarWrapper tournament=(&tournament) rounds=(&all_rounds) {
                     h1 {

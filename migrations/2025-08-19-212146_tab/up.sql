@@ -26,6 +26,8 @@ create table if not exists tournaments (
     -- whether to show the results for completed (and non-silent) rounds on the
     -- home page
     show_round_results boolean not null default 't',
+    -- whether to show draws publicly
+    show_draws boolean not null default 't',
 
     -- 1 for Australs/WSDC, 2 for BP
     teams_per_side integer not null,

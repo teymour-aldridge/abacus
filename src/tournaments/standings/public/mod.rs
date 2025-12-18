@@ -36,12 +36,17 @@ pub async fn public_team_tab_page(
         return unauthorized();
     }
 
+    let current_rounds = crate::tournaments::rounds::Round::current_rounds(
+        &tournament_id,
+        &mut *conn,
+    );
     let standings = TeamStandings::recompute(&tournament_id, &mut *conn);
 
     if show_full_tab {
         success(Page::new()
             .tournament(tournament)
             .user_opt(user)
+            .current_rounds(current_rounds)
             .body(maud! {
                 table class = "table" {
                     thead {
@@ -130,6 +135,7 @@ pub async fn public_team_tab_page(
             Page::new()
                 .tournament(tournament)
                 .user_opt(user)
+                .current_rounds(current_rounds)
                 .body(maud! {
                     table class = "table" {
                         thead {

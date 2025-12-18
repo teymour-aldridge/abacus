@@ -20,8 +20,15 @@ pub struct Page<R1: Renderable, R2: Renderable, const TX: bool> {
     current_rounds: Option<Vec<Round>>,
 }
 
+// unfortunate generic argument shenanigans
 impl<R1: Renderable, const TX: bool> Page<R1, String, TX> {
     pub fn new() -> Self {
+        Default::default()
+    }
+}
+
+impl<R1: Renderable, R2: Renderable, const TX: bool> Page<R1, R2, TX> {
+    pub fn new_full() -> Self {
         Default::default()
     }
 }
@@ -42,7 +49,7 @@ impl<R1: Renderable, R2: Renderable, const TX: bool> Page<R1, R2, TX> {
         self
     }
 
-    pub fn extra_head(mut self, content: R2) -> Self {
+    pub fn extra_head(mut self, content: R2) -> Page<R1, R2, TX> {
         self.extra_head = Some(content);
         self
     }

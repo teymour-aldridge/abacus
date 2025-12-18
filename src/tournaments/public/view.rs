@@ -4,7 +4,7 @@ use crate::{
     auth::User,
     state::Conn,
     template::Page,
-    tournaments::Tournament,
+    tournaments::{Tournament, rounds::Round},
     util_resp::{StandardResponse, success},
 };
 
@@ -14,15 +14,84 @@ pub async fn public_tournament_page(
     mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
+    let current_rounds = Round::current_rounds(tournament_id, &mut *conn);
+
+    let released_rounds = current_rounds
+        .iter()
+        .filter(|r| r.draw_status == "R")
+        .cloned()
+        .collect::<Vec<_>>();
+
+    tracing::debug!("Released rounds: {released_rounds:?}");
 
     success(
         Page::new()
             .tournament(tournament.clone())
             .user_opt(user)
+            .current_rounds(current_rounds)
             .body(maud! {
-                h1 {
-                    "Tournament " (tournament.name)
-                    // todo: add links based on available actions
+                div class="container py-5 px-4" {
+                    header class="mb-5 pb-4 border-bottom border-4 border-dark" {
+                        h1 class="display-3 fw-bold text-uppercase mb-1" {
+                            (tournament.name)
+                        }
+                        p class="h4 text-uppercase fw-bold text-secondary mb-0" {
+                            "Public Portal"
+                        }
+                    }
+
+                    div class="row" {
+                        div class="col-12" {
+                            div class="list-group list-group-flush border-top border-dark" {
+                                @if tournament.show_draws && !released_rounds.is_empty() {
+                                    a href=(format!("/tournaments/{}/draw", tournament.id))
+                                      class="list-group-item list-group-item-action py-4 px-0 border-bottom border-dark d-flex align-items-center" {
+                                        span class="material-icons me-4 fs-1" { "grid_view" }
+                                        div class="flex-grow-1" {
+                                            div class="h2 mb-1 text-uppercase fw-bold" { "Current Draw" }
+                                            div class="small text-uppercase fw-bold text-secondary" {
+                                                @if released_rounds.len() == 1 {
+                                                    (released_rounds[0].name)
+                                                } @else {
+                                                    (format!("{} Concurrent Rounds", released_rounds.len()))
+                                                }
+                                            }
+                                        }
+                                        span class="material-icons fs-1" { "chevron_right" }
+                                    }
+                                }
+
+                                a href=(format!("/tournaments/{}/participants/public", tournament.id))
+                                  class="list-group-item list-group-item-action py-4 px-0 border-bottom border-dark d-flex align-items-center" {
+                                    span class="material-icons me-4 fs-1" { "groups" }
+                                    div class="flex-grow-1" {
+                                        div class="h2 mb-0 text-uppercase fw-bold" { "Participants" }
+                                    }
+                                    span class="material-icons fs-1" { "chevron_right" }
+                                }
+
+                                @if tournament.standings_public || tournament.team_tab_public {
+                                    a href=(format!("/tournaments/{}/tab/team", tournament.id))
+                                      class="list-group-item list-group-item-action py-4 px-0 border-bottom border-dark d-flex align-items-center" {
+                                        span class="material-icons me-4 fs-1" { "leaderboard" }
+                                        div class="flex-grow-1" {
+                                            div class="h2 mb-0 text-uppercase fw-bold" { "Team Standings" }
+                                        }
+                                        span class="material-icons fs-1" { "chevron_right" }
+                                    }
+                                }
+
+                                a href=(format!("/tournaments/{}/motions", tournament.id))
+                                  class="list-group-item list-group-item-action py-4 px-0 border-bottom border-dark d-flex align-items-center" {
+                                    span class="material-icons me-4 fs-1" { "article" }
+                                    div class="flex-grow-1" {
+                                        div class="h2 mb-0 text-uppercase fw-bold" { "Motions" }
+                                    }
+                                    span class="material-icons fs-1" { "chevron_right" }
+                                }
+                            }
+                        }
+                    }
                 }
             })
             .render(),

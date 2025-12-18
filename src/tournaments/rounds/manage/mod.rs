@@ -59,9 +59,12 @@ pub async fn manage_rounds_page(
 
     assert!(min_outround_seq.is_none() || max_outround_seq.is_some());
 
+    let current_rounds = Round::current_rounds(&tid, &mut *conn);
+
     success(Page::new()
             .tournament(tournament.clone())
             .user(user)
+            .current_rounds(current_rounds)
             .body(maud! {
                 SidebarWrapper tournament=(&tournament) rounds=(&rounds) {
                     h1 {

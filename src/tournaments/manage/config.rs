@@ -23,6 +23,7 @@ pub struct TournamentConfig {
     pub speaker_tab_public: bool,
     pub standings_public: bool,
     pub show_round_results: bool,
+    pub show_draws: bool,
     pub teams_per_side: i64,
     pub substantive_speakers: i64,
     pub reply_speakers: bool,
@@ -46,6 +47,7 @@ fn config_of_tournament(tournament: &Tournament) -> TournamentConfig {
         speaker_tab_public: tournament.speaker_tab_public,
         standings_public: tournament.standings_public,
         show_round_results: tournament.show_round_results,
+        show_draws: tournament.show_draws,
         teams_per_side: tournament.teams_per_side,
         substantive_speakers: tournament.substantive_speakers,
         reply_speakers: tournament.reply_speakers,
@@ -77,11 +79,16 @@ pub async fn view_tournament_configuration(
     let config = toml::to_string(&config_of_tournament(&tournament)).unwrap();
 
     let rounds = TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
+    let current_rounds = crate::tournaments::rounds::Round::current_rounds(
+        &tournament.id,
+        &mut *conn,
+    );
 
     success(
         Page::new()
             .user(user)
             .tournament(tournament.clone())
+            .current_rounds(current_rounds)
             .body(maud! {
                 SidebarWrapper tournament=(&tournament) rounds=(&rounds) {
                     h1 {
@@ -157,6 +164,7 @@ pub async fn update_tournament_configuration(
         tournaments::speaker_tab_public.eq(new_config.speaker_tab_public),
         tournaments::standings_public.eq(new_config.standings_public),
         tournaments::show_round_results.eq(new_config.show_round_results),
+        tournaments::show_draws.eq(new_config.show_draws),
         tournaments::teams_per_side.eq(new_config.teams_per_side),
         tournaments::substantive_speakers.eq(new_config.substantive_speakers),
         tournaments::reply_speakers.eq(new_config.reply_speakers),

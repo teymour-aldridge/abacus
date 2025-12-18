@@ -165,16 +165,18 @@ pub async fn view_team_availability(
         get_teams_and_availability(&tournament_id, round_seq, &mut *conn);
 
     success(
-        Page::default()
-            // todo: add option `with_htmx_ws()` and remove `extra_head` (?)
+        Page::new()
             .extra_head(
                 maud! {
                     script src="https://cdn.jsdelivr.net/npm/htmx-ext-ws@2.0.2" crossorigin="anonymous" {
                     }
                 }
+                .render()
+                .into_inner()
             )
             .user(user)
             .tournament(tournament.clone())
+            .current_rounds(current_rounds.clone())
             .body(maud! {
                 SidebarWrapper rounds=(&rounds) tournament=(&tournament) {
                     h1 {

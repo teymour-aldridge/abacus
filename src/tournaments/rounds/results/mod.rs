@@ -40,11 +40,14 @@ pub async fn view_results_page(
 
     let all_rounds = TournamentRounds::fetch(&tid, &mut *conn).unwrap();
 
+    let current_rounds = Round::current_rounds(&tid, &mut *conn);
+
     if !tournament.show_round_results {
         return success(
             Page::new()
                 .user_opt(user)
                 .tournament(tournament.clone())
+                .current_rounds(current_rounds)
                 .body(maud! {
                     SidebarWrapper tournament=(&tournament) rounds=(&all_rounds) {
                         div class="alert alert-warning" {
@@ -68,6 +71,7 @@ pub async fn view_results_page(
                 Page::new()
                     .user_opt(user)
                     .tournament(tournament.clone())
+                    .current_rounds(current_rounds.clone())
                     .body(maud! {
                         SidebarWrapper tournament=(&tournament) rounds=(&all_rounds) {
                             div class="alert alert-info" {
@@ -141,6 +145,7 @@ pub async fn view_results_page(
         Page::new()
             .user_opt(user)
             .tournament(tournament.clone())
+            .current_rounds(current_rounds)
             .body(maud! {
                 SidebarWrapper tournament=(&tournament) rounds=(&all_rounds) {
                     div class="container-fluid" {

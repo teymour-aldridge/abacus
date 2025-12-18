@@ -40,9 +40,13 @@ pub async fn create_new_round(
         .load::<BreakCategory>(&mut *conn)
         .unwrap();
 
+    let current_rounds =
+        crate::tournaments::rounds::Round::current_rounds(&tid, &mut *conn);
+
     success(Page::new()
         .tournament(tournament.clone())
         .user(user)
+        .current_rounds(current_rounds)
         .body(maud! {
             SidebarWrapper tournament=(&tournament) rounds=(&rounds) {
                 h1 {
@@ -107,10 +111,14 @@ pub async fn create_new_round_of_specific_category_page(
         }
     };
 
+    let current_rounds =
+        crate::tournaments::rounds::Round::current_rounds(&tid, &mut *conn);
+
     success(
         Page::new()
             .tournament(tournament.clone())
             .user(user)
+            .current_rounds(current_rounds)
             .body(maud! {
                 SidebarWrapper tournament=(&tournament) rounds=(&rounds)  {
                     form method="post" {

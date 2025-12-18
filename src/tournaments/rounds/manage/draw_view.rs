@@ -47,10 +47,14 @@ pub async fn view_draws_page(
         })
         .collect_vec();
 
+    let current_rounds =
+        crate::tournaments::rounds::Round::current_rounds(&tid, &mut *conn);
+
     success(
         Page::new()
             .user(user)
             .tournament(tournament.clone())
+            .current_rounds(current_rounds)
             .body(maud! {
                 SidebarWrapper tournament=(&tournament) rounds=(&all_rounds) {
                     div class="d-flex justify-content-between" {

@@ -205,10 +205,13 @@ pub async fn view_judge_availability(
         judge_availability: &judge_availability,
     };
 
+    let nav_current_rounds = Round::current_rounds(&tournament_id, &mut *conn);
+
     success(
         Page::new()
             .user(user)
             .tournament(tournament.clone())
+            .current_rounds(nav_current_rounds)
             .extra_head(
                 maud! {
                     script src="https://cdn.jsdelivr.net/npm/htmx-ext-ws@2.0.2" crossorigin="anonymous" {

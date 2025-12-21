@@ -52,7 +52,7 @@ pub async fn generate_draw_page(
         None => return err_not_found(),
     };
 
-    let debates_exist = round.draw_status != "N";
+    let debates_exist = round.draw_status != "none";
 
     let rounds = TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
 
@@ -61,7 +61,7 @@ pub async fn generate_draw_page(
             .tournament(tournament.clone())
             .user(user)
             .body(maud! {
-                SidebarWrapper tournament=(&tournament) rounds=(&rounds) {
+                SidebarWrapper  tournament=(&tournament) rounds=(&rounds) {
                     @if debates_exist {
                         ErrorAlert
                             msg = "Warning: a draw already exists for this round. Creating

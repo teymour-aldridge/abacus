@@ -134,6 +134,7 @@ fn private_url_page_of_speaker(
         Page::new()
             .user_opt(user)
             .tournament(tournament.clone())
+            .current_rounds(current_rounds)
             .body(maud! {
                 div class="container py-5" style="max-width: 800px;" {
                     header class="mb-5" {
@@ -254,10 +255,13 @@ fn private_url_page_of_judge(
         None
     };
 
+    let all_current_rounds = Round::current_rounds(&tournament.id, conn);
+
     success(
         Page::new()
             .user_opt(user)
             .tournament(tournament.clone())
+            .current_rounds(all_current_rounds)
             .body(maud! {
                 div class="container py-5" style="max-width: 800px;" {
                     header class="mb-5" {

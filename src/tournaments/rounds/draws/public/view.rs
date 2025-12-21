@@ -37,7 +37,10 @@ pub async fn view_active_draw_page(
 
     let draws = rounds
         .iter()
-        .filter(|r| r.draw_status == "R")
+        .filter(|r| {
+            r.draw_status == "released_full"
+                || r.draw_status == "released_teams"
+        })
         .map(|round| RoundDrawRepr::of_round(round.clone(), &mut *conn))
         .collect::<Vec<_>>();
 
@@ -57,13 +60,12 @@ pub async fn view_active_draw_page(
             .tournament(tournament.clone())
             .current_rounds(current_rounds)
             .body(maud! {
-                div class="p-3" {
+                div class="container py-5 px-4" {
                     h1 {
                         "Draw for "
-                        @if rounds.len() == 1 {
-                            (rounds[0].name)
-                        } @else {
-                            "Concurrent Rounds"
+                        @for (i, round) in rounds.iter().enumerate() {
+                            @if i > 0 { ", " }
+                            (round.name)
                         }
                     }
 
@@ -100,7 +102,9 @@ pub async fn view_active_draw_page(
                                                     "Opp " (i + 1)
                                                 }
                                             }
-                                            th scope="col" { "Panel" }
+                                                @if draw.round.draw_status == "released_full" {
+                                                    th scope="col" { "Panel" }
+                                                }
                                         }
                                     }
                                     tbody {
@@ -114,10 +118,12 @@ pub async fn view_active_draw_page(
                                                         }
                                                     }
                                                 }
-                                                td {
-                                                    @for judge in &debate.judges_of_debate {
-                                                        span class="badge bg-secondary me-1" {
-                                                            (debate.judges.get(&judge.judge_id).map(|j| j.name.as_str()).unwrap_or("Unknown Judge"))
+                                                @if draw.round.draw_status == "released_full" {
+                                                    td {
+                                                        @for judge in &debate.judges_of_debate {
+                                                            span class="badge bg-secondary me-1" {
+                                                                (debate.judges.get(&judge.judge_id).map(|j| j.name.as_str()).unwrap_or("Unknown Judge"))
+                                                            }
                                                         }
                                                     }
                                                 }

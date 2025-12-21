@@ -14,15 +14,14 @@ pub async fn public_tournament_page(
     mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(tournament_id, &mut *conn)?;
+    let all_rounds = crate::tournaments::rounds::TournamentRounds::fetch(
+        tournament_id,
+        &mut *conn,
+    )
+    .unwrap();
     let current_rounds = Round::current_rounds(tournament_id, &mut *conn);
 
-    let released_rounds = current_rounds
-        .iter()
-        .filter(|r| r.draw_status == "R")
-        .cloned()
-        .collect::<Vec<_>>();
-
-    tracing::debug!("Released rounds: {released_rounds:?}");
+    let grouped_rounds = all_rounds.all_grouped_by_seq();
 
     success(
         Page::new()
@@ -43,21 +42,48 @@ pub async fn public_tournament_page(
                     div class="row" {
                         div class="col-12" {
                             div class="list-group list-group-flush border-top border-dark" {
-                                @if tournament.show_draws && !released_rounds.is_empty() {
-                                    a href=(format!("/tournaments/{}/rounds/{}/draw", tournament.id, released_rounds[0].seq))
-                                      class="list-group-item list-group-item-action py-4 px-0 border-bottom border-dark d-flex align-items-center" {
-                                        span class="material-icons me-4 fs-1" { "grid_view" }
-                                        div class="flex-grow-1" {
-                                            div class="h2 mb-1 text-uppercase fw-bold" { "Current Draw" }
-                                            div class="small text-uppercase fw-bold text-secondary" {
-                                                @if released_rounds.len() == 1 {
-                                                    (released_rounds[0].name)
-                                                } @else {
-                                                    (format!("{} Concurrent Rounds", released_rounds.len()))
+                                @for level in grouped_rounds.iter().rev() {
+                                    @let is_draw_pub = level.iter().any(|r| r.is_draw_public());
+                                    @let is_results_pub = level.iter().all(|r| r.is_results_public());
+
+                                    @if is_results_pub {
+                                        a href=(format!("/tournaments/{}/rounds/{}/results", tournament.id, level[0].seq))
+                                          class="list-group-item list-group-item-action py-4 px-0 border-bottom border-dark d-flex align-items-center" {
+                                            span class="material-icons me-4 fs-1" { "assessment" }
+                                            div class="flex-grow-1" {
+                                                div class="h2 mb-1 text-uppercase fw-bold" { "Results" }
+                                                div class="small text-uppercase fw-bold text-secondary" {
+                                                    @if level.len() == 1 {
+                                                        (level[0].name)
+                                                    } @else {
+                                                        @for (i, round) in level.iter().enumerate() {
+                                                            @if i > 0 { ", " }
+                                                            (round.name)
+                                                        }
+                                                    }
                                                 }
                                             }
+                                            span class="material-icons fs-1" { "chevron_right" }
                                         }
-                                        span class="material-icons fs-1" { "chevron_right" }
+                                    } @else if is_draw_pub && tournament.show_draws {
+                                        a href=(format!("/tournaments/{}/rounds/{}/draw", tournament.id, level[0].seq))
+                                          class="list-group-item list-group-item-action py-4 px-0 border-bottom border-dark d-flex align-items-center" {
+                                            span class="material-icons me-4 fs-1" { "grid_view" }
+                                            div class="flex-grow-1" {
+                                                div class="h2 mb-1 text-uppercase fw-bold" { "Current Draw" }
+                                                div class="small text-uppercase fw-bold text-secondary" {
+                                                    @if level.len() == 1 {
+                                                        (level[0].name)
+                                                    } @else {
+                                                        @for (i, round) in level.iter().enumerate() {
+                                                            @if i > 0 { ", " }
+                                                            (round.name)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            span class="material-icons fs-1" { "chevron_right" }
+                                        }
                                     }
                                 }
 

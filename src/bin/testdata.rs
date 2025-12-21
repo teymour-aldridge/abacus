@@ -331,7 +331,7 @@ fn main() {
                     tournament_rounds::kind.eq(round.2),
                     tournament_rounds::break_category.eq(round.3),
                     tournament_rounds::completed.eq(false),
-                    tournament_rounds::draw_status.eq("N"),
+                    tournament_rounds::draw_status.eq("none"),
                     tournament_rounds::draw_released_at
                         .eq(None::<NaiveDateTime>),
                 ))

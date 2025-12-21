@@ -198,7 +198,7 @@ create table if not exists tournament_rounds (
     kind text not null check (kind in ('E', 'P')),
     break_category text references tournament_break_categories (id),
     completed boolean not null,
-    draw_status text not null default 'N' check (draw_status in ('D', 'C', 'R', 'N')),
+    draw_status text not null default 'none' check (draw_status in ('none', 'draft', 'confirmed', 'released_teams', 'released_full')),
     draw_released_at timestamp,
     motions_released_at timestamp,
     results_published_at timestamp,

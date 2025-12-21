@@ -62,11 +62,13 @@ pub async fn submit_ballot_page(
 
     let round = Round::fetch(&round_id, &mut *conn)?;
 
-    if round.draw_status != "R" {
+    if round.draw_status != "released_full" {
+        let current_rounds = Round::current_rounds(&tournament_id, &mut *conn);
         return bad_request(
             Page::new()
                 .tournament(tournament.clone())
                 .user_opt(user)
+                .current_rounds(current_rounds)
                 .body(maud! {
                     ErrorAlert msg = "Error: draw not released.";
                 })
@@ -83,10 +85,13 @@ pub async fn submit_ballot_page(
         .load::<Motion>(&mut *conn)
         .unwrap();
 
+    let current_rounds = Round::current_rounds(&tournament_id, &mut *conn);
+
     success(
         Page::new()
             .user_opt(user)
             .tournament(tournament.clone())
+            .current_rounds(current_rounds)
             .body(BallotFormRenderer {
                 tournament,
                 debate: debate_repr,
@@ -274,11 +279,13 @@ pub async fn do_submit_ballot(
         None => return err_not_found(),
     };
     let round = Round::fetch(&round_id, &mut *conn)?;
-    if round.draw_status != "R" {
+    if round.draw_status != "released_full" {
+        let current_rounds = Round::current_rounds(&tournament_id, &mut *conn);
         return bad_request(
             Page::new()
                 .tournament(tournament.clone())
                 .user_opt(user)
+                .current_rounds(current_rounds)
                 .body(maud! {
                     ErrorAlert msg = "Error: draw not released.";
                 })
@@ -301,10 +308,13 @@ pub async fn do_submit_ballot(
         if form.speakers.len() != expected_len
             || form.scores.len() != expected_len
         {
+            let current_rounds =
+                Round::current_rounds(&tournament_id, &mut *conn);
             return bad_request(
                 Page::new()
                     .tournament(tournament.clone())
                     .user_opt(user)
+                    .current_rounds(current_rounds)
                     .body(maud! {
                         ErrorAlert msg = "Error: data submitted incorrectly formatted (wrong number of speakers/scores)";
                     })
@@ -353,10 +363,13 @@ pub async fn do_submit_ballot(
             .get_result::<bool>(&mut *conn)
             .unwrap()
         {
+            let current_rounds =
+                Round::current_rounds(&tournament_id, &mut *conn);
             return bad_request(
                 Page::new()
                     .tournament(tournament.clone())
                     .user_opt(user)
+                    .current_rounds(current_rounds)
                     .body(maud! {
                         ErrorAlert msg = "Error: submitted motion is not a valid motion for the corresponding round.";
                     })
@@ -372,10 +385,13 @@ pub async fn do_submit_ballot(
                 .unwrap()
                 > 1
         {
+            let current_rounds =
+                Round::current_rounds(&tournament_id, &mut *conn);
             return bad_request(
                 Page::new()
                     .tournament(tournament.clone())
                     .user_opt(user)
+                    .current_rounds(current_rounds)
                     .body(maud! {
                         ErrorAlert msg = "Error: motion must be specified where there is more than one motion for the given round.";
                     })
@@ -403,10 +419,13 @@ pub async fn do_submit_ballot(
                 .any(|actual_speaker| &actual_speaker.id == speaker);
 
             if !submitted_speaker_is_on_this_team {
+                let current_rounds =
+                    Round::current_rounds(&tournament_id, &mut *conn);
                 return bad_request(
                     Page::new()
                         .tournament(tournament.clone())
                         .user_opt(user)
+                        .current_rounds(current_rounds)
                         .body(maud! {
                             ErrorAlert msg = "Error: data submitted incorrectly formatted (speaker not on team)";
                         })
@@ -439,10 +458,12 @@ pub async fn do_submit_ballot(
     // todo: we need to add additional validation (this should be configurable
     // by the user)
     if !all_distinct {
+        let current_rounds = Round::current_rounds(&tournament_id, &mut *conn);
         return bad_request(
             Page::new()
                 .tournament(tournament.clone())
                 .user_opt(user)
+                .current_rounds(current_rounds)
                 .body(maud! {
                     ErrorAlert msg = "Error: two teams have a duplicate speech.";
                 })
@@ -519,10 +540,13 @@ pub async fn do_submit_ballot(
         .execute(&mut *conn)
         .unwrap();
 
+    let current_rounds = Round::current_rounds(&tournament_id, &mut *conn);
+
     success(
         Page::new()
             .user_opt(user)
             .tournament(tournament.clone())
+            .current_rounds(current_rounds)
             .body(maud! {
                 div class="container py-5" style="max-width: 800px;" {
                     header class="mb-5" {
@@ -563,7 +587,7 @@ fn debate_of_judge_in_round(
                 .on(tournament_rounds::id.eq(tournament_debates::round_id)),
         )
         .filter(tournament_rounds::id.eq(round_id))
-        .filter(tournament_rounds::draw_status.eq("R"))
+        .filter(tournament_rounds::draw_status.eq("released_full"))
         .filter(diesel::dsl::exists(
             tournament_debate_judges::table
                 .filter(tournament_debate_judges::judge_id.eq(judge_id))

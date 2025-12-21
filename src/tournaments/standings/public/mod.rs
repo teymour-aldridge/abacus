@@ -48,36 +48,38 @@ pub async fn public_team_tab_page(
             .user_opt(user)
             .current_rounds(current_rounds)
             .body(maud! {
-                table class = "table" {
-                    thead {
-                        tr {
-                            th scope = "col" { "#" }
-                            th scope = "col" {
-                                "Team name"
-                            }
-                            @for metric in &standings.metrics {
+                div class="container py-5 px-4" {
+                    table class = "table" {
+                        thead {
+                            tr {
+                                th scope = "col" { "#" }
                                 th scope = "col" {
-                                    (metric.to_string())
+                                    "Team name"
+                                }
+                                @for metric in &standings.metrics {
+                                    th scope = "col" {
+                                        (metric.to_string())
+                                    }
                                 }
                             }
                         }
-                    }
-                    tbody {
-                        @for (i, teams) in standings.teams_in_rank_order.iter().enumerate() {
-                            @for team in teams {
-                                tr {
-                                    th scope="row" {
-                                        @if teams.len() > 1 {
-                                            "="
+                        tbody {
+                            @for (i, teams) in standings.teams_in_rank_order.iter().enumerate() {
+                                @for team in teams {
+                                    tr {
+                                        th scope="row" {
+                                            @if teams.len() > 1 {
+                                                "="
+                                            }
+                                            (i + 1)
                                         }
-                                        (i + 1)
-                                    }
-                                    td {
-                                        (team.name)
-                                    }
-                                    @for metric in standings.ranked_metrics_of_team.get(&team.id).unwrap() {
                                         td {
-                                            (metric.1.to_string())
+                                            (team.name)
+                                        }
+                                        @for metric in standings.ranked_metrics_of_team.get(&team.id).unwrap() {
+                                            td {
+                                                (metric.1.to_string())
+                                            }
                                         }
                                     }
                                 }
@@ -137,32 +139,34 @@ pub async fn public_team_tab_page(
                 .user_opt(user)
                 .current_rounds(current_rounds)
                 .body(maud! {
-                    table class = "table" {
-                        thead {
-                            tr {
-                                th scope = "col" { "#" }
-                                th scope = "col" { "Team name" }
-                                th scope = "col" { "Points" }
-                            }
-                        }
-                        tbody {
-                            @for (rank, points, team) in &ranked_teams {
-                                @let is_tied = teams_by_points.iter()
-                                    .find(|(p, _)| p == points)
-                                    .map(|(_, teams)| teams.len() > 1)
-                                    .unwrap_or(false);
+                    div class="container py-5 px-4" {
+                        table class = "table" {
+                            thead {
                                 tr {
-                                    th scope="row" {
-                                        @if is_tied {
-                                            "="
+                                    th scope = "col" { "#" }
+                                    th scope = "col" { "Team name" }
+                                    th scope = "col" { "Points" }
+                                }
+                            }
+                            tbody {
+                                @for (rank, points, team) in &ranked_teams {
+                                    @let is_tied = teams_by_points.iter()
+                                        .find(|(p, _)| p == points)
+                                        .map(|(_, teams)| teams.len() > 1)
+                                        .unwrap_or(false);
+                                    tr {
+                                        th scope="row" {
+                                            @if is_tied {
+                                                "="
+                                            }
+                                            (rank)
                                         }
-                                        (rank)
-                                    }
-                                    td {
-                                        (team.name)
-                                    }
-                                    td {
-                                        (points)
+                                        td {
+                                            (team.name)
+                                        }
+                                        td {
+                                            (points)
+                                        }
                                     }
                                 }
                             }

@@ -38,7 +38,7 @@ pub async fn view_draws_page(
         .clone()
         .into_iter()
         .map(|round| {
-            let draw = if round.draw_status != "N" {
+            let draw = if round.draw_status != "none" {
                 Some(RoundDrawRepr::of_round(round.clone(), &mut *conn))
             } else {
                 None
@@ -56,7 +56,7 @@ pub async fn view_draws_page(
             .tournament(tournament.clone())
             .current_rounds(current_rounds)
             .body(maud! {
-                SidebarWrapper tournament=(&tournament) rounds=(&all_rounds) {
+                SidebarWrapper  tournament=(&tournament) rounds=(&all_rounds) {
                     div class="d-flex justify-content-between" {
                         h1 {
                             "Draws for rounds with sequence "

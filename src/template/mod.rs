@@ -107,13 +107,30 @@ impl<R1: Renderable, R2: Renderable, const TX: bool> Renderable
                             @if let Some(tournament) = &self.tournament {
                                 ul class="navbar-nav" style="display: flex; gap: 1rem;" data-bs-theme="dark" {
                                     @if let Some(rounds) = &self.current_rounds {
-                                        @if !rounds.is_empty() && rounds.iter().any(|r| r.draw_status == "R") {
-                                            li class="nav-item" {
-                                                a class="nav-link text-white" href=(format!("/tournaments/{}/rounds/{}/draw", tournament.id, rounds[0].seq)) {
-                                                    @if rounds.len() == 1 {
-                                                        (format!("Draw for {}", rounds[0].name))
-                                                    } @else {
-                                                        "Current Draws"
+                                        @if !rounds.is_empty() {
+                                            @let seq = rounds[0].seq;
+                                            @let is_draw_pub = tournament.show_draws && rounds.iter().any(|r| r.is_draw_public());
+                                            @let is_results_pub = rounds.iter().all(|r| r.is_results_public());
+                                            (tracing::debug!("Draw pub: {is_draw_pub} & Results pub: {is_results_pub}"))
+
+                                            @if is_results_pub {
+                                                li class="nav-item" {
+                                                    a class="nav-link text-white" href=(format!("/tournaments/{}/rounds/{}/results", tournament.id, seq)) {
+                                                        @if rounds.len() == 1 {
+                                                            (format!("Results for {}", rounds[0].name))
+                                                        } @else {
+                                                            "Current Results"
+                                                        }
+                                                    }
+                                                }
+                                            } @else if is_draw_pub {
+                                                li class="nav-item" {
+                                                    a class="nav-link text-white" href=(format!("/tournaments/{}/rounds/{}/draw", tournament.id, seq)) {
+                                                        @if rounds.len() == 1 {
+                                                            (format!("Draw for {}", rounds[0].name))
+                                                        } @else {
+                                                            "Current Draws"
+                                                        }
                                                     }
                                                 }
                                             }
@@ -124,9 +141,11 @@ impl<R1: Renderable, R2: Renderable, const TX: bool> Renderable
                                             "Participants"
                                         }
                                     }
-                                    li class="nav-item" {
-                                        a class="nav-link text-white" href=(format!("/tournaments/{}/tab/team", tournament.id)) {
-                                            "Team Standings"
+                                    @if tournament.standings_public || tournament.team_tab_public {
+                                        li class="nav-item" {
+                                            a class="nav-link text-white" href=(format!("/tournaments/{}/tab/team", tournament.id)) {
+                                                "Team Standings"
+                                            }
                                         }
                                     }
                                     li class="nav-item" {

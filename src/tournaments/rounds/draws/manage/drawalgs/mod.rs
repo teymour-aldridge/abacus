@@ -262,7 +262,7 @@ pub fn do_draw(
                         .filter(tournament_rounds::id.eq(&round.id)),
                 )
                 .set((
-                    tournament_rounds::draw_status.eq("D"),
+                    tournament_rounds::draw_status.eq("draft"),
                     tournament_rounds::draw_released_at
                         .eq(None::<NaiveDateTime>),
                 ))

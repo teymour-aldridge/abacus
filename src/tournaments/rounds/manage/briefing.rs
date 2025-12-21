@@ -60,9 +60,12 @@ impl Renderable for BriefingRoomView {
                                     h5 class="card-title" { (round.name) }
 
                                     p class="card-text" {
-                                        @if round.draw_status == "R" {
-                                            span class="badge bg-success" {"Public"}
-                                            " The draw is currently public."
+                                        @if round.draw_status == "released_full" {
+                                            span class="badge bg-success" {"Public (Teams & Judges)"}
+                                            " The full draw is currently public."
+                                        } @else if round.draw_status == "released_teams" {
+                                            span class="badge bg-info" {"Public (Teams Only)"}
+                                            " Only the team list is currently public."
                                         } @else {
                                             span class="badge bg-secondary" {"Private"}
                                             " The draw is not currently public."
@@ -70,18 +73,29 @@ impl Renderable for BriefingRoomView {
                                     }
 
                                     div class="mt-auto" {
-                                        @if round.draw_status != "R" {
-                                            form action=(format!("/tournaments/{}/rounds/{}/draws/setreleased", self.tournament.id, round.id)) method="post" {
-                                                input type="text" value="true" hidden name="released";
-                                                button class="btn btn-primary w-100" type="submit" {
-                                                    "Publish Draw"
-                                                }
-                                            }
-                                        } @else {
-                                            form action=(format!("/tournaments/{}/rounds/{}/draws/setreleased", self.tournament.id, round.id)) method="post" {
-                                                input type="text" value="false" hidden name="released";
-                                                button class="btn btn-danger w-100" type="submit" {
-                                                    "Unpublish Draw"
+                                        form action=(format!("/tournaments/{}/rounds/{}/draws/setreleased", self.tournament.id, round.id)) method="post" {
+                                            div class="d-grid gap-2" {
+                                                @if round.draw_status != "released_teams" && round.draw_status != "released_full" {
+                                                    button class="btn btn-primary" type="submit" name="status" value="released_teams" {
+                                                        "Publish Teams Only"
+                                                    }
+                                                    button class="btn btn-success" type="submit" name="status" value="released_full" {
+                                                        "Publish Teams & Judges"
+                                                    }
+                                                } @else if round.draw_status == "released_teams" {
+                                                    button class="btn btn-success" type="submit" name="status" value="released_full" {
+                                                        "Publish Judges Too"
+                                                    }
+                                                    button class="btn btn-danger" type="submit" name="status" value="confirmed" {
+                                                        "Hide Draw"
+                                                    }
+                                                } @else if round.draw_status == "released_full" {
+                                                    button class="btn btn-warning" type="submit" name="status" value="released_teams" {
+                                                        "Hide Judges (Teams Only)"
+                                                    }
+                                                    button class="btn btn-danger" type="submit" name="status" value="confirmed" {
+                                                        "Hide Draw"
+                                                    }
                                                 }
                                             }
                                         }
@@ -118,7 +132,7 @@ pub async fn get_briefing_room(
             .user(user)
             .tournament(tournament.clone())
             .body(maud! {
-                SidebarWrapper tournament=(&tournament) rounds=(&all_rounds) {
+                SidebarWrapper  tournament=(&tournament) rounds=(&all_rounds) {
                     (view)
                 }
             })
@@ -128,7 +142,7 @@ pub async fn get_briefing_room(
 
 #[derive(Deserialize, Debug)]
 pub struct SetDrawPublished {
-    released: bool,
+    status: String,
 }
 
 #[tracing::instrument(skip(conn))]
@@ -136,7 +150,7 @@ pub async fn set_draw_published(
     Path((tournament_id, round_id)): Path<(String, String)>,
     user: User<true>,
     mut conn: Conn<true>,
-    Form(released): axum::Form<SetDrawPublished>,
+    Form(form): axum::Form<SetDrawPublished>,
 ) -> StandardResponse {
     tracing::info!("Publishing draw");
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
@@ -154,14 +168,16 @@ pub async fn set_draw_published(
 
     diesel::update(tournament_rounds::table.find(round.id.clone()))
         .set((
-            tournament_rounds::draw_status.eq(match released.released {
-                true => "R",
-                false => "C", // todo: the false => "C" might be wrong
-            }),
-            tournament_rounds::draw_released_at.eq(match released.released {
-                true => Some(Utc::now().naive_utc()),
-                false => None,
-            }),
+            tournament_rounds::draw_status.eq(&form.status),
+            tournament_rounds::draw_released_at.eq(
+                if form.status == "released_teams"
+                    || form.status == "released_full"
+                {
+                    Some(Utc::now().naive_utc())
+                } else {
+                    None
+                },
+            ),
         ))
         .execute(&mut *conn)
         .unwrap();

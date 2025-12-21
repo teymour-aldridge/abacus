@@ -51,7 +51,7 @@ pub async fn public_motions_page(
             .tournament(tournament.clone())
             .current_rounds(current_rounds)
             .body(maud! {
-                div class="container-fluid p-3" {
+                div class="container py-5 px-4" {
                     h1 { "Motions" }
 
                     @if motions.is_empty() {

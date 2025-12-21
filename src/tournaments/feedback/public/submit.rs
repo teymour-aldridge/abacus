@@ -24,7 +24,6 @@ use crate::{
             FeedbackOfJudge, FeedbackOfTeam, FeedbackQuestion,
             manage::config::FeedbackQuestionKind,
         },
-        manage::sidebar::SidebarWrapper,
         participants::{Judge, Speaker},
         privateurls::ParticipantKind,
         rounds::{Round, TournamentRounds, draws::Debate},
@@ -43,7 +42,6 @@ pub async fn submit_feedback_page(
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     let round = Round::fetch(&round_id, &mut *conn)?;
-    let rounds = TournamentRounds::fetch(&tournament_id, &mut *conn).unwrap();
 
     let judge = tournament_judges::table
         .filter(
@@ -73,6 +71,20 @@ pub async fn submit_feedback_page(
         return err_not_found();
     }
 
+    if round.draw_status != "released_full" {
+        let current_rounds = Round::current_rounds(&tournament_id, &mut *conn);
+        return crate::util_resp::bad_request(
+            Page::new()
+                .tournament(tournament.clone())
+                .user_opt(user)
+                .current_rounds(current_rounds)
+                .body(maud! {
+                    div class="alert alert-danger" { "Error: feedback submission is not yet possible for this round as the judge list has not been published." }
+                })
+                .render()
+        );
+    }
+
     let targets = if let Some(judge) = &judge {
         let debate =
             debate_of_judge_in_round(&judge.id, &round.id, &mut *conn)?;
@@ -93,10 +105,13 @@ pub async fn submit_feedback_page(
         .load::<FeedbackQuestion>(&mut *conn)
         .unwrap();
 
+    let current_rounds = Round::current_rounds(&tournament_id, &mut *conn);
+
     success(
         Page::new()
             .user_opt(user)
             .tournament(tournament.clone())
+            .current_rounds(current_rounds)
             .body(FeedbackFormRenderer {
                 round,
                 targets,
@@ -107,7 +122,6 @@ pub async fn submit_feedback_page(
                     ParticipantKind::Speaker
                 },
                 tournament,
-                rounds,
             })
             .render(),
     )
@@ -118,7 +132,6 @@ struct FeedbackFormRenderer {
     targets: Vec<Judge>,
     questions: Vec<FeedbackQuestion>,
     submitter_kind: ParticipantKind,
-    rounds: TournamentRounds,
     tournament: Tournament,
 }
 
@@ -128,7 +141,7 @@ impl Renderable for FeedbackFormRenderer {
         buffer: &mut hypertext::Buffer<hypertext::context::Node>,
     ) {
         maud! {
-            SidebarWrapper rounds=(&self.rounds) tournament=(&self.tournament) {
+            div class="container py-5 px-4" {
                 h1 { "Submit feedback" }
                 h2 { (self.round.name) }
 
@@ -221,6 +234,20 @@ pub async fn do_submit_feedback(
         return err_not_found();
     }
 
+    if round.draw_status != "released_full" {
+        let current_rounds = Round::current_rounds(&tournament_id, &mut *conn);
+        return crate::util_resp::bad_request(
+            Page::new()
+                .tournament(tournament.clone())
+                .user_opt(user)
+                .current_rounds(current_rounds)
+                .body(maud! {
+                    div class="alert alert-danger" { "Error: feedback submission is not yet possible for this round as the judge list has not been published." }
+                })
+                .render()
+        );
+    }
+
     let (debate, _targets) = if let Some(judge) = &judge {
         let debate =
             debate_of_judge_in_round(&judge.id, &round.id, &mut *conn)?;
@@ -295,10 +322,13 @@ pub async fn do_submit_feedback(
     })
     .unwrap();
 
+    let current_rounds = Round::current_rounds(&tournament_id, &mut *conn);
+
     success(
         Page::new()
             .user_opt(user)
             .tournament(tournament)
+            .current_rounds(current_rounds)
             .body(maud! {
                 div class="alert alert-success" { "Feedback submitted successfully!" }
                 a href=(format!("/tournaments/{}/privateurls/{}/rounds/{}/feedback/submit", tournament_id, private_url, round_id)) { "Submit another" }
@@ -318,7 +348,7 @@ fn debate_of_judge_in_round(
                 .on(tournament_rounds::id.eq(tournament_debates::round_id)),
         )
         .filter(tournament_rounds::id.eq(round_id))
-        //.filter(tournament_rounds::draw_status.eq("R"))
+        .filter(tournament_rounds::draw_status.eq("released_full"))
         .filter(diesel::dsl::exists(
             tournament_debate_judges::table
                 .filter(tournament_debate_judges::judge_id.eq(judge_id))
@@ -356,6 +386,7 @@ fn debate_of_speaker_in_round(
                     .on(tournament_rounds::id.eq(tournament_debates::round_id)),
             )
             .filter(tournament_rounds::id.eq(round_id))
+            .filter(tournament_rounds::draw_status.eq("released_full"))
             .filter(diesel::dsl::exists(
                 crate::schema::tournament_debate_teams::table
                     .filter(

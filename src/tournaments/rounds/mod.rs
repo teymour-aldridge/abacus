@@ -74,34 +74,41 @@ impl Round {
         tid: &str,
         conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Vec<Self> {
-        let ret = tournament_rounds::table
-            .filter(
-                tournament_rounds::tournament_id
-                    .eq(tid)
-                    .and(tournament_rounds::completed.eq(false))
-                    .and({
-                        let sq = diesel::alias!(tournament_rounds as sq);
-                        let min_seq = sq
-                            .filter(
-                                sq.field(tournament_rounds::tournament_id)
-                                    .eq(tid)
-                                    .and(
-                                        sq.field(tournament_rounds::completed)
-                                            .eq(false),
-                                    ),
-                            )
-                            .select(diesel::dsl::min(
-                                sq.field(tournament_rounds::seq),
-                            ))
-                            .single_value();
+        let current_seq = {
+            let released_seq: Option<i64> =
+                tournament_rounds::table
+                    .filter(tournament_rounds::tournament_id.eq(tid))
+                    .filter(tournament_rounds::completed.eq(false))
+                    .filter(
+                        tournament_rounds::draw_status
+                            .eq("released_full")
+                            .or(tournament_rounds::draw_status
+                                .eq("released_teams")),
+                    )
+                    .select(diesel::dsl::max(tournament_rounds::seq))
+                    .first::<Option<i64>>(conn)
+                    .unwrap();
 
-                        tournament_rounds::seq.eq(diesel::dsl::case_when(
-                            min_seq.is_not_null(),
-                            min_seq.assume_not_null(),
-                        )
-                        .otherwise(1))
-                    }),
-            )
+            match released_seq {
+                Some(seq) => seq,
+                None => {
+                    let sq = diesel::alias!(tournament_rounds as sq);
+                    sq.filter(
+                        sq.field(tournament_rounds::tournament_id).eq(tid),
+                    )
+                    .filter(sq.field(tournament_rounds::completed).eq(false))
+                    .select(diesel::dsl::min(sq.field(tournament_rounds::seq)))
+                    .first::<Option<i64>>(conn)
+                    .unwrap()
+                    .unwrap_or(1)
+                }
+            }
+        };
+
+        let ret = tournament_rounds::table
+            .filter(tournament_rounds::tournament_id.eq(tid))
+            .filter(tournament_rounds::seq.eq(current_seq))
+            .filter(tournament_rounds::completed.eq(false))
             .order_by(tournament_rounds::seq.asc())
             .load::<Round>(conn)
             .unwrap();
@@ -131,6 +138,15 @@ impl Round {
             .first::<Round>(conn)
             .optional()
             .unwrap()
+    }
+
+    pub fn is_draw_public(&self) -> bool {
+        self.draw_status == "released_full"
+            || self.draw_status == "released_teams"
+    }
+
+    pub fn is_results_public(&self) -> bool {
+        self.results_published_at.is_some()
     }
 }
 
@@ -184,9 +200,13 @@ impl TournamentRounds {
             .map(|round| {
                 if round.completed {
                     (round.id.clone(), RoundStatus::Completed)
-                } else if round.draw_status == "R" {
+                } else if round.draw_status == "released_full"
+                    || round.draw_status == "released_teams"
+                {
                     (round.id.clone(), RoundStatus::InProgress)
-                } else if round.draw_status == "D" || round.draw_status == "C" {
+                } else if round.draw_status == "draft"
+                    || round.draw_status == "confirmed"
+                {
                     (round.id.clone(), RoundStatus::Draft)
                 } else {
                     (round.id.clone(), RoundStatus::NotStarted)

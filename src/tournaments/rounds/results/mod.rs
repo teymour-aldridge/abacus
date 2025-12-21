@@ -11,8 +11,7 @@ use crate::{
     template::Page,
     tournaments::{
         Tournament,
-        manage::sidebar::SidebarWrapper,
-        rounds::{Round, TournamentRounds, draws::RoundDrawRepr, side_names},
+        rounds::{Round, draws::RoundDrawRepr, side_names},
     },
     util_resp::{StandardResponse, err_not_found, see_other_ok, success},
 };
@@ -38,8 +37,6 @@ pub async fn view_results_page(
         return err_not_found();
     }
 
-    let all_rounds = TournamentRounds::fetch(&tid, &mut *conn).unwrap();
-
     let current_rounds = Round::current_rounds(&tid, &mut *conn);
 
     if !tournament.show_round_results {
@@ -49,7 +46,7 @@ pub async fn view_results_page(
                 .tournament(tournament.clone())
                 .current_rounds(current_rounds)
                 .body(maud! {
-                    SidebarWrapper tournament=(&tournament) rounds=(&all_rounds) {
+                    div class="container py-5 px-4" {
                         div class="alert alert-warning" {
                             "This tournament does not make round results publicly available."
                         }
@@ -73,7 +70,7 @@ pub async fn view_results_page(
                     .tournament(tournament.clone())
                     .current_rounds(current_rounds.clone())
                     .body(maud! {
-                        SidebarWrapper tournament=(&tournament) rounds=(&all_rounds) {
+                        div class="container py-5 px-4" {
                             div class="alert alert-info" {
                                 "The results for "
                                 @if rounds_in_seq.len() > 1 {
@@ -147,7 +144,7 @@ pub async fn view_results_page(
             .tournament(tournament.clone())
             .current_rounds(current_rounds)
             .body(maud! {
-                SidebarWrapper tournament=(&tournament) rounds=(&all_rounds) {
+                div class="container py-5 px-4" {
                     div class="container-fluid" {
                         @if !unpublished_rounds.is_empty() {
                             div class="alert alert-info" {

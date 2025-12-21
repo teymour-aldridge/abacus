@@ -48,7 +48,7 @@ pub async fn create_new_round(
         .user(user)
         .current_rounds(current_rounds)
         .body(maud! {
-            SidebarWrapper tournament=(&tournament) rounds=(&rounds) {
+            SidebarWrapper tournament=(&tournament) rounds=(&rounds) active_page=(None) selected_seq=(None) {
                 h1 {
                     "Please select a category in which to create this round"
                 }
@@ -120,7 +120,7 @@ pub async fn create_new_round_of_specific_category_page(
             .user(user)
             .current_rounds(current_rounds)
             .body(maud! {
-                SidebarWrapper tournament=(&tournament) rounds=(&rounds)  {
+                SidebarWrapper tournament=(&tournament) rounds=(&rounds) active_page=(None) selected_seq=(None) {
                     form method="post" {
                         div class="mb-3" {
                             label for="roundName" class="form-label" {

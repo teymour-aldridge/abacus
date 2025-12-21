@@ -90,14 +90,14 @@ pub async fn edit_multiple_draws_page(
     let participants = TournamentParticipants::load(&tournament_id, &mut *conn);
 
     success(
-        Page::default()
+        Page::new()
             .tournament(tournament.clone())
             .user(user)
             .extra_head(maud! {
                 script src="https://cdn.jsdelivr.net/npm/htmx-ext-ws@2.0.2" crossorigin="anonymous" {}
             })
             .body(maud! {
-                SidebarWrapper rounds=(&all_rounds) tournament=(&tournament) {
+                SidebarWrapper rounds=(&all_rounds) tournament=(&tournament) active_page=(Some("draw")) selected_seq=(Some(reprs[0].round.seq)) {
                     script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.3/Sortable.min.js" {}
                     script src="https://cdn.jsdelivr.net/npm/htmx-ext-response-targets@2.0.2" {
                     }

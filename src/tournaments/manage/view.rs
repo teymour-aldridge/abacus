@@ -35,7 +35,7 @@ pub async fn admin_view_tournament(
         .tournament(tournament.clone())
         .current_rounds(active_rounds.clone())
         .body(maud! {
-            SidebarWrapper tournament=(&tournament) rounds=(&rounds) {
+            SidebarWrapper tournament=(&tournament) rounds=(&rounds) active_page=(None) selected_seq=(None) {
                 h1 {
                     "Overview"
                 }

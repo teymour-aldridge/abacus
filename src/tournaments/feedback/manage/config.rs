@@ -62,7 +62,7 @@ impl Renderable for FeedbackConfigRenderer {
         buffer: &mut hypertext::Buffer<hypertext::context::Node>,
     ) {
         maud! {
-            SidebarWrapper tournament=(&self.tournament) rounds=(&self.rounds) {
+            SidebarWrapper tournament=(&self.tournament) rounds=(&self.rounds) active_page=(None) selected_seq=(None) {
                 div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom" {
                     h1 class="h2" { "Feedback Configuration" }
                 }
@@ -192,7 +192,7 @@ impl Renderable for EditFeedbackQuestionRenderer {
         buffer: &mut hypertext::Buffer<hypertext::context::Node>,
     ) {
         maud! {
-            SidebarWrapper tournament=(&self.tournament) rounds=(&self.rounds) {
+            SidebarWrapper tournament=(&self.tournament) rounds=(&self.rounds) active_page=(None) selected_seq=(None) {
                 h1 { "Edit Feedback Question" }
                 form method="post" action=(format!("/tournaments/{}/feedback/manage/{}/edit", self.tournament.id, self.question.id)) {
                     @let kind: FeedbackQuestionKind = serde_json::from_str(&self.question.kind).unwrap();

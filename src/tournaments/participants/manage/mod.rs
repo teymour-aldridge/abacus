@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use crate::{
     state::Conn,
-    tournaments::{manage::sidebar::SidebarWrapper, rounds::TournamentRounds},
+    tournaments::rounds::TournamentRounds,
     util_resp::{StandardResponse, success},
 };
 use axum::{
@@ -166,7 +166,7 @@ pub struct ManageParticipantsQuery {
     table_only: Option<bool>,
 }
 
-pub async fn manage_tournament_participants(
+pub async fn manage_tournament_participants_impl(
     Path(tid): Path<String>,
     user: User<true>,
     mut conn: Conn<true>,
@@ -186,26 +186,68 @@ pub async fn manage_tournament_participants(
         success(table.render())
     } else {
         success(
-            Page::new_full()
+            Page::new()
                 .user(user)
                 .tournament(tournament.clone())
                 .extra_head(maud! {
                     script src="https://cdn.jsdelivr.net/npm/htmx-ext-ws@2.0.2" crossorigin="anonymous" {
                     }
                 })
-                .current_rounds(current_rounds)
+                .current_rounds(current_rounds.clone())
                 .body(maud! {
-                    SidebarWrapper tournament=(&tournament) rounds=(&rounds) {
-                        h1 {
-                            "Participants"
-                        }
-
-                        (table)
+                    h1 {
+                        "Participants"
                     }
+
+                    (table)
+                })
+                .sidebar(crate::tournaments::manage::sidebar::Sidebar {
+                    tournament: &tournament,
+                    rounds: &rounds,
+                    selected_seq: current_rounds.first().map(|r| r.seq),
+                    active_page: None,
                 })
                 .render(),
         )
     }
+}
+
+pub async fn manage_tournament_participants(
+    Path(tid): Path<String>,
+    user: Option<User<true>>,
+    mut conn: Conn<true>,
+    Query(query): Query<ManageParticipantsQuery>,
+) -> StandardResponse {
+    if let Some(user) = user {
+        // Check permissions
+        let tournament = Tournament::fetch(&tid, &mut *conn)?;
+        if tournament
+            .check_user_is_superuser(&user.id, &mut *conn)
+            .is_ok()
+        {
+            return manage_tournament_participants_impl(
+                Path(tid),
+                user,
+                conn,
+                Query(query),
+            )
+            .await;
+        }
+
+        return crate::tournaments::participants::public::public_participants_page(
+            Path(tid),
+            Some(user),
+            conn,
+        )
+        .await;
+    }
+
+    crate::tournaments::participants::public::public_participants_page(
+        Path(tid),
+        None,
+        conn,
+    )
+    .await
 }
 
 pub async fn tournament_participant_updates(

@@ -178,7 +178,7 @@ pub async fn view_team_availability(
             .tournament(tournament.clone())
             .current_rounds(current_rounds.clone())
             .body(maud! {
-                SidebarWrapper rounds=(&rounds) tournament=(&tournament) {
+                SidebarWrapper rounds=(&rounds) tournament=(&tournament) active_page=(Some("setup")) selected_seq=(Some(round_seq as i64)) {
                     h1 {
                         "Manage availabilities for rounds "
                         @for (i, round) in current_rounds.iter().enumerate() {

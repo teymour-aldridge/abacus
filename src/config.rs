@@ -28,8 +28,6 @@ use crate::{
     template::Page,
     tournaments::Tournament,
     util_resp::{StandardResponse, success},
-    widgets::actions::Actions,
-    // widgets::actions::Actions,
 };
 
 async fn home(
@@ -49,36 +47,41 @@ async fn home(
             .unwrap(); // In production avoid unwrap
 
         let tournaments_html = maud! {
-            h1 {"My tournaments"}
+            div class="d-flex justify-content-between align-items-center mb-4" {
+                h1 class="h3 mb-0 fw-bold" { "My Tournaments" }
+                a href="/tournaments/create" class="btn btn-primary" {
+                    span class="material-icons align-middle me-1" style="font-size: 1.2rem;" { "add" }
+                    "New Tournament"
+                }
+            }
+
             @if tournaments_list.is_empty() {
-                p {"You are not a member of any tournaments"}
+                div class="text-center py-5 text-muted" {
+                    span class="material-icons display-4 mb-3 text-secondary" { "emoji_events" }
+                    p class="h5" { "You are not a member of any tournaments." }
+                    p { "Create one to get started!" }
+                }
             } @else {
-                table class = "table" {
-                    thead {
-                        tr  {
-                            th scope="col" {
-                                "#"
-                            }
-                            th scope="col" {
-                                "Tournament name"
-                            }
-                            th scope="col" {
-                                "Actions"
-                            }
-                        }
-                    }
-                    tbody {
-                        @for (i, tournament) in tournaments_list.iter().enumerate() {
-                            tr {
-                                th scope="col" {
-                                    (i + 1)
+                div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4" {
+                    @for tournament in &tournaments_list {
+                        div class="col" {
+                            div class="card h-100 shadow-sm" {
+                                div class="card-body" {
+                                    div class="d-flex justify-content-between align-items-start mb-2" {
+                                        h5 class="card-title fw-bold text-primary mb-0" {
+                                            (tournament.name)
+                                        }
+                                        span class="badge bg-light text-dark border" {
+                                            (tournament.abbrv)
+                                        }
+                                    }
+                                    p class="card-text text-secondary small" {
+                                        "Created " (tournament.created_at.format("%b %d, %Y").to_string())
+                                    }
                                 }
-                                td {
-                                    (tournament.name)
-                                }
-                                td {
-                                    a href=(format!("/tournaments/{}", tournament.id)) {
-                                        "View"
+                                div class="card-footer bg-transparent border-top-0 d-flex justify-content-end pb-3 pt-0" {
+                                    a href=(format!("/tournaments/{}", tournament.id)) class="btn btn-sm btn-outline-secondary" {
+                                        "View Dashboard"
                                     }
                                 }
                             }
@@ -92,8 +95,7 @@ async fn home(
             Page::new()
                 .user(user)
                 .body(maud! {
-                    div class="p-3" {
-                        Actions options=(&[("/tournaments/create", "Create tournament")]);
+                    div class="container py-4" {
                         (tournaments_html)
                     }
                 })
@@ -104,9 +106,15 @@ async fn home(
             Page::new()
                 .user_opt(None::<User<true>>)
                 .body(maud! {
-                    div class="container-fluid p-3" {
-                        h1 { "Abacus" }
-                        p { "Welcome to Abacus." }
+                    div class="container py-5" {
+                        div class="text-center py-5" {
+                            h1 class="display-4 fw-bold mb-4" { "Abacus" }
+                            p class="lead text-secondary mb-5" { "Tabulation software for debating tournaments." }
+                            div class="d-flex justify-content-center gap-3" {
+                                a href="/login" class="btn btn-primary btn-lg px-4" { "Login" }
+                                a href="/register" class="btn btn-outline-secondary btn-lg px-4" { "Register" }
+                            }
+                        }
                     }
                 })
                 .render(),
@@ -235,7 +243,7 @@ pub async fn run() {
 
 
         // Public Participants
-        .route("/tournaments/:id/participants/public", get(crate::tournaments::participants::public::public_participants_page))
+
 
         // Public Motions
         .route("/tournaments/:id/motions", get(crate::tournaments::motions::public_motions_page))

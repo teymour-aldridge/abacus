@@ -125,7 +125,7 @@ pub async fn setup_round_page(
         .tournament(tournament.clone())
         .current_rounds(current_rounds)
         .body(maud! {
-            SidebarWrapper tournament=(&tournament) rounds=(&all_rounds) {
+            SidebarWrapper tournament=(&tournament) rounds=(&all_rounds) active_page=(Some("setup")) selected_seq=(Some(round_seq)) {
                 div class="d-flex justify-content-between" {
                     h1 {
                         "Setup for rounds with sequence "

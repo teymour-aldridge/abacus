@@ -47,7 +47,7 @@ pub async fn create_judge_page(
         .user(user)
         .tournament(tournament.clone())
         .body(maud! {
-            SidebarWrapper rounds=(&rounds) tournament=(&tournament) {
+            SidebarWrapper rounds=(&rounds) tournament=(&tournament) active_page=(None) selected_seq=(None) {
                 form method="post" {
                     h1 {
                         "Create new judge"

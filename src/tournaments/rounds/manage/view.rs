@@ -40,7 +40,7 @@ pub async fn view_tournament_rounds_page(
             .user(user)
             .current_rounds(current_rounds)
             .body(maud! {
-                SidebarWrapper tournament=(&tournament) rounds=(&all_rounds) {
+                SidebarWrapper tournament=(&tournament) rounds=(&all_rounds) active_page=(None) selected_seq=(Some(rid)) {
                     h1 {
                         "Rounds "
                             @for (i, round) in rounds.iter().enumerate() {

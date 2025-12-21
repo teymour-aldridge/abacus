@@ -115,7 +115,7 @@ pub async fn do_register(
             let is_email_problem = user.email == form.email;
 
             (jar, bad_request(
-                Page::<_, _, true>::new()
+                Page::<_, _, _, true>::new()
                     .body(maud! {
                         div class="alert alert-danger" {
                             (match is_email_problem {

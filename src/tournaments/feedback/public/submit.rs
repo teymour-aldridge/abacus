@@ -26,7 +26,7 @@ use crate::{
         },
         participants::{Judge, Speaker},
         privateurls::ParticipantKind,
-        rounds::{Round, TournamentRounds, draws::Debate},
+        rounds::{Round, draws::Debate},
     },
     util_resp::{FailureResponse, StandardResponse, err_not_found, success},
 };
@@ -121,7 +121,7 @@ pub async fn submit_feedback_page(
                 } else {
                     ParticipantKind::Speaker
                 },
-                tournament,
+                // tournament,
             })
             .render(),
     )
@@ -132,7 +132,7 @@ struct FeedbackFormRenderer {
     targets: Vec<Judge>,
     questions: Vec<FeedbackQuestion>,
     submitter_kind: ParticipantKind,
-    tournament: Tournament,
+    // tournament: Tournament,
 }
 
 impl Renderable for FeedbackFormRenderer {

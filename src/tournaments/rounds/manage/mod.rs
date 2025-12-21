@@ -66,7 +66,7 @@ pub async fn manage_rounds_page(
             .user(user)
             .current_rounds(current_rounds)
             .body(maud! {
-                SidebarWrapper tournament=(&tournament) rounds=(&rounds) {
+                SidebarWrapper tournament=(&tournament) rounds=(&rounds) active_page=(None) selected_seq=(None) {
                     h1 {
                         "Rounds for " (tournament.name)
                     }

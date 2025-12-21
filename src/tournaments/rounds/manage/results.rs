@@ -39,7 +39,7 @@ pub async fn manage_results_page(
             .user(user)
             .tournament(tournament.clone())
             .body(maud! {
-                SidebarWrapper tournament=(&tournament) rounds=(&all_rounds) {
+                SidebarWrapper tournament=(&tournament) rounds=(&all_rounds) active_page=(Some("results")) selected_seq=(Some(round_seq)) {
                     div class="container" {
                         h1 {
                             "Results"

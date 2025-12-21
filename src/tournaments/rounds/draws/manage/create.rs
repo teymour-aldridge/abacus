@@ -61,7 +61,7 @@ pub async fn generate_draw_page(
             .tournament(tournament.clone())
             .user(user)
             .body(maud! {
-                SidebarWrapper  tournament=(&tournament) rounds=(&rounds) {
+                SidebarWrapper tournament=(&tournament) rounds=(&rounds) active_page=(Some("draw")) selected_seq=(Some(round.seq)) {
                     @if debates_exist {
                         ErrorAlert
                             msg = "Warning: a draw already exists for this round. Creating

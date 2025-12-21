@@ -57,12 +57,18 @@ pub async fn view_ballot_set_page(
         problems
     };
 
+    let round = crate::tournaments::rounds::Round::fetch(
+        &debate.debate.round_id,
+        &mut *conn,
+    )
+    .unwrap();
+
     success(
         Page::new()
             .user(user)
             .tournament(tournament.clone())
             .body(maud! {
-                SidebarWrapper rounds=(&all_rounds) tournament=(&tournament) {
+                SidebarWrapper rounds=(&all_rounds) tournament=(&tournament) active_page=(Some("ballots")) selected_seq=(Some(round.seq)) {
                     div class="container py-5" style="max-width: 800px;" {
                         header class="mb-5" {
                             h1 class="display-4 fw-bold mb-3" {

@@ -56,7 +56,7 @@ pub async fn view_draws_page(
             .tournament(tournament.clone())
             .current_rounds(current_rounds)
             .body(maud! {
-                SidebarWrapper  tournament=(&tournament) rounds=(&all_rounds) {
+                SidebarWrapper  tournament=(&tournament) rounds=(&all_rounds) selected_seq=(Some(round_seq)) active_page=(Some("draw")) {
                     div class="d-flex justify-content-between" {
                         h1 {
                             "Draws for rounds with sequence "

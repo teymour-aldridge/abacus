@@ -90,7 +90,7 @@ pub async fn view_tournament_configuration(
             .tournament(tournament.clone())
             .current_rounds(current_rounds)
             .body(maud! {
-                SidebarWrapper tournament=(&tournament) rounds=(&rounds) {
+                SidebarWrapper tournament=(&tournament) rounds=(&rounds) active_page=(None) selected_seq=(None) {
                     h1 {
                         "Edit configuration for " (tournament.name)
                     }

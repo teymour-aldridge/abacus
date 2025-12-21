@@ -221,7 +221,7 @@ pub async fn view_judge_availability(
                 .into_inner()
             )
             .body(maud! {
-                SidebarWrapper tournament=(&tournament) rounds=(&rounds) {
+                SidebarWrapper tournament=(&tournament) rounds=(&rounds) active_page=(Some("setup")) selected_seq=(Some(round_seq)) {
                     h1 {
                         "Manage judge availability for rounds "
                         @for (i, round) in current_rounds.iter().enumerate() {

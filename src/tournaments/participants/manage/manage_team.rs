@@ -67,7 +67,7 @@ pub async fn manage_team_page(
             .user(user)
             .tournament(tournament.clone())
             .body(maud! {
-                SidebarWrapper tournament=(&tournament) rounds=(&rounds) {
+                SidebarWrapper tournament=(&tournament) rounds=(&rounds) active_page=(None) selected_seq=(None) {
                     h1 {
                         "Team " (team.name)
                     }

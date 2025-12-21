@@ -38,7 +38,7 @@ impl Renderable for BriefingRoomView {
             .map(|r| r.name.clone())
             .unwrap_or_else(|| "Unknown".to_string());
         maud! {
-            div class="container" {
+            div {
                 h1 {
                     "Briefing Room for "
                     (round_name)
@@ -132,7 +132,7 @@ pub async fn get_briefing_room(
             .user(user)
             .tournament(tournament.clone())
             .body(maud! {
-                SidebarWrapper  tournament=(&tournament) rounds=(&all_rounds) {
+                SidebarWrapper tournament=(&tournament) rounds=(&all_rounds) active_page=(Some("briefing")) selected_seq=(Some(round_seq)) {
                     (view)
                 }
             })

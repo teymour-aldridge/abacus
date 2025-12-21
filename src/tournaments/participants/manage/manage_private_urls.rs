@@ -27,7 +27,7 @@ pub async fn view_private_urls(
             .tournament(tournament.clone())
             .user(user)
             .body(maud! {
-                SidebarWrapper tournament=(&tournament) rounds=(&rounds) {
+                SidebarWrapper tournament=(&tournament) rounds=(&rounds) active_page=(None) selected_seq=(None) {
                     table class="table" {
                         thead {
                             tr {

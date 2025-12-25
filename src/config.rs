@@ -47,44 +47,38 @@ async fn home(
             .unwrap(); // In production avoid unwrap
 
         let tournaments_html = maud! {
-            div class="d-flex justify-content-between align-items-center mb-4" {
-                h1 class="h3 mb-0 fw-bold" { "My Tournaments" }
-                a href="/tournaments/create" class="btn btn-primary" {
-                    span class="material-icons align-middle me-1" style="font-size: 1.2rem;" { "add" }
-                    "New Tournament"
-                }
-            }
+            div class="row" {
+                div class="col-md-8" {
+                    h1 class="h1 fw-bold mb-4" { "My Tournaments" }
 
-            @if tournaments_list.is_empty() {
-                div class="text-center py-5 text-muted" {
-                    span class="material-icons display-4 mb-3 text-secondary" { "emoji_events" }
-                    p class="h5" { "You are not a member of any tournaments." }
-                    p { "Create one to get started!" }
-                }
-            } @else {
-                div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4" {
-                    @for tournament in &tournaments_list {
-                        div class="col" {
-                            div class="card h-100 shadow-sm" {
-                                div class="card-body" {
-                                    div class="d-flex justify-content-between align-items-start mb-2" {
-                                        h5 class="card-title fw-bold text-primary mb-0" {
+                    @if tournaments_list.is_empty() {
+                        p class="lead" { "You are not a member of any tournaments yet." }
+                    } @else {
+                        div class="list-group list-group-flush border-top" {
+                            @for tournament in &tournaments_list {
+                                div class="list-group-item py-4" {
+                                    h3 class="h3 mb-2" {
+                                        a href=(format!("/tournaments/{}", tournament.id)) class="text-decoration-none text-dark hover-underline fw-bold" {
                                             (tournament.name)
                                         }
-                                        span class="badge bg-light text-dark border" {
-                                            (tournament.abbrv)
-                                        }
                                     }
-                                    p class="card-text text-secondary small" {
-                                        "Created " (tournament.created_at.format("%b %d, %Y").to_string())
+                                    p class="text-secondary mb-1" {
+                                        "Abbreviation: " (tournament.abbrv)
                                     }
-                                }
-                                div class="card-footer bg-transparent border-top-0 d-flex justify-content-end pb-3 pt-0" {
-                                    a href=(format!("/tournaments/{}", tournament.id)) class="btn btn-sm btn-outline-secondary" {
-                                        "View Dashboard"
+                                    small class="text-secondary" {
+                                        "Created " (tournament.created_at.format("%d %B %Y").to_string())
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+                div class="col-md-4" {
+                    div class="bg-light p-4 border-top border-4 border-primary" {
+                        h2 class="h4 fw-bold mb-3" { "Actions" }
+                        p class="mb-3" { "Start a new tournament to begin tabulating." }
+                        a href="/tournaments/create" class="btn btn-primary d-block w-100 fw-bold" {
+                            "Create new tournament"
                         }
                     }
                 }

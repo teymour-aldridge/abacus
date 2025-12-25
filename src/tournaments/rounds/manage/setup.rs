@@ -121,6 +121,7 @@ pub async fn setup_round_page(
     let current_rounds = Round::current_rounds(&tid, &mut *conn);
 
     success(Page::new()
+        .active_nav("draw")
         .user(user)
         .tournament(tournament.clone())
         .current_rounds(current_rounds)

@@ -20,6 +20,7 @@ pub struct Page<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool>
     sidebar: Option<R3>,
     tournament: Option<Tournament>,
     current_rounds: Option<Vec<Round>>,
+    active_nav: Option<&'static str>,
 }
 
 // unfortunate generic argument shenanigans
@@ -56,6 +57,7 @@ impl<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool>
             sidebar: self.sidebar,
             tournament: self.tournament,
             current_rounds: self.current_rounds,
+            active_nav: self.active_nav,
         }
     }
 
@@ -75,6 +77,7 @@ impl<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool>
             sidebar: self.sidebar,
             tournament: self.tournament,
             current_rounds: self.current_rounds,
+            active_nav: self.active_nav,
         }
     }
 
@@ -89,6 +92,7 @@ impl<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool>
             sidebar: Some(sidebar),
             tournament: self.tournament,
             current_rounds: self.current_rounds,
+            active_nav: self.active_nav,
         }
     }
 
@@ -99,6 +103,11 @@ impl<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool>
 
     pub fn current_rounds(mut self, rounds: Vec<Round>) -> Self {
         self.current_rounds = Some(rounds);
+        self
+    }
+
+    pub fn active_nav(mut self, nav: &'static str) -> Self {
+        self.active_nav = Some(nav);
         self
     }
 }
@@ -131,8 +140,8 @@ impl<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool> Renderable
                 body class="d-flex flex-column vh-100 overflow-hidden" {
                     // Header / Navbar (Full Width)
                     div class="border-bottom bg-white flex-shrink-0" {
-                        div class="container-fluid py-3" {
-                            div class="d-flex align-items-center justify-content-between mb-3" {
+                        div class="container-fluid px-4 pt-2 pb-3" {
+                            div class="d-flex align-items-center justify-content-between mb-2" {
                                 div class="d-flex align-items-center gap-3" {
                                     @if let Some(tournament) = &self.tournament {
                                         a class="h2 mb-0 text-dark text-decoration-none fw-bold"
@@ -168,12 +177,12 @@ impl<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool> Renderable
                                                 @let is_results_pub = rounds.iter().all(|r| r.is_results_public());
 
                                                 @if is_results_pub {
-                                                    a class="nav-link px-0 d-flex align-items-center text-secondary" href=(format!("/tournaments/{}/rounds/{}/results", tournament.id, seq)) {
+                                                    a class=(format!("nav-link px-0 d-flex align-items-center {}", if self.active_nav == Some("results") { "text-dark fw-bold" } else { "text-secondary" })) href=(format!("/tournaments/{}/rounds/{}/results", tournament.id, seq)) {
                                                         span class="material-icons me-2 fs-5" { "assessment" }
                                                         "Results"
                                                     }
                                                 } @else if is_draw_pub {
-                                                    a class="nav-link px-0 d-flex align-items-center text-secondary" href=(format!("/tournaments/{}/rounds/{}/draw", tournament.id, seq)) {
+                                                    a class=(format!("nav-link px-0 d-flex align-items-center {}", if self.active_nav == Some("draw") { "text-dark fw-bold" } else { "text-secondary" })) href=(format!("/tournaments/{}/rounds/{}/draw", tournament.id, seq)) {
                                                         span class="material-icons me-2 fs-5" { "grid_view" }
                                                         "Draw"
                                                     }
@@ -181,19 +190,19 @@ impl<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool> Renderable
                                             }
                                         }
 
-                                        a class="nav-link px-0 d-flex align-items-center text-secondary" href=(format!("/tournaments/{}/participants", tournament.id)) {
+                                        a class=(format!("nav-link px-0 d-flex align-items-center {}", if self.active_nav == Some("participants") { "text-dark fw-bold" } else { "text-secondary" })) href=(format!("/tournaments/{}/participants", tournament.id)) {
                                             span class="material-icons me-2 fs-5" { "groups" }
                                             "Participants"
                                         }
 
                                         @if tournament.standings_public || tournament.team_tab_public {
-                                            a class="nav-link px-0 d-flex align-items-center text-secondary" href=(format!("/tournaments/{}/tab/team", tournament.id)) {
+                                            a class=(format!("nav-link px-0 d-flex align-items-center {}", if self.active_nav == Some("standings") { "text-dark fw-bold" } else { "text-secondary" })) href=(format!("/tournaments/{}/tab/team", tournament.id)) {
                                                 span class="material-icons me-2 fs-5" { "leaderboard" }
                                                 "Standings"
                                             }
                                         }
 
-                                        a class="nav-link px-0 d-flex align-items-center text-secondary" href=(format!("/tournaments/{}/motions", tournament.id)) {
+                                        a class=(format!("nav-link px-0 d-flex align-items-center {}", if self.active_nav == Some("motions") { "text-dark fw-bold" } else { "text-secondary" })) href=(format!("/tournaments/{}/motions", tournament.id)) {
                                             span class="material-icons me-2 fs-5" { "article" }
                                             "Motions"
                                         }
@@ -206,13 +215,15 @@ impl<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool> Renderable
                     // Secondary Sidebar / Toolbar (Horizontal)
                     @if let Some(sidebar) = &self.sidebar {
                         div class="border-bottom bg-light" {
-                            (sidebar)
+                            div class="container-fluid px-4" {
+                                (sidebar)
+                            }
                         }
                     }
 
                     // Main Content (Full Width)
                     div class="flex-grow-1 overflow-auto bg-white" {
-                        div class="container-fluid px-4 py-4" {
+                        div class="container-fluid px-4 pt-0 pb-4" {
                             @if let Some(body) = &self.body {
                                 (body)
                             }
@@ -235,6 +246,7 @@ impl<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool> Default
             extra_head: Default::default(),
             sidebar: Default::default(),
             current_rounds: Default::default(),
+            active_nav: Default::default(),
         }
     }
 }

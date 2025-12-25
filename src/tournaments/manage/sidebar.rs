@@ -18,10 +18,10 @@ impl<R: Renderable> Renderable for SidebarWrapper<'_, R> {
     ) {
         maud! {
             div class="d-flex flex-column h-100" {
-                div class="border-bottom" {
+                div class="border-bottom bg-light" {
                     Sidebar tournament=(&self.tournament) rounds=(&self.rounds) selected_seq=(self.selected_seq) active_page=(self.active_page);
                 }
-                div class="flex-grow-1 container-fluid p-4" {
+                div class="flex-grow-1 py-4" {
                     (self.children)
                 }
             }
@@ -103,8 +103,6 @@ impl<'r> Renderable for Sidebar<'r> {
                     }
 
                     div class="vr opacity-25" {}
-
-// ... (Sidebar struct definition to be updated separately)
 
                     // Action Navigation
                     @if let Some(seq) = self.selected_seq {

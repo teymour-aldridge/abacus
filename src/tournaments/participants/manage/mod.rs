@@ -25,7 +25,10 @@ use crate::{
     schema::tournaments,
     state::DbPool,
     template::Page,
-    tournaments::{Tournament, participants::TournamentParticipants},
+    tournaments::{
+        Tournament, manage::sidebar::SidebarWrapper,
+        participants::TournamentParticipants,
+    },
 };
 
 pub mod create_judge;
@@ -187,6 +190,7 @@ pub async fn manage_tournament_participants_impl(
     } else {
         success(
             Page::new()
+                .active_nav("participants")
                 .user(user)
                 .tournament(tournament.clone())
                 .extra_head(maud! {
@@ -195,17 +199,13 @@ pub async fn manage_tournament_participants_impl(
                 })
                 .current_rounds(current_rounds.clone())
                 .body(maud! {
-                    h1 {
-                        "Participants"
-                    }
+                    SidebarWrapper tournament=(&tournament) rounds=(&rounds) selected_seq=(current_rounds.first().map(|r| r.seq)) active_page=(None) {
+                        h1 {
+                            "Participants"
+                        }
 
-                    (table)
-                })
-                .sidebar(crate::tournaments::manage::sidebar::Sidebar {
-                    tournament: &tournament,
-                    rounds: &rounds,
-                    selected_seq: current_rounds.first().map(|r| r.seq),
-                    active_page: None,
+                        (table)
+                    }
                 })
                 .render(),
         )

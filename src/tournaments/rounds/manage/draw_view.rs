@@ -52,6 +52,7 @@ pub async fn view_draws_page(
 
     success(
         Page::new()
+            .active_nav("draw")
             .user(user)
             .tournament(tournament.clone())
             .current_rounds(current_rounds)

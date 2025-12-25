@@ -47,6 +47,7 @@ pub async fn public_motions_page(
 
     success(
         Page::new()
+            .active_nav("motions")
             .user_opt(user)
             .tournament(tournament.clone())
             .current_rounds(current_rounds)

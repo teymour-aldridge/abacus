@@ -44,6 +44,7 @@ pub async fn public_team_tab_page(
 
     if show_full_tab {
         success(Page::new()
+            .active_nav("standings")
             .tournament(tournament)
             .user_opt(user)
             .current_rounds(current_rounds)
@@ -135,6 +136,7 @@ pub async fn public_team_tab_page(
 
         success(
             Page::new()
+                .active_nav("standings")
                 .tournament(tournament)
                 .user_opt(user)
                 .current_rounds(current_rounds)

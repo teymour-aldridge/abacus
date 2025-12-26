@@ -17,13 +17,12 @@ impl<R: Renderable> Renderable for SidebarWrapper<'_, R> {
         buffer: &mut hypertext::Buffer<hypertext::context::Node>,
     ) {
         maud! {
-            div class="d-flex flex-column h-100" {
-                div class="border-bottom bg-light" {
-                    Sidebar tournament=(&self.tournament) rounds=(&self.rounds) selected_seq=(self.selected_seq) active_page=(self.active_page);
-                }
-                div class="flex-grow-1 py-4" {
-                    (self.children)
-                }
+
+            div class="border-bottom px-4 pt-2 pb-0" style="background-color: #f8f9fa;" {
+                Sidebar tournament=(&self.tournament) rounds=(&self.rounds) selected_seq=(self.selected_seq) active_page=(self.active_page);
+            }
+            div class="px-4 py-4" {
+                (self.children)
             }
         }
         .render_to(buffer);
@@ -67,107 +66,75 @@ impl<'r> Renderable for Sidebar<'r> {
         };
 
         maud! {
-            div class="py-2" {
-                div class="d-flex align-items-center gap-3" {
-                    // Round Selector Dropdown
-                    div class="dropdown" {
-                        button class="btn btn-sm btn-light border dropdown-toggle fw-bold d-flex align-items-center gap-2 bg-white"
-                            type="button" data-bs-toggle="dropdown" aria-expanded="false" {
-                            span class="material-icons fs-6 text-secondary" { "view_agenda" }
-                            (current_round_name)
-                        }
-                        ul class="dropdown-menu shadow-sm" {
-                            @for level in &grouped_rounds {
-                                @let seq = level[0].seq;
-                                @let name = level.iter().map(|r| r.name.as_str()).collect::<Vec<_>>().join("/");
-                                @let draw_status = level.iter().map(|r| r.draw_status.as_str()).next().unwrap_or("none");
-                                @let url = if draw_status == "none" {
-                                    format!("/tournaments/{}/rounds/{}/setup", self.tournament.id, seq)
-                                } else if draw_status == "generated" || draw_status == "draft" {
-                                    format!("/tournaments/{}/rounds/{}/draw/manage", self.tournament.id, seq)
-                                } else {
-                                    format!("/tournaments/{}/rounds/{}/briefing", self.tournament.id, seq)
-                                };
+            div class="d-flex align-items-center gap-4" {
+                div class="dropdown" {
+                    button class="btn btn-sm dropdown-toggle d-flex align-items-center gap-2"
+                        type="button" data-bs-toggle="dropdown" aria-expanded="false"
+                        style="font-weight: 600; color: #212529; background: transparent; border: none; padding-left: 0;" {
+                        span class="material-icons" style="font-size: 1rem; color: #6c757d;" { "view_agenda" }
+                        (current_round_name)
+                    }
+                    ul class="dropdown-menu shadow-sm" style="min-width: 200px;" {
+                        @for level in &grouped_rounds {
+                            @let seq = level[0].seq;
+                            @let name = level.iter().map(|r| r.name.as_str()).collect::<Vec<_>>().join("/");
+                            @let draw_status = level.iter().map(|r| r.draw_status.as_str()).next().unwrap_or("none");
+                            @let url = if draw_status == "none" {
+                                format!("/tournaments/{}/rounds/{}/setup", self.tournament.id, seq)
+                            } else if draw_status == "generated" || draw_status == "draft" {
+                                format!("/tournaments/{}/rounds/{}/draw/manage", self.tournament.id, seq)
+                            } else {
+                                format!("/tournaments/{}/rounds/{}/briefing", self.tournament.id, seq)
+                            };
+                            @let is_selected = self.selected_seq == Some(seq);
+                            @let is_active = active_round_seq == Some(seq);
 
-                                li {
-                                    a class="dropdown-item d-flex align-items-center gap-2"
-                                        href=(url) {
-                                        (name)
-                                        @if active_round_seq == Some(seq) {
-                                            " (active)"
+                            li {
+                                a class="dropdown-item py-2"
+                                    href=(url)
+                                    style=(if is_selected { "font-weight: 600; color: #212529;" } else { "color: #495057;" }) {
+                                    div class="d-flex align-items-center justify-content-between gap-3" {
+                                        span { (name) }
+                                        @if is_active {
+                                            span class="text-muted" style="font-size: 0.6875rem; font-weight: 400; white-space: nowrap;" { "current" }
                                         }
                                     }
                                 }
                             }
                         }
                     }
+                }
 
-                    div class="vr opacity-25" {}
+                div class="vr opacity-25" {}
 
-                    // Action Navigation
-                    @if let Some(seq) = self.selected_seq {
-                        @let rounds_at_seq = grouped_rounds.iter().find(|level| level[0].seq == seq);
-                        @let active_stage = if active_round_seq == Some(seq) {
-                            if let Some(rounds) = rounds_at_seq {
-                                let r = &rounds[0]; // Assuming concurrent rounds share status for simplicity, or taking first
-                                if r.completed {
-                                    "results"
-                                } else if r.draw_status == "released_full" {
-                                    "ballots"
-                                } else if r.draw_status == "released_teams" {
-                                    "briefing"
-                                } else if r.draw_status == "generated" || r.draw_status == "draft" {
-                                    "draw"
-                                } else {
-                                    "setup"
-                                }
-                            } else {
-                                ""
-                            }
-                        } else {
-                            ""
-                        };
 
-                        nav class="nav nav-pills gap-1" {
-                            a class=(format!("nav-link py-1 px-3 fw-medium {}", if self.active_page == Some("setup") { "text-dark fw-bold" } else { "text-secondary" }))
-                                href=(format!("/tournaments/{}/rounds/{}/setup", self.tournament.id, seq)) {
-                                "Setup"
-                                @if active_stage == "setup" { " (active)" }
-                            }
+                @if let Some(seq) = self.selected_seq {
+                    nav class="d-flex align-items-center gap-3" style="margin-bottom: -1px;" {
+                        a class=(format!("sidebar-stage-tab text-decoration-none {}", if self.active_page == Some("setup") { "sidebar-stage-active" } else { "" }))
+                            href=(format!("/tournaments/{}/rounds/{}/setup", self.tournament.id, seq)) {
+                            "Setup"
+                        }
 
-                            a class=(format!("nav-link py-1 px-3 fw-medium {}", if self.active_page == Some("draw") { "text-dark fw-bold" } else { "text-secondary" }))
-                                href=(format!("/tournaments/{}/rounds/{}/draw/manage", self.tournament.id, seq)) {
-                                "Draw"
-                                @if active_stage == "draw" { " (active)" }
-                            }
+                        a class=(format!("sidebar-stage-tab text-decoration-none {}", if self.active_page == Some("draw") { "sidebar-stage-active" } else { "" }))
+                            href=(format!("/tournaments/{}/rounds/{}/draw/manage", self.tournament.id, seq)) {
+                            "Draw"
+                        }
 
-                            a class=(format!("nav-link py-1 px-3 fw-medium {}", if self.active_page == Some("briefing") { "text-dark fw-bold" } else { "text-secondary" }))
-                                href=(format!("/tournaments/{}/rounds/{}/briefing", self.tournament.id, seq)) {
-                                "Briefing"
-                                @if active_stage == "briefing" { " (active)" }
-                            }
+                        a class=(format!("sidebar-stage-tab text-decoration-none {}", if self.active_page == Some("briefing") { "sidebar-stage-active" } else { "" }))
+                            href=(format!("/tournaments/{}/rounds/{}/briefing", self.tournament.id, seq)) {
+                            "Briefing"
+                        }
 
-                            a class=(format!("nav-link py-1 px-3 fw-medium {}", if self.active_page == Some("ballots") { "text-dark fw-bold" } else { "text-secondary" }))
-                                href=(format!("/tournaments/{}/rounds/{}/ballots", self.tournament.id, seq)) {
-                                "Ballots"
-                                @if active_stage == "ballots" { " (active)" }
-                            }
+                        a class=(format!("sidebar-stage-tab text-decoration-none {}", if self.active_page == Some("ballots") { "sidebar-stage-active" } else { "" }))
+                            href=(format!("/tournaments/{}/rounds/{}/ballots", self.tournament.id, seq)) {
+                            "Ballots"
+                        }
 
-                            a class=(format!("nav-link py-1 px-3 fw-medium {}", if self.active_page == Some("results") { "text-dark fw-bold" } else { "text-secondary" }))
-                                href=(format!("/tournaments/{}/rounds/{}/results/manage", self.tournament.id, seq)) {
-                                "Results"
-                                @if active_stage == "results" { " (active)" }
-                            }
-
-                            div class="vr opacity-25" {}
-
-                            a class=(format!("nav-link py-1 px-3 fw-medium {}", if self.active_page == Some("rooms") { "text-dark fw-bold" } else { "text-secondary" }))
-                                href=(format!("/tournaments/{}/rooms", self.tournament.id)) {
-                                "Rooms"
-                            }
+                        a class=(format!("sidebar-stage-tab text-decoration-none {}", if self.active_page == Some("results") { "sidebar-stage-active" } else { "" }))
+                            href=(format!("/tournaments/{}/rounds/{}/results/manage", self.tournament.id, seq)) {
+                            "Results"
                         }
                     }
-
                 }
             }
         }.render_to(buffer);

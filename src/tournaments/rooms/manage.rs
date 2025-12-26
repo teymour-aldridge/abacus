@@ -86,7 +86,7 @@ pub async fn manage_rooms_page(
 
     success(
         Page::new()
-            .active_nav("setup")
+            .active_nav("rooms")
             .user(user)
             .tournament(tournament.clone())
             .current_rounds(current_rounds.clone())

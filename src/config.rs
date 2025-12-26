@@ -47,54 +47,49 @@ async fn home(
             .unwrap(); // In production avoid unwrap
 
         let tournaments_html = maud! {
-            div class="row" {
-                div class="col-md-8" {
-                    h1 class="h1 fw-bold mb-4" { "My Tournaments" }
+            div class="mx-auto" style="max-width: 960px;" {
+                div class="row" {
+                    div class="col-lg-8 pe-lg-5" {
+                        h1 class="h4 fw-bold mb-4 pb-2 border-bottom" { "My Tournaments" }
 
-                    @if tournaments_list.is_empty() {
-                        p class="lead" { "You are not a member of any tournaments yet." }
-                    } @else {
-                        div class="list-group list-group-flush border-top" {
-                            @for tournament in &tournaments_list {
-                                div class="list-group-item py-4" {
-                                    h3 class="h3 mb-2" {
-                                        a href=(format!("/tournaments/{}", tournament.id)) class="text-decoration-none text-dark hover-underline fw-bold" {
-                                            (tournament.name)
+                        @if tournaments_list.is_empty() {
+                            div class="py-4" {
+                                p class="text-secondary mb-0" { "You are not a member of any tournaments yet." }
+                            }
+                        } @else {
+                            div class="list-group list-group-flush" {
+                                @for tournament in &tournaments_list {
+                                    a href=(format!("/tournaments/{}", tournament.id)) class="list-group-item list-group-item-action py-3 px-0 border-start-0 border-end-0" {
+                                        div class="d-flex justify-content-between align-items-start" {
+                                            div {
+                                                span class="fw-semibold text-dark" { (tournament.name) }
+                                                p class="text-secondary mb-0 small mt-1" {
+                                                    (tournament.abbrv)
+                                                    " · Created " (tournament.created_at.format("%d %B %Y").to_string())
+                                                }
+                                            }
+                                            span class="text-secondary" { "→" }
                                         }
-                                    }
-                                    p class="text-secondary mb-1" {
-                                        "Abbreviation: " (tournament.abbrv)
-                                    }
-                                    small class="text-secondary" {
-                                        "Created " (tournament.created_at.format("%d %B %Y").to_string())
                                     }
                                 }
                             }
                         }
                     }
-                }
-                div class="col-md-4" {
-                    div class="bg-light p-4 border-top border-4 border-primary" {
-                        h2 class="h4 fw-bold mb-3" { "Actions" }
-                        p class="mb-3" { "Start a new tournament to begin tabulating." }
-                        a href="/tournaments/create" class="btn btn-primary d-block w-100 fw-bold" {
-                            "Create new tournament"
+
+                    div class="col-lg-4" {
+                        h2 class="h6 fw-bold mb-3 pb-2 border-bottom" { "Quick Actions" }
+                        a href="/tournaments/create" class="btn btn-primary" {
+                            "+ Create tournament"
+                        }
+                        p class="text-secondary small mt-3 mb-0" {
+                            "Start a new tournament to begin tabulating."
                         }
                     }
                 }
             }
         };
 
-        success(
-            Page::new()
-                .user(user)
-                .body(maud! {
-                    div class="container py-4" {
-                        (tournaments_html)
-                    }
-                })
-                .render(),
-        )
+        success(Page::new().user(user).body(tournaments_html).render())
     } else {
         success(
             Page::new()

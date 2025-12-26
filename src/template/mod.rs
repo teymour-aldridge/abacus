@@ -135,80 +135,91 @@ impl<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool> Renderable
                     meta
                         name="viewport"
                         content="width=device-width, initial-scale=1";
-                    
+
                     @if let Some(extra) = &self.extra_head {
                         (extra)
                     }
                 }
                 body class="d-flex flex-column vh-100 overflow-hidden" {
-                    // Header / Navbar (Full Width)
+
                     div class="border-bottom bg-white flex-shrink-0" {
-                        div class="container-fluid px-4 pt-2 pb-3" {
-                            div class="d-flex align-items-center justify-content-between mb-2" {
-                                div class="d-flex align-items-center gap-3" {
+                        div class="container-fluid px-4" {
+                            div class="d-flex align-items-center justify-content-between pt-2 pb-1" {
+                                div class="d-flex align-items-center gap-2" {
+                                    a class="text-dark text-decoration-none fw-bold" href="/" style="font-size: 1.125rem;" {
+                                        "Abacus"
+                                    }
                                     @if let Some(tournament) = &self.tournament {
-                                        a class="h2 mb-0 text-dark text-decoration-none fw-bold"
-                                            href=(format!("/tournaments/{}", tournament.id)) {
+                                        span class="text-secondary" style="font-size: 1rem;" { "/" }
+                                        a class="text-dark text-decoration-none fw-semibold"
+                                            href=(format!("/tournaments/{}", tournament.id))
+                                            style="font-size: 1rem;" {
                                             (tournament.name)
-                                        }
-                                    } @else {
-                                        a class="h2 mb-0 text-dark text-decoration-none fw-bold" href="/" {
-                                            "Abacus"
                                         }
                                     }
                                 }
 
-                                div {
+
+                                div class="d-flex align-items-center gap-3" {
                                     @if let Some(user) = &self.user {
-                                        a class="text-secondary text-decoration-none fw-semibold" href="/user" {
+                                        a class="text-secondary text-decoration-none fw-medium" href="/user" style="font-size: 0.8125rem;" {
                                             (user.username)
                                         }
                                     } @else {
-                                        a class="btn btn-sm btn-outline-primary me-2" href="/login" { "Login" }
-                                        a class="btn btn-sm btn-primary" href="/register" { "Register" }
+                                        a class="btn btn-sm btn-outline-secondary me-1" href="/login" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;" { "Sign in" }
+                                        a class="btn btn-sm btn-primary" href="/register" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;" { "Sign up" }
                                     }
                                 }
                             }
 
                             @if let Some(tournament) = &self.tournament {
-                                div {
-                                    nav class="nav nav-pills gap-3" {
-                                        @if let Some(rounds) = &self.current_rounds {
-                                            @if !rounds.is_empty() {
-                                                @let seq = rounds[0].seq;
-                                                @let is_draw_pub = tournament.show_draws && rounds.iter().any(|r| r.is_draw_public());
-                                                @let is_results_pub = rounds.iter().all(|r| r.is_results_public());
+                                nav class="d-flex gap-3 pb-0" style="margin-left: -0.375rem; margin-bottom: -1px;" {
+                                    @if let Some(rounds) = &self.current_rounds {
+                                        @if !rounds.is_empty() {
+                                            @let seq = rounds[0].seq;
+                                            @let is_draw_pub = tournament.show_draws && rounds.iter().any(|r| r.is_draw_public());
+                                            @let is_results_pub = rounds.iter().all(|r| r.is_results_public());
 
-                                                @if is_results_pub {
-                                                    a class=(format!("nav-link px-0 d-flex align-items-center {}", if self.active_nav == Some("results") { "text-dark fw-bold" } else { "text-secondary" })) href=(format!("/tournaments/{}/rounds/{}/results", tournament.id, seq)) {
-                                                        span class="material-icons me-2 fs-5" { "assessment" }
-                                                        "Results"
-                                                    }
-                                                } @else if is_draw_pub {
-                                                    a class=(format!("nav-link px-0 d-flex align-items-center {}", if self.active_nav == Some("draw") { "text-dark fw-bold" } else { "text-secondary" })) href=(format!("/tournaments/{}/rounds/{}/draw", tournament.id, seq)) {
-                                                        span class="material-icons me-2 fs-5" { "grid_view" }
-                                                        "Draw"
-                                                    }
+                                            @if is_results_pub {
+                                                a class=(format!("nav-tab-link d-flex align-items-center gap-1 py-2 text-decoration-none {}", if self.active_nav == Some("results") { "nav-tab-active" } else { "" }))
+                                                    href=(format!("/tournaments/{}/rounds/{}/results", tournament.id, seq)) {
+                                                    span class="material-icons" style="font-size: 1rem;" { "assessment" }
+                                                    "Results"
+                                                }
+                                            } @else if is_draw_pub {
+                                                a class=(format!("nav-tab-link d-flex align-items-center gap-1 py-2 text-decoration-none {}", if self.active_nav == Some("draw") { "nav-tab-active" } else { "" }))
+                                                    href=(format!("/tournaments/{}/rounds/{}/draw", tournament.id, seq)) {
+                                                    span class="material-icons" style="font-size: 1rem;" { "grid_view" }
+                                                    "Draw"
                                                 }
                                             }
                                         }
+                                    }
 
-                                        a class=(format!("nav-link px-0 d-flex align-items-center {}", if self.active_nav == Some("participants") { "text-dark fw-bold" } else { "text-secondary" })) href=(format!("/tournaments/{}/participants", tournament.id)) {
-                                            span class="material-icons me-2 fs-5" { "groups" }
-                                            "Participants"
-                                        }
+                                    a class=(format!("nav-tab-link d-flex align-items-center gap-1 py-2 text-decoration-none {}", if self.active_nav == Some("participants") { "nav-tab-active" } else { "" }))
+                                        href=(format!("/tournaments/{}/participants", tournament.id)) {
+                                        span class="material-icons" style="font-size: 1rem;" { "groups" }
+                                        "Participants"
+                                    }
 
-                                        @if tournament.standings_public || tournament.team_tab_public {
-                                            a class=(format!("nav-link px-0 d-flex align-items-center {}", if self.active_nav == Some("standings") { "text-dark fw-bold" } else { "text-secondary" })) href=(format!("/tournaments/{}/tab/team", tournament.id)) {
-                                                span class="material-icons me-2 fs-5" { "leaderboard" }
-                                                "Standings"
-                                            }
+                                    @if tournament.standings_public || tournament.team_tab_public {
+                                        a class=(format!("nav-tab-link d-flex align-items-center gap-1 py-2 text-decoration-none {}", if self.active_nav == Some("standings") { "nav-tab-active" } else { "" }))
+                                            href=(format!("/tournaments/{}/tab/team", tournament.id)) {
+                                            span class="material-icons" style="font-size: 1rem;" { "leaderboard" }
+                                            "Standings"
                                         }
+                                    }
 
-                                        a class=(format!("nav-link px-0 d-flex align-items-center {}", if self.active_nav == Some("motions") { "text-dark fw-bold" } else { "text-secondary" })) href=(format!("/tournaments/{}/motions", tournament.id)) {
-                                            span class="material-icons me-2 fs-5" { "article" }
-                                            "Motions"
-                                        }
+                                    a class=(format!("nav-tab-link d-flex align-items-center gap-1 py-2 text-decoration-none {}", if self.active_nav == Some("motions") { "nav-tab-active" } else { "" }))
+                                        href=(format!("/tournaments/{}/motions", tournament.id)) {
+                                        span class="material-icons" style="font-size: 1rem;" { "article" }
+                                        "Motions"
+                                    }
+
+                                    a class=(format!("nav-tab-link d-flex align-items-center gap-1 py-2 text-decoration-none {}", if self.active_nav == Some("rooms") { "nav-tab-active" } else { "" }))
+                                        href=(format!("/tournaments/{}/rooms", tournament.id)) {
+                                        span class="material-icons" style="font-size: 1rem;" { "meeting_room" }
+                                        "Rooms"
                                     }
                                 }
                             }
@@ -224,12 +235,10 @@ impl<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool> Renderable
                         }
                     }
 
-                    // Main Content (Full Width)
+
                     div class="flex-grow-1 overflow-auto bg-white" {
-                        div class="container-fluid px-4 pt-0 pb-4" {
-                            @if let Some(body) = &self.body {
-                                (body)
-                            }
+                        @if let Some(body) = &self.body {
+                            (body)
                         }
                     }
                 }

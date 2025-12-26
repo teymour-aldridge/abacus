@@ -181,6 +181,21 @@ pub async fn run() {
         .route("/tournaments/:id/participants/speaker/create", get(crate::tournaments::participants::manage::create_speaker::create_speaker_page).post(crate::tournaments::participants::manage::create_speaker::do_create_speaker))
         .route("/tournaments/:id/participants/updates", get(crate::tournaments::participants::manage::tournament_participant_updates))
 
+        // Constraints (unified for both speakers and judges)
+        .route("/tournaments/:id/participants/:ptype/:pid/constraints", get(crate::tournaments::participants::manage::constraints::manage_constraints_page))
+        .route("/tournaments/:id/participants/:ptype/:pid/constraints/move", post(crate::tournaments::participants::manage::constraints::move_constraint))
+        .route("/tournaments/:id/participants/:ptype/:pid/constraints/add", post(crate::tournaments::participants::manage::constraints::add_constraint))
+        .route("/tournaments/:id/participants/:ptype/:pid/constraints/remove", post(crate::tournaments::participants::manage::constraints::remove_constraint))
+
+        // Rooms
+        .route("/tournaments/:id/rooms", get(crate::tournaments::rooms::manage::manage_rooms_page))
+        .route("/tournaments/:id/rooms/create", post(crate::tournaments::rooms::manage::create_room))
+        .route("/tournaments/:id/rooms/:room_id/delete", post(crate::tournaments::rooms::manage::delete_room))
+        .route("/tournaments/:id/rooms/categories/create", post(crate::tournaments::rooms::manage::create_category))
+        .route("/tournaments/:id/rooms/categories/:cat_id/delete", post(crate::tournaments::rooms::manage::delete_category))
+        .route("/tournaments/:id/rooms/categories/:cat_id/add_room", post(crate::tournaments::rooms::manage::add_room_to_category))
+        .route("/tournaments/:id/rooms/categories/:cat_id/remove_room", post(crate::tournaments::rooms::manage::remove_room_from_category))
+
         // Configuration
         .route("/tournaments/:id/configuration", get(crate::tournaments::manage::config::view_tournament_configuration).post(crate::tournaments::manage::config::update_tournament_configuration))
         .route("/tournaments/:id/manage", get(crate::tournaments::manage::view::admin_view_tournament))

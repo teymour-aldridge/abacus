@@ -72,3 +72,15 @@ impl IntoResponse for FailureResponse {
         }
     }
 }
+
+impl From<diesel::result::Error> for FailureResponse {
+    fn from(err: diesel::result::Error) -> Self {
+        match err {
+            diesel::result::Error::NotFound => FailureResponse::NotFound(()),
+            _ => {
+                tracing::error!("Database error: {:?}", err);
+                FailureResponse::ServerError(())
+            }
+        }
+    }
+}

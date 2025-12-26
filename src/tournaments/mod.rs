@@ -25,6 +25,7 @@ pub mod motions;
 pub mod participants;
 pub mod privateurls;
 pub mod public;
+pub mod rooms;
 pub mod rounds;
 pub mod snapshots;
 pub mod standings;

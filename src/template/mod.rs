@@ -123,6 +123,8 @@ impl<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool> Renderable
             html {
                 head {
                     title { "Abacus" }
+                    meta charset="utf-8";
+
                     script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.7/dist/htmx.min.js" integrity="sha384-ZBXiYtYQ6hJ2Y0ZNoYuI+Nq5MqWBr+chMrS/RkXpNzQCApHEhOt2aY8EJgqwHLkJ" crossorigin="anonymous" {
                     }
                     script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous" {}
@@ -133,6 +135,7 @@ impl<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool> Renderable
                     meta
                         name="viewport"
                         content="width=device-width, initial-scale=1";
+                    
                     @if let Some(extra) = &self.extra_head {
                         (extra)
                     }

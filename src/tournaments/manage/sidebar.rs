@@ -158,8 +158,16 @@ impl<'r> Renderable for Sidebar<'r> {
                                 "Results"
                                 @if active_stage == "results" { " (active)" }
                             }
+
+                            div class="vr opacity-25" {}
+
+                            a class=(format!("nav-link py-1 px-3 fw-medium {}", if self.active_page == Some("rooms") { "text-dark fw-bold" } else { "text-secondary" }))
+                                href=(format!("/tournaments/{}/rooms", self.tournament.id)) {
+                                "Rooms"
+                            }
                         }
                     }
+
                 }
             }
         }.render_to(buffer);

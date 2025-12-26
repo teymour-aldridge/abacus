@@ -51,6 +51,32 @@ diesel::table! {
 }
 
 diesel::table! {
+    judge_room_constraints (id) {
+        id -> Text,
+        judge_id -> Text,
+        category_id -> Text,
+        pref -> BigInt,
+    }
+}
+
+diesel::table! {
+    rooms_of_room_categories (id) {
+        id -> Text,
+        category_id -> Text,
+        room_id -> Text,
+    }
+}
+
+diesel::table! {
+    speaker_room_constraints (id) {
+        id -> Text,
+        speaker_id -> Text,
+        category_id -> Text,
+        pref -> BigInt,
+    }
+}
+
+diesel::table! {
     tournament_action_logs (id) {
         id -> Text,
         snapshot_id -> Text,
@@ -218,6 +244,16 @@ diesel::table! {
         user_id -> Text,
         tournament_id -> Text,
         is_superuser -> Bool,
+    }
+}
+
+diesel::table! {
+    tournament_room_categories (id) {
+        id -> Text,
+        tournament_id -> Text,
+        private_name -> Text,
+        public_name -> Text,
+        description -> Text,
     }
 }
 
@@ -415,6 +451,12 @@ diesel::joinable!(feedback_of_judges -> tournaments (tournament_id));
 diesel::joinable!(feedback_of_teams -> tournament_debates (debate_id));
 diesel::joinable!(feedback_of_teams -> tournaments (tournament_id));
 diesel::joinable!(feedback_questions -> tournaments (tournament_id));
+diesel::joinable!(judge_room_constraints -> rooms_of_room_categories (category_id));
+diesel::joinable!(judge_room_constraints -> tournament_judges (judge_id));
+diesel::joinable!(rooms_of_room_categories -> tournament_room_categories (category_id));
+diesel::joinable!(rooms_of_room_categories -> tournament_rooms (room_id));
+diesel::joinable!(speaker_room_constraints -> rooms_of_room_categories (category_id));
+diesel::joinable!(speaker_room_constraints -> tournament_speakers (speaker_id));
 diesel::joinable!(tournament_action_logs -> tournament_snapshots (snapshot_id));
 diesel::joinable!(tournament_ballots -> tournament_debates (debate_id));
 diesel::joinable!(tournament_ballots -> tournament_judges (judge_id));
@@ -452,6 +494,7 @@ diesel::joinable!(tournament_judges -> tournament_institutions (institution_id))
 diesel::joinable!(tournament_judges -> tournaments (tournament_id));
 diesel::joinable!(tournament_members -> tournaments (tournament_id));
 diesel::joinable!(tournament_members -> users (user_id));
+diesel::joinable!(tournament_room_categories -> tournaments (tournament_id));
 diesel::joinable!(tournament_rooms -> tournaments (tournament_id));
 diesel::joinable!(tournament_round_motions -> tournament_rounds (round_id));
 diesel::joinable!(tournament_round_motions -> tournaments (tournament_id));
@@ -484,6 +527,9 @@ diesel::allow_tables_to_appear_in_same_query!(
     feedback_of_judges,
     feedback_of_teams,
     feedback_questions,
+    judge_room_constraints,
+    rooms_of_room_categories,
+    speaker_room_constraints,
     tournament_action_logs,
     tournament_ballots,
     tournament_break_categories,
@@ -502,6 +548,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     tournament_judge_team_clash,
     tournament_judges,
     tournament_members,
+    tournament_room_categories,
     tournament_rooms,
     tournament_round_motions,
     tournament_round_tickets,

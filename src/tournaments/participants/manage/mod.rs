@@ -31,6 +31,7 @@ use crate::{
     },
 };
 
+pub mod constraints;
 pub mod create_judge;
 pub mod create_speaker;
 pub mod create_team;
@@ -107,7 +108,10 @@ impl Renderable for ParticipantsTable {
                                                                 span class="small" { (speaker.name) }
                                                                 span class="text-muted small ms-2 d-none d-md-inline font-monospace" { (speaker.email) }
                                                             }
-                                                            a href=(format!("/tournaments/{}/teams/{}/speakers/{}/edit", self.0.id, team.id, speaker.id)) class="text-decoration-none text-muted small" { "Edit" }
+                                                            div class="d-flex gap-2" {
+                                                                a href=(format!("/tournaments/{}/participants/speaker/{}/constraints", self.0.id, speaker.id)) class="text-decoration-none text-muted small" { "Constraints" }
+                                                                a href=(format!("/tournaments/{}/teams/{}/speakers/{}/edit", self.0.id, team.id, speaker.id)) class="text-decoration-none text-muted small" { "Edit" }
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -151,7 +155,10 @@ impl Renderable for ParticipantsTable {
                                             }
                                         }
                                         td class="text-end py-4" {
-                                            a href=(format!("/tournaments/{}/judges/{}/edit", self.0.id, judge.id)) class="btn btn-sm btn-outline-dark" { "Edit" }
+                                            div class="d-flex justify-content-end gap-2" {
+                                                a href=(format!("/tournaments/{}/participants/judge/{}/constraints", self.0.id, judge.id)) class="btn btn-sm btn-outline-dark" { "Constraints" }
+                                                a href=(format!("/tournaments/{}/judges/{}/edit", self.0.id, judge.id)) class="btn btn-sm btn-outline-dark" { "Edit" }
+                                            }
                                         }
                                     }
                                 }

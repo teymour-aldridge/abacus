@@ -182,6 +182,57 @@ create table if not exists tournament_rooms (
     unique (tournament_id, number)
 );
 
+create table if not exists tournament_room_categories (
+    id text primary key not null,
+    tournament_id text not null references tournaments (id),
+    private_name text not null,
+    public_name text not null,
+    description text not null
+);
+
+create table if not exists rooms_of_room_categories (
+    id text primary key not null,
+    category_id text not null references tournament_room_categories (id),
+    room_id text not null references tournament_rooms (id),
+    unique (category_id, room_id)
+);
+
+-- Room constraints.
+--
+-- The way room constraints are handled in other software (e.g. Tabbycat) seems
+-- to be particularly broken.
+--
+-- Interface per user:
+-- - "1st preference"
+-- - "2nd preference"
+-- - ...
+-- - "kth preference"
+--
+-- Then have a ranking of priorities:
+-- - "participant 1"
+-- - "participant 2"
+-- - ...
+-- - "participant k"
+create table if not exists speaker_room_constraints (
+    id text primary key not null,
+    speaker_id text not null references tournament_speakers (id),
+    category_id text not null references rooms_of_room_categories (id),
+    -- the importance of this constraint (lower = more important)
+    pref integer not null check (pref > 0),
+    unique (speaker_id, category_id),
+    unique (speaker_id, pref)
+);
+
+create table if not exists judge_room_constraints (
+    id text primary key not null,
+    judge_id text not null references tournament_judges (id),
+    category_id text not null references rooms_of_room_categories (id),
+    -- the importance of this constraint (lower = more important)
+    pref integer not null check (pref > 0),
+    unique (judge_id, category_id),
+    unique (judge_id, pref)
+);
+
 create table if not exists tournament_break_categories (
     id text primary key not null,
     tournament_id text not null references tournaments (id),

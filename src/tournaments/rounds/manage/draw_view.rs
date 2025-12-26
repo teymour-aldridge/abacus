@@ -52,12 +52,12 @@ pub async fn view_draws_page(
 
     success(
         Page::new()
-            .active_nav("draw")
+            .active_nav(crate::template::ActiveNav::Draw)
             .user(user)
             .tournament(tournament.clone())
             .current_rounds(current_rounds)
             .body(maud! {
-                SidebarWrapper  tournament=(&tournament) rounds=(&all_rounds) selected_seq=(Some(round_seq)) active_page=(Some("draw")) {
+                SidebarWrapper  tournament=(&tournament) rounds=(&all_rounds) selected_seq=(Some(round_seq)) active_page=(Some(crate::tournaments::manage::sidebar::SidebarPage::Draw)) {
                     div class="d-flex justify-content-between" {
                         h1 {
                             "Draws for rounds with sequence "

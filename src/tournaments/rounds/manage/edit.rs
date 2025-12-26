@@ -49,7 +49,7 @@ pub async fn edit_round_page(
             .user(user)
             .current_rounds(current_rounds)
             .body(maud! {
-                SidebarWrapper rounds=(&rounds) tournament=(&tournament) active_page=(Some("setup")) selected_seq=(Some(round.seq)) {
+                SidebarWrapper rounds=(&rounds) tournament=(&tournament) active_page=(Some(crate::tournaments::manage::sidebar::SidebarPage::Setup)) selected_seq=(Some(round.seq)) {
                     form method="post" {
                         div class="mb-3" {
                             label for="roundName" class="form-label" {

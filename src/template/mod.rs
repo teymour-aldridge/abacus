@@ -12,6 +12,16 @@ use crate::{
 
 pub mod form;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActiveNav {
+    Results,
+    Draw,
+    Participants,
+    Standings,
+    Motions,
+    Rooms,
+}
+
 pub struct Page<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool>
 {
     body: Option<R1>,
@@ -20,7 +30,7 @@ pub struct Page<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool>
     sidebar: Option<R3>,
     tournament: Option<Tournament>,
     current_rounds: Option<Vec<Round>>,
-    active_nav: Option<&'static str>,
+    active_nav: Option<ActiveNav>,
 }
 
 // unfortunate generic argument shenanigans
@@ -106,7 +116,7 @@ impl<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool>
         self
     }
 
-    pub fn active_nav(mut self, nav: &'static str) -> Self {
+    pub fn active_nav(mut self, nav: ActiveNav) -> Self {
         self.active_nav = Some(nav);
         self
     }
@@ -181,52 +191,51 @@ impl<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool> Renderable
                                             @let is_results_pub = rounds.iter().all(|r| r.is_results_public());
 
                                             @if is_results_pub {
-                                                a class=(format!("nav-tab-link d-flex align-items-center gap-1 py-2 text-decoration-none {}", if self.active_nav == Some("results") { "nav-tab-active" } else { "" }))
-                                                    href=(format!("/tournaments/{}/rounds/{}/results", tournament.id, seq)) {
-                                                    span class="material-icons" style="font-size: 1rem;" { "assessment" }
-                                                    "Results"
-                                                }
-                                            } @else if is_draw_pub {
-                                                a class=(format!("nav-tab-link d-flex align-items-center gap-1 py-2 text-decoration-none {}", if self.active_nav == Some("draw") { "nav-tab-active" } else { "" }))
-                                                    href=(format!("/tournaments/{}/rounds/{}/draw", tournament.id, seq)) {
-                                                    span class="material-icons" style="font-size: 1rem;" { "grid_view" }
-                                                    "Draw"
-                                                }
-                                            }
-                                        }
-                                    }
+                                                 a class=(format!("nav-tab-link d-flex align-items-center gap-1 py-2 text-decoration-none {}", if self.active_nav == Some(ActiveNav::Results) { "nav-tab-active" } else { "" }))
+                                                     href=(format!("/tournaments/{}/rounds/{}/results", tournament.id, seq)) {
+                                                     span class="material-icons" style="font-size: 1rem;" { "assessment" }
+                                                     "Results"
+                                                 }
+                                             } @else if is_draw_pub {
+                                                 a class=(format!("nav-tab-link d-flex align-items-center gap-1 py-2 text-decoration-none {}", if self.active_nav == Some(ActiveNav::Draw) { "nav-tab-active" } else { "" }))
+                                                     href=(format!("/tournaments/{}/rounds/{}/draw", tournament.id, seq)) {
+                                                     span class="material-icons" style="font-size: 1rem;" { "grid_view" }
+                                                     "Draw"
+                                                 }
+                                             }
+                                         }
+                                     }
 
-                                    a class=(format!("nav-tab-link d-flex align-items-center gap-1 py-2 text-decoration-none {}", if self.active_nav == Some("participants") { "nav-tab-active" } else { "" }))
-                                        href=(format!("/tournaments/{}/participants", tournament.id)) {
-                                        span class="material-icons" style="font-size: 1rem;" { "groups" }
-                                        "Participants"
-                                    }
+                                     a class=(format!("nav-tab-link d-flex align-items-center gap-1 py-2 text-decoration-none {}", if self.active_nav == Some(ActiveNav::Participants) { "nav-tab-active" } else { "" }))
+                                         href=(format!("/tournaments/{}/participants", tournament.id)) {
+                                         span class="material-icons" style="font-size: 1rem;" { "groups" }
+                                         "Participants"
+                                     }
 
-                                    @if tournament.standings_public || tournament.team_tab_public {
-                                        a class=(format!("nav-tab-link d-flex align-items-center gap-1 py-2 text-decoration-none {}", if self.active_nav == Some("standings") { "nav-tab-active" } else { "" }))
-                                            href=(format!("/tournaments/{}/tab/team", tournament.id)) {
-                                            span class="material-icons" style="font-size: 1rem;" { "leaderboard" }
-                                            "Standings"
-                                        }
-                                    }
+                                     @if tournament.standings_public || tournament.team_tab_public {
+                                         a class=(format!("nav-tab-link d-flex align-items-center gap-1 py-2 text-decoration-none {}", if self.active_nav == Some(ActiveNav::Standings) { "nav-tab-active" } else { "" }))
+                                             href=(format!("/tournaments/{}/tab/team", tournament.id)) {
+                                             span class="material-icons" style="font-size: 1rem;" { "leaderboard" }
+                                             "Standings"
+                                         }
+                                     }
 
-                                    a class=(format!("nav-tab-link d-flex align-items-center gap-1 py-2 text-decoration-none {}", if self.active_nav == Some("motions") { "nav-tab-active" } else { "" }))
-                                        href=(format!("/tournaments/{}/motions", tournament.id)) {
-                                        span class="material-icons" style="font-size: 1rem;" { "article" }
-                                        "Motions"
-                                    }
+                                     a class=(format!("nav-tab-link d-flex align-items-center gap-1 py-2 text-decoration-none {}", if self.active_nav == Some(ActiveNav::Motions) { "nav-tab-active" } else { "" }))
+                                         href=(format!("/tournaments/{}/motions", tournament.id)) {
+                                         span class="material-icons" style="font-size: 1rem;" { "article" }
+                                         "Motions"
+                                     }
 
-                                    a class=(format!("nav-tab-link d-flex align-items-center gap-1 py-2 text-decoration-none {}", if self.active_nav == Some("rooms") { "nav-tab-active" } else { "" }))
-                                        href=(format!("/tournaments/{}/rooms", tournament.id)) {
-                                        span class="material-icons" style="font-size: 1rem;" { "meeting_room" }
-                                        "Rooms"
-                                    }
+                                     a class=(format!("nav-tab-link d-flex align-items-center gap-1 py-2 text-decoration-none {}", if self.active_nav == Some(ActiveNav::Rooms) { "nav-tab-active" } else { "" }))
+                                         href=(format!("/tournaments/{}/rooms", tournament.id)) {
+                                         span class="material-icons" style="font-size: 1rem;" { "meeting_room" }
+                                         "Rooms"
+                                     }
                                 }
                             }
                         }
                     }
 
-                    // Secondary Sidebar / Toolbar (Horizontal)
                     @if let Some(sidebar) = &self.sidebar {
                         div class="border-bottom bg-light" {
                             div class="container-fluid px-4" {

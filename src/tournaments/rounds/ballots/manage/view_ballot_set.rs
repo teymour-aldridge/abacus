@@ -68,7 +68,7 @@ pub async fn view_ballot_set_page(
             .user(user)
             .tournament(tournament.clone())
             .body(maud! {
-                SidebarWrapper rounds=(&all_rounds) tournament=(&tournament) active_page=(Some("ballots")) selected_seq=(Some(round.seq)) {
+                SidebarWrapper rounds=(&all_rounds) tournament=(&tournament) active_page=(Some(crate::tournaments::manage::sidebar::SidebarPage::Ballots)) selected_seq=(Some(round.seq)) {
                     div class="container py-5" style="max-width: 800px;" {
                         header class="mb-5" {
                             h1 class="display-4 fw-bold mb-3" {

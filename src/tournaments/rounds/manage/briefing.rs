@@ -132,7 +132,7 @@ pub async fn get_briefing_room(
             .user(user)
             .tournament(tournament.clone())
             .body(maud! {
-                SidebarWrapper tournament=(&tournament) rounds=(&all_rounds) active_page=(Some("briefing")) selected_seq=(Some(round_seq)) {
+                SidebarWrapper tournament=(&tournament) rounds=(&all_rounds) active_page=(Some(crate::tournaments::manage::sidebar::SidebarPage::Briefing)) selected_seq=(Some(round_seq)) {
                     (view)
                 }
             })

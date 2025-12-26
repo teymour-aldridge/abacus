@@ -86,12 +86,12 @@ pub async fn manage_rooms_page(
 
     success(
         Page::new()
-            .active_nav("rooms")
+            .active_nav(crate::template::ActiveNav::Rooms)
             .user(user)
             .tournament(tournament.clone())
             .current_rounds(current_rounds.clone())
             .body(maud! {
-                SidebarWrapper tournament=(&tournament) rounds=(&rounds) selected_seq=(current_rounds.first().map(|r| r.seq)) active_page=(Some("rooms")) {
+                SidebarWrapper tournament=(&tournament) rounds=(&rounds) selected_seq=(current_rounds.first().map(|r| r.seq)) active_page=(None) {
                     div class="d-flex flex-column gap-5" {
                         // Rooms Section
                         div {

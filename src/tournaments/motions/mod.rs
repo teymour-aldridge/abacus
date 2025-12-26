@@ -103,7 +103,7 @@ pub async fn public_motions_page(
     if is_admin {
         success(
             Page::new()
-                .active_nav("motions")
+                .active_nav(crate::template::ActiveNav::Motions)
                 .user_opt(user)
                 .tournament(tournament.clone())
                 .current_rounds(current_rounds.clone())
@@ -117,7 +117,7 @@ pub async fn public_motions_page(
     } else {
         success(
             Page::new()
-                .active_nav("motions")
+                .active_nav(crate::template::ActiveNav::Motions)
                 .user_opt(user)
                 .tournament(tournament.clone())
                 .current_rounds(current_rounds)

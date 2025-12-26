@@ -121,12 +121,12 @@ pub async fn setup_round_page(
     let current_rounds = Round::current_rounds(&tid, &mut *conn);
 
     success(Page::new()
-        .active_nav("draw")
+        .active_nav(crate::template::ActiveNav::Draw)
         .user(user)
         .tournament(tournament.clone())
         .current_rounds(current_rounds)
         .body(maud! {
-            SidebarWrapper tournament=(&tournament) rounds=(&all_rounds) active_page=(Some("setup")) selected_seq=(Some(round_seq)) {
+            SidebarWrapper tournament=(&tournament) rounds=(&all_rounds) active_page=(Some(crate::tournaments::manage::sidebar::SidebarPage::Setup)) selected_seq=(Some(round_seq)) {
                 div class="d-flex justify-content-between" {
                     h1 {
                         "Setup for rounds with sequence "

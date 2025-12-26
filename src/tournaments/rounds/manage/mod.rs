@@ -9,7 +9,7 @@ use crate::{
     auth::User,
     schema::tournament_break_categories,
     state::Conn,
-    template::Page,
+    template::{ActiveNav, Page},
     tournaments::{
         Tournament,
         categories::BreakCategory,
@@ -62,7 +62,7 @@ pub async fn manage_rounds_page(
     let current_rounds = Round::current_rounds(&tid, &mut *conn);
 
     success(Page::new()
-            .active_nav("draw")
+            .active_nav(ActiveNav::Draw)
             .tournament(tournament.clone())
             .user(user)
             .current_rounds(current_rounds)

@@ -3,11 +3,20 @@ use hypertext::{Renderable, maud};
 
 use crate::tournaments::{Tournament, rounds::TournamentRounds};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SidebarPage {
+    Setup,
+    Draw,
+    Briefing,
+    Ballots,
+    Results,
+}
+
 pub struct SidebarWrapper<'r, R: Renderable> {
     pub tournament: &'r Tournament,
     pub rounds: &'r TournamentRounds,
     pub selected_seq: Option<i64>,
-    pub active_page: Option<&'r str>,
+    pub active_page: Option<SidebarPage>,
     pub children: R,
 }
 
@@ -33,7 +42,7 @@ pub struct Sidebar<'r> {
     pub tournament: &'r Tournament,
     pub rounds: &'r TournamentRounds,
     pub selected_seq: Option<i64>,
-    pub active_page: Option<&'r str>,
+    pub active_page: Option<SidebarPage>,
 }
 
 impl<'r> Renderable for Sidebar<'r> {
@@ -110,27 +119,27 @@ impl<'r> Renderable for Sidebar<'r> {
 
                 @if let Some(seq) = self.selected_seq {
                     nav class="d-flex align-items-center gap-3" style="margin-bottom: -1px;" {
-                        a class=(format!("sidebar-stage-tab text-decoration-none {}", if self.active_page == Some("setup") { "sidebar-stage-active" } else { "" }))
+                        a class=(format!("sidebar-stage-tab text-decoration-none {}", if self.active_page == Some(SidebarPage::Setup) { "sidebar-stage-active" } else { "" }))
                             href=(format!("/tournaments/{}/rounds/{}/setup", self.tournament.id, seq)) {
                             "Setup"
                         }
 
-                        a class=(format!("sidebar-stage-tab text-decoration-none {}", if self.active_page == Some("draw") { "sidebar-stage-active" } else { "" }))
+                        a class=(format!("sidebar-stage-tab text-decoration-none {}", if self.active_page == Some(SidebarPage::Draw) { "sidebar-stage-active" } else { "" }))
                             href=(format!("/tournaments/{}/rounds/{}/draw/manage", self.tournament.id, seq)) {
                             "Draw"
                         }
 
-                        a class=(format!("sidebar-stage-tab text-decoration-none {}", if self.active_page == Some("briefing") { "sidebar-stage-active" } else { "" }))
+                        a class=(format!("sidebar-stage-tab text-decoration-none {}", if self.active_page == Some(SidebarPage::Briefing) { "sidebar-stage-active" } else { "" }))
                             href=(format!("/tournaments/{}/rounds/{}/briefing", self.tournament.id, seq)) {
                             "Briefing"
                         }
 
-                        a class=(format!("sidebar-stage-tab text-decoration-none {}", if self.active_page == Some("ballots") { "sidebar-stage-active" } else { "" }))
+                        a class=(format!("sidebar-stage-tab text-decoration-none {}", if self.active_page == Some(SidebarPage::Ballots) { "sidebar-stage-active" } else { "" }))
                             href=(format!("/tournaments/{}/rounds/{}/ballots", self.tournament.id, seq)) {
                             "Ballots"
                         }
 
-                        a class=(format!("sidebar-stage-tab text-decoration-none {}", if self.active_page == Some("results") { "sidebar-stage-active" } else { "" }))
+                        a class=(format!("sidebar-stage-tab text-decoration-none {}", if self.active_page == Some(SidebarPage::Results) { "sidebar-stage-active" } else { "" }))
                             href=(format!("/tournaments/{}/rounds/{}/results/manage", self.tournament.id, seq)) {
                             "Results"
                         }

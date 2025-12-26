@@ -195,12 +195,12 @@ pub async fn manage_constraints_page(
 
     success(
         Page::new()
-            .active_nav("participants")
+            .active_nav(crate::template::ActiveNav::Participants)
             .user(user)
             .tournament(tournament.clone())
             .current_rounds(current_rounds.clone())
             .body(maud! {
-                SidebarWrapper tournament=(&tournament) rounds=(&rounds) selected_seq=(current_rounds.first().map(|r| r.seq)) active_page=(Some("participants")) {
+                SidebarWrapper tournament=(&tournament) rounds=(&rounds) selected_seq=(current_rounds.first().map(|r| r.seq)) active_page=(None) {
                     div class="container-fluid px-3 px-md-4 py-3" {
                         // Header
                         div class="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-2 border-bottom pb-3 mb-4" {

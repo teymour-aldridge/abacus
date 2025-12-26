@@ -68,7 +68,7 @@ pub async fn admin_ballot_of_seq_overview(
             .user(user)
             .tournament(tournament.clone())
             .body(maud! {
-                SidebarWrapper rounds=(&all_rounds) tournament=(&tournament) active_page=(Some("ballots")) selected_seq=(Some(round_seq)) {
+                SidebarWrapper rounds=(&all_rounds) tournament=(&tournament) active_page=(Some(crate::tournaments::manage::sidebar::SidebarPage::Ballots)) selected_seq=(Some(round_seq)) {
                     // Page Header
                     div class="mb-4 pb-3 border-bottom border-2 border-dark" {
                         h1 class="mb-2" { "Ballot Status" }

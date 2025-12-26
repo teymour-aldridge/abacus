@@ -197,7 +197,7 @@ pub async fn manage_tournament_participants_impl(
     } else {
         success(
             Page::new()
-                .active_nav("participants")
+                .active_nav(crate::template::ActiveNav::Participants)
                 .user(user)
                 .tournament(tournament.clone())
                 .extra_head(maud! {

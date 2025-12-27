@@ -3,7 +3,10 @@ use hypertext::prelude::*;
 use crate::tournaments::{
     Tournament,
     participants::TournamentParticipants,
-    rounds::draws::{DebateRepr, RoundDrawRepr},
+    rounds::{
+        draws::{DebateRepr, RoundDrawRepr},
+        side_names::name_of_side,
+    },
 };
 
 pub mod create;
@@ -349,14 +352,13 @@ impl Renderable for DrawTableHeaders<'_> {
                         "#"
                     }
                     @for i in 0..self.tournament.teams_per_side {
-                        // todo: should use "OG, OO, CG, CO" where appropriate
-                        th scope="col" {
-                            "Prop " (i+1)
-                        }
-                        th scope="col" {
-                            "Opp " (i+1)
+                        @for side in 0..2 {
+                            th scope="col" {
+                                (name_of_side(&self.tournament, side, i, true))
+                            }
                         }
                     }
+
                     th scope="col" {
                         "Judges"
                     }

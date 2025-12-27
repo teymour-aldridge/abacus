@@ -4,7 +4,7 @@
 # Added by cargo
 
 /target
-
+/vendor
 
 /assets/bootstrap
 assets/bootstrap.tar.gz

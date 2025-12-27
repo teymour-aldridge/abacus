@@ -54,6 +54,7 @@ pub struct RoomsOfRoomCategory {
 #[diesel(check_for_backend(Sqlite))]
 pub struct SpeakerRoomConstraint {
     pub id: String,
+    pub tournament_id: String,
     pub speaker_id: String,
     pub category_id: String,
     pub pref: i64,
@@ -66,6 +67,8 @@ pub struct SpeakerRoomConstraint {
 #[diesel(check_for_backend(Sqlite))]
 pub struct JudgeRoomConstraint {
     pub id: String,
+    pub tournament_id: String,
+
     pub judge_id: String,
     pub category_id: String,
     pub pref: i64,

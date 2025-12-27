@@ -20,6 +20,7 @@ use crate::{
 #[allow(dead_code)]
 struct TeamResult {
     id: String,
+    tournament_id: String,
     debate_id: String,
     team_id: String,
     points: i64,

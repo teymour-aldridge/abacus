@@ -87,6 +87,8 @@ pub struct Judge {
 #[diesel(check_for_backend(Sqlite))]
 #[diesel(table_name = tournament_debate_judges)]
 pub struct DebateJudge {
+    pub id: String,
+    pub tournament_id: String,
     pub debate_id: String,
     pub judge_id: String,
     pub status: String,

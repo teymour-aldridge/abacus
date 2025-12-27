@@ -232,6 +232,7 @@ pub struct Ballot {
 #[diesel(table_name = tournament_speaker_score_entries)]
 pub struct BallotScore {
     pub id: String,
+    pub tournament_id: String,
     pub ballot_id: String,
     pub team_id: String,
     pub speaker_id: String,

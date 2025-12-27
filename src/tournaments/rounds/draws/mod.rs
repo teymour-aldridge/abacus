@@ -263,6 +263,7 @@ pub struct Debate {
 /// This struct represents a single row in the `tournament_debate_teams` table.
 pub struct DebateTeam {
     pub id: String,
+    pub tournament_id: String,
     pub debate_id: String,
     pub team_id: String,
     pub side: i64,

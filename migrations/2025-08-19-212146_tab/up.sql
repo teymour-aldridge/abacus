@@ -217,6 +217,7 @@ create table if not exists rooms_of_room_categories (
 -- - "participant k"
 create table if not exists speaker_room_constraints (
     id text primary key not null,
+    tournament_id text not null references tournaments (id),
     speaker_id text not null references tournament_speakers (id),
     category_id text not null references rooms_of_room_categories (id),
     -- the importance of this constraint (lower = more important)
@@ -227,6 +228,7 @@ create table if not exists speaker_room_constraints (
 
 create table if not exists judge_room_constraints (
     id text primary key not null,
+    tournament_id text not null references tournaments (id),
     judge_id text not null references tournament_judges (id),
     category_id text not null references rooms_of_room_categories (id),
     -- the importance of this constraint (lower = more important)
@@ -273,6 +275,9 @@ create table if not exists tournament_round_motions (
 --
 -- The `acquired` field is useful for ensuring that tickets cannot be generated
 -- too often (this prevents accidental DoS attacks).
+--
+-- TODO: when performing a restore operation we should retain old round tickets
+-- and create a new one with a higher index than the pre-existing ones.
 create table if not exists tournament_round_tickets (
     id text not null primary key,
     round_id text not null references tournament_rounds (id),
@@ -290,6 +295,7 @@ create table if not exists tournament_round_tickets (
 
 create table if not exists tournament_team_availability (
     id text primary key not null,
+    tournament_id text not null references tournaments (id),
     round_id text not null references tournament_rounds (id),
     team_id text not null references tournament_teams (id),
     available bool not null default 'f',
@@ -299,6 +305,7 @@ create table if not exists tournament_team_availability (
 -- Eligibility, as specified by judges.
 create table if not exists tournament_judge_stated_eligibility (
     id text primary key not null,
+    tournament_id text not null references tournaments (id),
     round_id text not null references tournament_rounds (id),
     judge_id text not null references tournament_judges (id),
     available bool not null default 'f'
@@ -307,6 +314,7 @@ create table if not exists tournament_judge_stated_eligibility (
 -- The actual judge eligibility.
 create table if not exists tournament_judge_availability (
     id text primary key not null,
+    tournament_id text not null references tournaments (id),
     round_id text not null references tournament_rounds (id),
     judge_id text not null references tournament_judges (id),
     available bool not null default 'f',
@@ -326,6 +334,7 @@ create table if not exists tournament_debates (
 
 create table if not exists tournament_debate_teams (
     id text primary key not null,
+    tournament_id text not null references tournaments (id),
     debate_id text not null references tournament_debates(id),
     team_id text not null references tournament_teams(id),
     side integer not null check (side >= 0),
@@ -335,6 +344,7 @@ create table if not exists tournament_debate_teams (
 
 create table if not exists tournament_debate_judges (
     id text primary key not null,
+    tournament_id text not null references tournaments (id),
     debate_id text not null references tournament_debates(id),
     judge_id text not null references tournament_judges(id),
     status text not null check (status in ('C', 'P', 'T')),
@@ -376,6 +386,7 @@ create table if not exists tournament_speaker_metrics (
 
 create table if not exists tournament_debate_team_results (
     id text primary key not null,
+    tournament_id text not null references tournaments (id),
     debate_id text not null references tournament_debates (id),
     team_id text not null references tournament_teams (id),
     points integer not null
@@ -383,6 +394,7 @@ create table if not exists tournament_debate_team_results (
 
 create table if not exists tournament_debate_speaker_results (
     id text primary key not null,
+    tournament_id text not null references tournaments (id),
     debate_id text not null references tournament_debates (id),
     speaker_id text not null references tournament_speakers (id),
     team_id text not null references tournament_teams (id),
@@ -411,6 +423,7 @@ create table if not exists tournament_ballots (
 
 create table if not exists tournament_speaker_score_entries (
     id text primary key not null,
+    tournament_id text not null references tournaments (id),
     ballot_id text not null references tournament_ballots(id),
     team_id text not null references tournament_teams(id),
     speaker_id text not null references tournament_speakers(id),
@@ -451,6 +464,7 @@ create table if not exists feedback_questions (
 
 create table if not exists feedback_from_judges_question_answers (
     id text primary key not null,
+    tournament_id text not null references tournaments (id),
     feedback_id text not null,
     question_id text not null references feedback_questions (id),
     answer text not null
@@ -458,6 +472,7 @@ create table if not exists feedback_from_judges_question_answers (
 
 create table if not exists feedback_from_teams_question_answers (
     id text primary key not null,
+    tournament_id text not null references tournaments (id),
     feedback_id text not null,
     question_id text not null references feedback_questions (id),
     answer text not null

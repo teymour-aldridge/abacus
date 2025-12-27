@@ -206,12 +206,12 @@ pub async fn manage_constraints_page(
                         div class="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-2 border-bottom pb-3 mb-4" {
                             div {
                                 h6 class="text-uppercase text-muted mb-1 small fw-bold" { "Room Constraints" }
-                                h2 class="h5 fw-bold mb-0" { 
+                                h2 class="h5 fw-bold mb-0" {
                                     (match ptype {
                                         ParticipantType::Speaker => "Speaker: ",
                                         ParticipantType::Judge => "Judge: ",
                                     })
-                                    (participant_name) 
+                                    (participant_name)
                                 }
                             }
                             a href=(format!("/tournaments/{}/participants", tid)) class="btn btn-outline-secondary btn-sm" { "← Back" }
@@ -231,7 +231,7 @@ pub async fn manage_constraints_page(
                         // Active Constraints Section
                         div class="mb-4" {
                             h5 class="mb-3 fw-bold" { "Room Preferences (in order)" }
-                            
+
                             div class="list-group mb-3" {
                                 @if constraint_data.active_constraints.is_empty() {
                                     div class="list-group-item text-muted text-center py-4 fst-italic" {
@@ -244,21 +244,21 @@ pub async fn manage_constraints_page(
                                             span class="badge bg-primary rounded-circle d-flex align-items-center justify-content-center" style="width: 32px; height: 32px; flex-shrink: 0;" {
                                                 (i + 1)
                                             }
-                                            
+
                                             // Category info
                                             div class="flex-grow-1 min-width-0" {
                                                 div class="fw-bold text-truncate" { (cat.private_name) }
                                                 div class="text-muted small text-truncate" { (cat.public_name) }
                                             }
-                                            
+
                                             // Controls
                                             div class="d-flex gap-1 flex-shrink-0" {
                                                 form method="post" action=(format!("/tournaments/{}/participants/{}/{}/constraints/move", tid, ptype.as_str(), participant_id)) class="d-inline" {
                                                     input type="hidden" name="category_id" value=(cat.id);
                                                     input type="hidden" name="direction" value="up";
-                                                    button 
-                                                        type="submit" 
-                                                        class="btn btn-sm btn-outline-secondary" 
+                                                    button
+                                                        type="submit"
+                                                        class="btn btn-sm btn-outline-secondary"
                                                         title="Move up"
                                                         disabled[i == 0]
                                                     {
@@ -268,9 +268,9 @@ pub async fn manage_constraints_page(
                                                 form method="post" action=(format!("/tournaments/{}/participants/{}/{}/constraints/move", tid, ptype.as_str(), participant_id)) class="d-inline" {
                                                     input type="hidden" name="category_id" value=(cat.id);
                                                     input type="hidden" name="direction" value="down";
-                                                    button 
-                                                        type="submit" 
-                                                        class="btn btn-sm btn-outline-secondary" 
+                                                    button
+                                                        type="submit"
+                                                        class="btn btn-sm btn-outline-secondary"
                                                         title="Move down"
                                                         disabled[i == constraint_data.active_constraints.len() - 1]
                                                     {
@@ -293,7 +293,7 @@ pub async fn manage_constraints_page(
                         // Available Categories Section
                         div class="mb-4" {
                             h5 class="mb-3 fw-bold" { "Available Room Categories" }
-                            
+
                             @if constraint_data.available_categories.is_empty() && !constraint_data.all_categories.is_empty() {
                                 div class="alert alert-success small" {
                                     "All categories have been added to preferences."
@@ -472,6 +472,7 @@ pub async fn add_constraint(
                     speaker_id: participant_id.clone(),
                     category_id: form.category_id.clone(),
                     pref: max_pref + 1,
+                    tournament_id: tournament.id.clone(),
                 };
                 diesel::insert_into(speaker_room_constraints::table)
                     .values(&constraint)
@@ -491,6 +492,7 @@ pub async fn add_constraint(
                     judge_id: participant_id.clone(),
                     category_id: form.category_id.clone(),
                     pref: max_pref + 1,
+                    tournament_id: tournament.id.clone(),
                 };
                 diesel::insert_into(judge_room_constraints::table)
                     .values(&constraint)

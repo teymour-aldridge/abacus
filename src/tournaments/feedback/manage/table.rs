@@ -39,6 +39,10 @@ struct FeedbackRow {
     is_latest: bool,
 }
 
+/// Displays feedback in a table.
+///
+/// TODO: use an open source data table library (potentially with graphing
+/// functions)
 pub async fn feedback_table_page(
     Path(tournament_id): Path<String>,
     user: User<true>,

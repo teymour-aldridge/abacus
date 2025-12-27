@@ -19,5 +19,4 @@ pub fn take_snapshot(
     _tid: &str,
     _conn: &mut impl LoadConnection<Backend = Sqlite>,
 ) {
-    // todo: implement
 }

@@ -108,7 +108,8 @@ diesel::table! {
 }
 
 diesel::table! {
-    tournament_debate_judges (debate_id, judge_id) {
+    tournament_debate_judges (id) {
+        id -> Text,
         debate_id -> Text,
         judge_id -> Text,
         status -> Text,
@@ -377,8 +378,8 @@ diesel::table! {
 }
 
 diesel::table! {
-    tournament_team_speakers (rowid) {
-        rowid -> BigInt,
+    tournament_team_speakers (id) {
+        id -> Text,
         team_id -> Text,
         speaker_id -> Text,
     }

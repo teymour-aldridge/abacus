@@ -139,8 +139,10 @@ create table if not exists tournament_speakers (
 );
 
 create table if not exists tournament_team_speakers (
+    id text primary key not null,
     team_id text not null references tournament_teams (id),
-    speaker_id text not null references tournament_speakers (id)
+    speaker_id text not null references tournament_speakers (id),
+    unique (team_id, speaker_id)
 );
 
 create table if not exists tournament_judges (
@@ -332,10 +334,11 @@ create table if not exists tournament_debate_teams (
 );
 
 create table if not exists tournament_debate_judges (
+    id text primary key not null,
     debate_id text not null references tournament_debates(id),
     judge_id text not null references tournament_judges(id),
     status text not null check (status in ('C', 'P', 'T')),
-    primary key (debate_id, judge_id)
+    unique (debate_id, judge_id)
 );
 
 -- Note: the standings are (re)computed whenever a round is confirmed.

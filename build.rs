@@ -1,6 +1,15 @@
+use serde::Deserialize;
+use std::collections::HashMap;
 use std::env;
+use std::fs;
 use std::path::Path;
 use std::process::Command;
+
+#[derive(Deserialize, Debug)]
+struct ManifestEntry {
+    file: String,
+    css: Option<Vec<String>>,
+}
 
 fn main() {
     // Check for bootstrap
@@ -67,7 +76,7 @@ fn main() {
     let dest_path = Path::new(&out_dir).join("style.css");
     let status = Command::new("sass")
         .arg("--load-path=assets")
-        .arg("assets/scss/custom.scss")
+        .arg("assets/scss/main.scss")
         .arg(&dest_path)
         .status()
         .unwrap();
@@ -76,7 +85,24 @@ fn main() {
         panic!("Failed to compile sass");
     }
 
+    println!("cargo:rerun-if-changed=assets/scss/main.scss");
     println!("cargo:rerun-if-changed=assets/scss/custom.scss");
 
     lalrpop::process_root().unwrap();
+
+    println!("cargo:rerun-if-changed=static/dist/manifest.json");
+    let manifest_str = fs::read_to_string("static/dist/manifest.json").unwrap();
+    let manifest: HashMap<String, ManifestEntry> =
+        serde_json::from_str(&manifest_str).unwrap();
+    let entry = manifest.get("index.html").unwrap();
+    let js_path = &entry.file;
+    let css_path = entry
+        .css
+        .as_ref()
+        .and_then(|css| css.first())
+        .map(|s| s.as_str())
+        .unwrap_or("");
+
+    println!("cargo:rustc-env=JS_PATH=static/dist/{}", js_path);
+    println!("cargo:rustc-env=CSS_PATH=static/dist/{}", css_path);
 }

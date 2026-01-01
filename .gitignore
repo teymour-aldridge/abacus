@@ -8,5 +8,5 @@
 
 /assets/bootstrap
 assets/bootstrap.tar.gz
-static/
 *.css
+!frontend/src/index.css

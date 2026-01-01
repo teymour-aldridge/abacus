@@ -1,294 +1,257 @@
-@import "bootstrap/scss/functions";
+// Navigation tab links
+.nav-tab-link {
+    color: #6c757d;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    padding: 0.375rem;
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s ease, border-color 0.15s ease;
 
-$primary: #0969da;
-$black: #000000;
-$white: #ffffff;
-$gray-100: #f6f8fa;
-$gray-200: #d0d7de;
-$gray-300: #afb8c1;
-$gray-400: #8c959f;
-$gray-500: #6e7781;
-$gray-600: #57606a;
-$gray-700: #424a53;
-$gray-800: #24292f;
-$gray-900: #1b1f24;
+    &:hover {
+        color: #212529;
+    }
 
-$font-family-sans-serif:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica,
-    Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
-$font-size-base: 0.875rem; // 14px like GitHub
-$line-height-base: 1.5;
-$headings-font-weight: 600;
-$headings-line-height: 1.25;
-
-$spacer: 1rem;
-$spacers: (
-    0: 0,
-    1: $spacer * 0.25,
-    2: $spacer * 0.5,
-    3: $spacer,
-    4: $spacer * 1.5,
-    5: $spacer * 3,
-    6: $spacer * 4.5,
-    7: $spacer * 6,
-);
-
-$border-width: 1px;
-$border-color: $gray-200;
-$border-radius: 0;
-$border-radius-sm: 0;
-$border-radius-lg: 0;
-
-$card-border-radius: 0;
-$card-border-width: 1px;
-$card-border-color: $gray-300; // Lighter border for cards
-$card-cap-bg: transparent;
-
-$btn-border-radius: 0;
-$btn-border-radius-sm: 0;
-$btn-border-radius-lg: 0;
-$btn-font-weight: 600; // Bolder buttons
-$btn-text-transform: none; // No uppercase
-$btn-letter-spacing: normal;
-
-$list-group-border-radius: 0;
-$list-group-border-width: 1px;
-
-$badge-font-weight: 600;
-$badge-padding-y: 0.35rem;
-$badge-padding-x: 0.65rem;
-$badge-border-radius: 0;
-
-$alert-border-radius: 0;
-$alert-border-width: 1px;
-
-$progress-border-radius: 0;
-$progress-bg: $gray-200;
-
-$light: $gray-100; // Slightly lighter gray background
-
-@import "bootstrap/scss/variables";
-@import "bootstrap/scss/variables-dark";
-@import "bootstrap/scss/maps";
-@import "bootstrap/scss/mixins";
-@import "bootstrap/scss/utilities";
-@import "bootstrap/scss/root";
-@import "bootstrap/scss/reboot";
-
-@import "bootstrap/scss/type";
-@import "bootstrap/scss/images";
-@import "bootstrap/scss/containers";
-@import "bootstrap/scss/grid";
-@import "bootstrap/scss/tables";
-@import "bootstrap/scss/forms";
-@import "bootstrap/scss/buttons";
-@import "bootstrap/scss/transitions";
-@import "bootstrap/scss/dropdown";
-@import "bootstrap/scss/button-group";
-@import "bootstrap/scss/nav";
-@import "bootstrap/scss/navbar";
-@import "bootstrap/scss/card";
-@import "bootstrap/scss/breadcrumb";
-@import "bootstrap/scss/accordion";
-@import "bootstrap/scss/pagination";
-@import "bootstrap/scss/badge";
-@import "bootstrap/scss/alert";
-@import "bootstrap/scss/progress";
-@import "bootstrap/scss/list-group";
-@import "bootstrap/scss/close";
-@import "bootstrap/scss/toasts";
-@import "bootstrap/scss/modal";
-@import "bootstrap/scss/tooltip";
-@import "bootstrap/scss/popover";
-@import "bootstrap/scss/carousel";
-@import "bootstrap/scss/spinners";
-@import "bootstrap/scss/offcanvas";
-@import "bootstrap/scss/placeholders";
-
-@import "bootstrap/scss/helpers";
-
-@import "bootstrap/scss/utilities/api";
-
-// Draw Editor Drag & Drop Styles
-.sortable-ghost {
-    opacity: 0.3;
-    background-color: var(--bs-gray-200) !important;
-    border: 2px dashed var(--bs-border-color) !important;
+    &.nav-tab-active {
+        color: #d9534f;
+        border-bottom-color: #d9534f;
+    }
 }
 
-.sortable-chosen {
-    background-color: var(--bs-white) !important;
-    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+// Sidebar stage tabs
+.sidebar-stage-tab {
+    color: #6c757d;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    padding: 0.5rem 0;
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s ease, border-color 0.15s ease;
+
+    &:hover {
+        color: #212529;
+    }
+
+    &.sidebar-stage-active {
+        color: #d9534f;
+        border-bottom-color: #d9534f;
+    }
 }
 
-.sortable-drag {
-    opacity: 1;
+// Ensure #root doesn't interfere with page layout
+#root {
+    display: block;
+    width: 100%;
+}
+
+// Draw Editor Styles
+.draw-editor {
+    padding: 0;
+    text-align: left;
+}
+
+.draw-editor-header {
+    margin-bottom: 1rem;
+
+    h4 {
+        margin: 0;
+        font-weight: 600;
+        color: #212529;
+    }
+}
+
+.unallocated-section {
+    margin-bottom: 1.5rem;
+
+    h6 {
+        font-weight: 600;
+        color: #495057;
+        margin-bottom: 0.5rem;
+    }
+}
+
+.round-section {
+    margin-bottom: 2rem;
+
+    h5 {
+        font-weight: 600;
+        color: #212529;
+        margin-bottom: 0.75rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid #e9ecef;
+    }
+}
+
+.judge-drop-zone {
+    border: 2px dashed #dee2e6;
+    padding: 8px;
+    min-height: 44px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    background-color: #fafbfc;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+    justify-content: center;
+
+    &:hover {
+        border-color: #adb5bd;
+        background-color: #f8f9fa;
+    }
+
+    // When dragging over (native HTML5 drag and drop)
+    &.drag-over {
+        border-color: #0d6efd;
+        background-color: #e7f1ff;
+        border-style: solid;
+    }
+
+    // When has judges, align to start
+    &:has(.judge-badge) {
+        align-items: flex-start;
+        justify-content: flex-start;
+    }
+}
+
+.judge-drop-zone-placeholder {
+    color: #adb5bd;
+    font-size: 0.75rem;
+    font-weight: 500;
+    pointer-events: none;
+    white-space: nowrap;
+}
+
+.drop-placeholder {
+    color: #adb5bd;
+    font-size: 0.8125rem;
+    padding: 0.5rem;
 }
 
 .judge-badge {
-    cursor: grab;
-    user-select: none;
+    background-color: #fff;
+    border: 1px solid #dee2e6;
+    padding: 4px 10px;
+    font-size: 0.8125rem;
+    border-radius: 16px;
     display: inline-flex;
     align-items: center;
-    gap: 0.25rem;
-    padding: 0.25rem 0.5rem;
-    margin: 0.125rem;
-    font-size: 0.875rem;
-    background-color: var(--bs-white);
-    color: var(--bs-body-color);
-    border: 1px solid var(--bs-border-color);
+    gap: 6px;
+    cursor: grab;
     transition: all 0.15s ease;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    user-select: none;
 
     &:hover {
-        background-color: var(--bs-gray-100);
-        border-color: var(--bs-gray-400);
+        border-color: #adb5bd;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
     }
 
     &:active {
         cursor: grabbing;
     }
-}
 
-.debate-judges-container {
-    display: flex;
-    flex-direction: row;
-    flex-wrap: nowrap;
-    gap: 0.75rem;
-    padding: 0.5rem 0;
-}
-
-.judge-role-section {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    flex: 1 1 0;
-    min-width: 0;
-}
-
-.role-label {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--bs-gray-900);
-    text-transform: uppercase;
-    margin-bottom: 0.25rem;
-}
-
-.judge-drop-zone {
-    min-height: 2.5rem;
-    padding: 0.375rem 0.5rem;
-    border: 1px solid var(--bs-border-color);
-    background-color: var(--bs-gray-100);
-    // Removed transitions for flat feel
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    gap: 0.25rem;
-
-    &:hover {
-        border-color: var(--bs-gray-400);
-        background-color: var(--bs-gray-200);
+    // Role-specific colors
+    &.chair-badge {
+        background-color: #fff3cd;
+        border-color: #ffc107;
+        color: #856404;
     }
-}
 
-.drop-placeholder {
-    font-size: 0.75rem;
-    color: var(--bs-secondary);
-    font-style: italic;
-}
+    &.panel-badge {
+        background-color: #d1e7dd;
+        border-color: #198754;
+        color: #0f5132;
+    }
 
-.judge-remove-btn {
-    cursor: pointer;
-    opacity: 0.5;
-    font-weight: 400;
-    font-size: 1.25rem;
-    line-height: 1;
-    transition: opacity 0.15s ease;
+    &.trainee-badge {
+        background-color: #cff4fc;
+        border-color: #0dcaf0;
+        color: #055160;
+    }
 
-    &:hover {
-        opacity: 1;
+    .remove-btn {
+        background: none;
+        border: none;
+        padding: 0;
+        margin: 0;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        font-size: 14px;
+        line-height: 1;
+        color: #6c757d;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s ease;
+
+        &:hover {
+            background-color: rgba(0, 0, 0, 0.1);
+            color: #dc3545;
+        }
     }
 }
 
 .unallocated-judges-container {
-    background-color: var(--bs-body-bg, #fff);
-    border: 1px solid var(--bs-border-color);
-    border-radius: 0.25rem;
-    padding: 0.75rem;
-    top: 0;
-    z-index: 1020;
+    border: 2px dashed #dee2e6;
+    padding: 12px;
+    min-height: 50px;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    background-color: #fafbfc;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: flex-start;
 
-    #unallocatedJudges {
-        max-height: 25vh;
-        overflow-y: auto;
-        display: flex;
-        flex-wrap: wrap;
-        align-items: flex-start;
-        gap: 0.25rem;
-        min-height: auto;
-        padding: 0;
-        background-color: transparent;
-        border: none;
-        margin-bottom: 0;
+    &:hover {
+        border-color: #adb5bd;
+    }
+
+    .judge-badge {
+        background-color: #f8f9fa;
+        border-color: #ced4da;
     }
 }
 
-.nav-tab-link {
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: var(--bs-gray-600);
-    border-bottom: 2px solid transparent;
-    padding: 0.5rem 0.375rem;
-    transition:
-        color 0.15s ease,
-        border-color 0.15s ease;
-
-    &:hover {
-        color: var(--bs-gray-900);
-        border-bottom-color: var(--bs-gray-300);
-    }
-
-    .material-icons {
-        color: var(--bs-gray-500);
-        font-size: 1rem;
-    }
+// Drag visual states (native HTML5 drag and drop)
+.judge-badge.dragging {
+    opacity: 0.4;
+    cursor: grabbing;
 }
 
-.nav-tab-active {
-    color: var(--bs-gray-900);
-    font-weight: 600;
-    border-bottom-color: #fd8c73;
-
-    .material-icons {
-        color: var(--bs-gray-900);
-    }
-
-    &:hover {
-        border-bottom-color: #fd8c73;
-    }
+.unallocated-judges-container.drag-over {
+    border-color: #0d6efd;
+    background-color: #e7f1ff;
+    border-style: solid;
 }
 
-.sidebar-stage-tab {
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: var(--bs-gray-600);
-    padding: 0.5rem 0.25rem;
-    border-bottom: 2px solid transparent;
-    transition:
-        color 0.15s ease,
-        border-color 0.15s ease;
+// Table styling for draw editor
+.draw-editor .table {
+    margin-bottom: 0;
 
-    &:hover {
-        color: var(--bs-gray-900);
-        border-bottom-color: var(--bs-gray-300);
+    th {
+        background-color: #f8f9fa;
+        font-weight: 600;
+        font-size: 0.8125rem;
+        color: #495057;
+        border-bottom-width: 2px;
+        vertical-align: middle;
     }
-}
 
-.sidebar-stage-active {
-    color: var(--bs-gray-900);
-    font-weight: 600;
-    border-bottom-color: #fd8c73;
+    td {
+        vertical-align: top;
+        padding: 0.5rem;
+    }
 
-    &:hover {
-        border-bottom-color: #fd8c73;
+    td:first-child,
+    td:nth-child(2) {
+        vertical-align: middle;
+        font-weight: 500;
+    }
+
+    td:nth-child(3) {
+        vertical-align: middle;
+        font-size: 0.875rem;
     }
 }

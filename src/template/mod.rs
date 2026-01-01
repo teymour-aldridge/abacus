@@ -3,7 +3,7 @@
 //! This defines the [`Page`] item, which is used in most of the other parts of
 //! this crate.
 
-use hypertext::prelude::*;
+use hypertext::{Raw, prelude::*};
 
 use crate::{
     auth::User,
@@ -130,6 +130,7 @@ impl<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool> Renderable
         buffer: &mut hypertext::Buffer<hypertext::context::Node>,
     ) {
         maud! {
+            (Raw::dangerously_create("<!DOCTYPE html>"))
             html {
                 head {
                     title { "Abacus" }
@@ -139,9 +140,7 @@ impl<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool> Renderable
                     }
                     script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous" {}
                     link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet";
-                    style {
-                        (include_str!(concat!(env!("OUT_DIR"), "/style.css")))
-                    }
+                    link rel="stylesheet" href="/style.css";
                     meta
                         name="viewport"
                         content="width=device-width, initial-scale=1";

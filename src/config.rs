@@ -1,6 +1,8 @@
 use axum::{
     Router,
     extract::MatchedPath,
+    http::header,
+    response::IntoResponse,
     routing::{get, post},
 };
 use axum_extra::extract::cookie::Key;
@@ -111,6 +113,11 @@ async fn home(
     }
 }
 
+async fn style_css() -> impl IntoResponse {
+    let css_content = include_str!(concat!(env!("OUT_DIR"), "/style.css"));
+    ([(header::CONTENT_TYPE, "text/css")], css_content)
+}
+
 pub async fn run() {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
@@ -147,6 +154,7 @@ pub async fn run() {
 
     let app = Router::new()
         .route("/", get(home))
+        .route("/style.css", get(style_css))
         .route("/login", get(crate::auth::login::login_page).post(crate::auth::login::do_login))
         .route("/register", get(crate::auth::register::register_page).post(crate::auth::register::do_register))
         .route("/tournaments/create", get(crate::tournaments::create::create_tournament_page).post(crate::tournaments::create::do_create_tournament))
@@ -231,6 +239,8 @@ pub async fn run() {
         .route("/tournaments/:id/rounds/:round_id/availability/teams/all", post(crate::tournaments::rounds::manage::availability::teams::update_eligibility_for_all))
 
         // Draw Edit
+        .route("/draw_edit.js", get(crate::tournaments::rounds::manage::draw_edit::draw_edit_js))
+        .route("/draw_edit.css", get(crate::tournaments::rounds::manage::draw_edit::draw_edit_css))
         .route("/tournaments/:id/rounds/draws/edit", get(crate::tournaments::rounds::manage::draw_edit::edit_multiple_draws_page).post(crate::tournaments::rounds::manage::draw_edit::submit_cmd))
         .route("/tournaments/:id/rounds/draws/edit/ws", get(crate::tournaments::rounds::manage::draw_edit::draw_updates))
         .route("/tournaments/:id/rounds/draws/edit/move", post(crate::tournaments::rounds::manage::draw_edit::move_judge))
@@ -256,9 +266,11 @@ pub async fn run() {
         .route("/tournaments/:id/rounds/:round_seq/ballots", get(crate::tournaments::rounds::ballots::manage::overview::admin_ballot_of_seq_overview))
         .route("/tournaments/:id/debates/:debate_id/ballots", get(crate::tournaments::rounds::ballots::manage::view_ballot_set::view_ballot_set_page))
         .route("/tournaments/:id/privateurls/:private_url", get(crate::tournaments::privateurls::view::private_url_page))
-        .route("/tournaments/:id/privateurls/:url/rounds/:round_id/submit", get(crate::tournaments::rounds::ballots::public::submit::submit_ballot_page).post(crate::tournaments::rounds::ballots::public::submit::do_submit_ballot))
 
+//...
+        .route("/tournaments/:id/privateurls/:url/rounds/:round_id/submit", get(crate::tournaments::rounds::ballots::public::submit::submit_ballot_page).post(crate::tournaments::rounds::ballots::public::submit::do_submit_ballot))
         .layer(axum::Extension(tx))
+//...
         .layer(axum::Extension(state.pool.clone()))
         .with_state(state)
         .layer(

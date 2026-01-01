@@ -1,0 +1,221 @@
+/* Draw Editor specific styles - scoped to avoid affecting main page */
+
+/* Solid.js app root */
+#root {
+    display: block;
+    width: 100%;
+}
+
+/* Draw Editor Layout */
+.draw-editor {
+    padding: 0;
+    text-align: left;
+}
+
+.draw-editor-header {
+    margin-bottom: 1rem;
+}
+
+.draw-editor-header h4 {
+    margin: 0;
+    font-weight: 600;
+    color: #212529;
+}
+
+.unallocated-section {
+    margin-bottom: 1.5rem;
+}
+
+.unallocated-section h6 {
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 0.5rem;
+}
+
+.round-section {
+    margin-bottom: 2rem;
+}
+
+.round-section h5 {
+    font-weight: 600;
+    color: #212529;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #e9ecef;
+}
+
+/* Judge Drop Zones */
+.judge-drop-zone {
+    border: 2px dashed #dee2e6;
+    padding: 8px;
+    min-height: 44px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    background-color: #fafbfc;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+    justify-content: center;
+}
+
+.judge-drop-zone:hover {
+    border-color: #adb5bd;
+    background-color: #f8f9fa;
+}
+
+.judge-drop-zone.drag-over {
+    border-color: #0d6efd;
+    background-color: #e7f1ff;
+    border-style: solid;
+}
+
+.judge-drop-zone:has(.judge-badge) {
+    align-items: flex-start;
+    justify-content: flex-start;
+}
+
+.judge-drop-zone-placeholder {
+    color: #adb5bd;
+    font-size: 0.75rem;
+    font-weight: 500;
+    pointer-events: none;
+    white-space: nowrap;
+}
+
+.drop-placeholder {
+    color: #adb5bd;
+    font-size: 0.8125rem;
+    padding: 0.5rem;
+}
+
+/* Judge Badges */
+.judge-badge {
+    background-color: #fff;
+    border: 1px solid #dee2e6;
+    padding: 4px 10px;
+    font-size: 0.8125rem;
+    border-radius: 16px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: grab;
+    transition: all 0.15s ease;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    user-select: none;
+}
+
+.judge-badge:hover {
+    border-color: #adb5bd;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+}
+
+.judge-badge:active {
+    cursor: grabbing;
+}
+
+.judge-badge.chair-badge {
+    background-color: #fff3cd;
+    border-color: #ffc107;
+    color: #856404;
+}
+
+.judge-badge.panel-badge {
+    background-color: #d1e7dd;
+    border-color: #198754;
+    color: #0f5132;
+}
+
+.judge-badge.trainee-badge {
+    background-color: #cff4fc;
+    border-color: #0dcaf0;
+    color: #055160;
+}
+
+.judge-badge .remove-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    font-size: 14px;
+    line-height: 1;
+    color: #6c757d;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.judge-badge .remove-btn:hover {
+    background-color: rgba(0, 0, 0, 0.1);
+    color: #dc3545;
+}
+
+/* Unallocated Judges Container */
+.unallocated-judges-container {
+    border: 2px dashed #dee2e6;
+    padding: 12px;
+    min-height: 50px;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    background-color: #fafbfc;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: flex-start;
+}
+
+.unallocated-judges-container:hover {
+    border-color: #adb5bd;
+}
+
+.unallocated-judges-container .judge-badge {
+    background-color: #f8f9fa;
+    border-color: #ced4da;
+}
+
+/* Dragging states */
+.judge-badge.dragging {
+    opacity: 0.4;
+    cursor: grabbing;
+}
+
+.unallocated-judges-container.drag-over {
+    border-color: #0d6efd;
+    background-color: #e7f1ff;
+    border-style: solid;
+}
+
+/* Table styles within Draw Editor */
+.draw-editor .table {
+    margin-bottom: 0;
+}
+
+.draw-editor .table th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+    font-size: 0.8125rem;
+    color: #495057;
+    border-bottom-width: 2px;
+    vertical-align: middle;
+}
+
+.draw-editor .table td {
+    vertical-align: top;
+    padding: 0.5rem;
+}
+
+.draw-editor .table td:first-child,
+.draw-editor .table td:nth-child(2) {
+    vertical-align: middle;
+    font-weight: 500;
+}
+
+.draw-editor .table td:nth-child(3) {
+    vertical-align: middle;
+    font-size: 0.875rem;
+}

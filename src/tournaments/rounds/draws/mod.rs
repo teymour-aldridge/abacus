@@ -37,6 +37,7 @@ pub struct Room {
     number: i64,
 }
 
+#[derive(Serialize, Clone, Debug)]
 pub struct RoundDrawRepr {
     pub round: Round,
     pub debates: Vec<DebateRepr>,
@@ -66,7 +67,7 @@ impl RoundDrawRepr {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct DebateRepr {
     pub debate: Debate,
     pub room: Option<Room>,
@@ -248,7 +249,7 @@ pub enum DrawStatus {
     Released,
 }
 
-#[derive(QueryableByName, Queryable, Debug, Clone)]
+#[derive(QueryableByName, Queryable, Debug, Clone, Serialize)]
 #[diesel(table_name = tournament_debates)]
 pub struct Debate {
     pub id: String,
@@ -258,7 +259,7 @@ pub struct Debate {
     pub number: i64,
 }
 
-#[derive(QueryableByName, Queryable, Debug, Clone)]
+#[derive(QueryableByName, Queryable, Debug, Clone, Serialize)]
 #[diesel(table_name = tournament_debate_teams)]
 /// This struct represents a single row in the `tournament_debate_teams` table.
 pub struct DebateTeam {

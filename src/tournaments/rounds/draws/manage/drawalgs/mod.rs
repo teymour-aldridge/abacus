@@ -296,6 +296,7 @@ pub fn do_draw(
                                 .eq(prop_team.id.clone()),
                             tournament_debate_teams::side.eq(0),
                             tournament_debate_teams::seq.eq(i as i64),
+                            tournament_debate_teams::tournament_id.eq(tournament.id.clone())
                         ))
                     }
                     for (i, opp_team) in room.1.iter().enumerate() {
@@ -308,6 +309,7 @@ pub fn do_draw(
                                 .eq(opp_team.id.clone()),
                             tournament_debate_teams::side.eq(1),
                             tournament_debate_teams::seq.eq(i as i64),
+                            tournament_debate_teams::tournament_id.eq(tournament.id.clone())
                         ))
                     }
                 }

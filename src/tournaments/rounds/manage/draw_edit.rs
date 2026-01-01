@@ -16,6 +16,7 @@ use tokio::{
     sync::broadcast::{Receiver, Sender},
     task::spawn_blocking,
 };
+use uuid::Uuid;
 
 use crate::{
     auth::User,
@@ -32,10 +33,7 @@ use crate::{
         participants::{DebateJudge, Judge, TournamentParticipants},
         rounds::{
             Round, TournamentRounds,
-            draws::{
-                Debate, DebateRepr, RoundDrawRepr,
-                manage::{DrawTableHeaders, RoomsOfRoundTable},
-            },
+            draws::{Debate, RoundDrawRepr},
         },
     },
     util_resp::{
@@ -48,6 +46,28 @@ use crate::{
 pub struct RoundsQuery {
     #[serde(default)]
     rounds: Vec<String>,
+}
+
+use axum::http::header;
+use axum::response::Html;
+
+const JS_CONTENT: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/", env!("JS_PATH")));
+
+const CSS_CONTENT: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/", env!("CSS_PATH")));
+
+pub async fn draw_edit_js()
+-> ([(header::HeaderName, &'static str); 1], Html<&'static str>) {
+    (
+        [(header::CONTENT_TYPE, "application/javascript")],
+        Html(JS_CONTENT),
+    )
+}
+
+pub async fn draw_edit_css()
+-> ([(header::HeaderName, &'static str); 1], Html<&'static str>) {
+    ([(header::CONTENT_TYPE, "text/css")], Html(CSS_CONTENT))
 }
 
 #[tracing::instrument(skip(conn))]
@@ -65,7 +85,7 @@ pub async fn edit_multiple_draws_page(
     }
     let rounds_vec = query.rounds;
 
-    let all_rounds =
+    let _all_rounds =
         TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
 
     let rounds2edit = match tournament_rounds::table
@@ -80,318 +100,41 @@ pub async fn edit_multiple_draws_page(
         }
     };
 
-    tracing::debug!("Retrieved {} rounds to edit", rounds2edit.len());
+    let round_ids =
+        rounds2edit.iter().map(|r| r.id.clone()).collect::<Vec<_>>();
 
-    let reprs = rounds2edit
-        .into_iter()
-        .map(|round| RoundDrawRepr::of_round(round.clone(), &mut *conn))
-        .collect::<Vec<_>>();
-
-    let participants = TournamentParticipants::load(&tournament_id, &mut *conn);
+    let current_rounds = crate::tournaments::rounds::Round::current_rounds(
+        &tournament.id,
+        &mut *conn,
+    );
 
     success(
         Page::new()
             .tournament(tournament.clone())
             .user(user)
-            .extra_head(maud! {
-                script src="https://cdn.jsdelivr.net/npm/htmx-ext-ws@2.0.2" crossorigin="anonymous" {}
-            })
+            .current_rounds(current_rounds)
+            .active_nav(crate::template::ActiveNav::Draw)
             .body(maud! {
-                SidebarWrapper rounds=(&all_rounds) tournament=(&tournament) active_page=(Some(crate::tournaments::manage::sidebar::SidebarPage::Draw)) selected_seq=(Some(reprs[0].round.seq)) {
-                    script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.3/Sortable.min.js" {}
-                    script src="https://cdn.jsdelivr.net/npm/htmx-ext-response-targets@2.0.2" {
-                    }
-
-                    div class="draw-editor" {
-                        h1 {
-                            "Edit Draw"
-                            span style="font-weight: 400; font-size: 1.25rem; display: block; margin-top: 0.5rem; color: #666666;" {
-                                @for (i, repr) in reprs.iter().enumerate() {
-                                    @if i > 0 {
-                                        ", "
-                                    }
-                                    (repr.round.name)
-                                }
-                            }
-                        }
-
-                        (renderer_of_drag_drop_instructions(&tournament, &reprs))
-
-                        div hx-ext="ws"
-                            "ws-connect"=(
-                                format!(
-                                    "/tournaments/{}/rounds/draws/edit/ws?rounds={}",
-                                    tournament.id,
-                                    reprs.iter().map(|repr| repr.round.id.clone()).join(",")
-                                )
-                            )
-                        {
-                            (get_refreshable_part(&tournament, &reprs, &participants))
-                        }
-
-                        div id="dragDropConfig"
-                            style="display:none"
-                            data-tournament-id=(tournament.id)
-                            data-round-ids=(reprs.iter().map(|repr| repr.round.id.clone()).join(","))
-                        {}
-                    }
-
-                    // This script handles the drag-and-drop code.
+                SidebarWrapper rounds=(&_all_rounds) tournament=(&tournament) active_page=(Some(crate::tournaments::manage::sidebar::SidebarPage::Draw)) selected_seq=(Some(rounds2edit[0].seq)) {
+                    div id="root" {}
                     script {
-                        (Raw::dangerously_create(
-                        r#"
-                        (function() {
-                            function initializeSortables() {
-                                var config = document.getElementById('dragDropConfig');
-                                if (!config) {
-                                    console.error('Config element not found');
-                                    return;
-                                }
-                                var tournamentId = config.dataset.tournamentId;
-                                var roundIds = config.dataset.roundIds;
-
-                                if (typeof Sortable === 'undefined') {
-                                    console.error('Sortable.js not loaded');
-                                    return;
-                                }
-
-                                // Make unallocated judges sortable
-                                var unallocatedContainer = document.getElementById('unallocatedJudges');
-                                if (unallocatedContainer) {
-                                    Sortable.create(unallocatedContainer, {
-                                        group: 'judges',
-                                        animation: 150,
-                                        ghostClass: 'sortable-ghost',
-                                        chosenClass: 'sortable-chosen',
-                                        dragClass: 'sortable-drag',
-                                        sort: false,
-                                        onEnd: function(evt) {
-                                            console.log('Drag ended from unallocated');
-                                            handleJudgeDrop(evt, tournamentId, roundIds);
-                                        }
-                                    });
-                                }
-
-                                var dropZones = document.querySelectorAll('.judge-drop-zone');
-                                console.log('Found drop zones: ' + dropZones.length);
-
-                                dropZones.forEach(function(el, index) {
-                                    Sortable.create(el, {
-                                        group: 'judges',
-                                        animation: 150,
-                                        ghostClass: 'sortable-ghost',
-                                        chosenClass: 'sortable-chosen',
-                                        dragClass: 'sortable-drag',
-                                        onEnd: function(evt) {
-                                            console.log('Drag ended to drop zone');
-                                            handleJudgeDrop(evt, tournamentId, roundIds);
-                                        }
-                                    });
-                                });
-
-                                document.querySelectorAll('.judge-remove-btn').forEach(function(btn) {
-                                    btn.onclick = function(e) {
-                                        e.stopPropagation();
-                                        e.preventDefault();
-                                        var badge = this.closest('.judge-badge');
-                                        var judgeId = badge.dataset.judgeId;
-                                        var container = badge.closest('.judge-drop-zone');
-                                        var debateId = container ? container.dataset.debateId : '';
-                                        console.log('Remove clicked: ' + judgeId + ' from ' + debateId);
-                                        if (debateId) {
-                                            removeJudge(judgeId, debateId, tournamentId, roundIds);
-                                        }
-                                    };
-                                });
-
-                                console.log('Sortables initialized');
-                            }
-
-                            function handleJudgeDrop(evt, tournamentId, roundIds) {
-                                var judgeId = evt.item.dataset.judgeId;
-                                var toContainer = evt.to;
-                                var toDebateId = toContainer.dataset.debateId || '';
-                                var toRole = toContainer.dataset.role || 'P';
-
-                                if (toRole === 'C') {
-                                    var existingChairs = toContainer.querySelectorAll('.judge-badge');
-                                    var otherChairs = Array.from(existingChairs).filter(function(badge) {
-                                        return badge.dataset.judgeId !== judgeId;
-                                    });
-                                    if (otherChairs.length > 0) {
-                                        var errDiv = document.getElementById('dragDropErrMsg');
-                                        if (errDiv) {
-                                            errDiv.innerHTML = '<div class="alert alert-danger">Only one chair per debate. Remove the existing chair first.</div>';
-                                            setTimeout(function() { errDiv.innerHTML = ''; }, 3000);
-                                        }
-                                        setTimeout(function() { window.location.reload(); }, 500);
-                                        return;
-                                    }
-                                }
-
-                                console.log('handleJudgeDrop - judgeId: ' + judgeId + ', toDebateId: ' + toDebateId + ', toRole: ' + toRole);
-
-                                var body = new URLSearchParams();
-                                body.append('judge_id', judgeId);
-                                body.append('to_debate_id', toDebateId);
-                                body.append('role', toRole);
-                                roundIds.split(',').forEach(id => body.append('rounds', id));
-
-                                console.log('Sending request');
-
-                                fetch('/tournaments/' + tournamentId + '/rounds/draws/edit/move', {
-                                    method: 'POST',
-                                    headers: {
-                                        'Content-Type': 'application/x-www-form-urlencoded'
-                                    },
-                                    body: body.toString()
-                                }).then(function(response) {
-                                    console.log('Response status: ' + response.status);
-                                    if (response.ok) {
-                                        return response.text();
-                                    } else {
-                                        throw new Error('Move failed: ' + response.status);
-                                    }
-                                }).then(function(html) {
-                                    console.log('Got HTML response');
-                                    var container = document.getElementById('tableContainer');
-                                    if (container) {
-                                        container.outerHTML = html;
-                                        setTimeout(initializeSortables, 100);
-                                    }
-                                }).catch(function(err) {
-                                    console.error('Error: ' + err);
-                                    var errDiv = document.getElementById('dragDropErrMsg');
-                                    if (errDiv) {
-                                        errDiv.innerHTML = '<div class="alert alert-danger">Failed to move judge</div>';
-                                    }
-                                    setTimeout(function() { window.location.reload(); }, 2000);
-                                });
-                            }
-
-                            function removeJudge(judgeId, debateId, tournamentId, roundIds) {
-                                console.log('removeJudge: ' + judgeId);
-
-                                var body = new URLSearchParams();
-                                body.append('judge_id', judgeId);
-                                body.append('to_debate_id', '');
-                                body.append('role', 'P');
-                                roundIds.split(',').forEach(id => body.append('rounds', id));
-
-                                fetch('/tournaments/' + tournamentId + '/rounds/draws/edit/move', {
-                                    method: 'POST',
-                                    headers: {
-                                        'Content-Type': 'application/x-www-form-urlencoded'
-                                    },
-                                    body: body.toString()
-                                }).then(function(response) {
-                                    if (response.ok) {
-                                        return response.text();
-                                    } else {
-                                        throw new Error('Remove failed');
-                                    }
-                                }).then(function(html) {
-                                    var container = document.getElementById('tableContainer');
-                                    if (container) {
-                                        container.outerHTML = html;
-                                        setTimeout(initializeSortables, 100);
-                                    }
-                                }).catch(function(err) {
-                                    console.error('Error: ' + err);
-                                    window.location.reload();
-                                });
-                            }
-
-                            if (document.readyState === 'loading') {
-                                document.addEventListener('DOMContentLoaded', initializeSortables);
-                            } else {
-                                initializeSortables();
-                            }
-
-                            // Re-initialize Sortables after WebSocket content updates
-                            document.body.addEventListener('htmx:wsAfterMessage', function() {
-                                setTimeout(initializeSortables, 100);
-                            });
-                        })();
-                        "#))
+                        (Raw::dangerously_create(&format!(
+                            r#"
+                            window.drawEditorConfig = {{
+                                tournamentId: "{}",
+                                roundIds: [{}]
+                            }};
+                            "#,
+                            tournament.id,
+                            round_ids.iter().map(|id| format!("\"{}\"", id)).join(",")
+                        )))
                     }
+                    script type="module" crossorigin="anonymous" src="/draw_edit.js" {}
+                    link rel="stylesheet" crossorigin="anonymous" href="/draw_edit.css";
                 }
             })
             .render(),
     )
-}
-
-fn renderer_of_drag_drop_instructions(
-    _tournament: &Tournament,
-    _rounds: &[RoundDrawRepr],
-) -> impl Renderable {
-    maud! {
-        div id="dragDropErrMsg" {}
-    }
-}
-
-fn get_refreshable_part(
-    tournament: &Tournament,
-    reprs: &[RoundDrawRepr],
-    participants: &TournamentParticipants,
-) -> impl Renderable {
-    let allocated_judge_ids: std::collections::HashSet<String> = reprs
-        .iter()
-        .flat_map(|repr| {
-            repr.debates.iter().flat_map(|debate| {
-                debate.judges_of_debate.iter().map(|dj| dj.judge_id.clone())
-            })
-        })
-        .collect();
-
-    maud! {
-        div id="tableContainer"
-            hx-swap-oob="morphdom"
-            data-tournament-rounds=(reprs.iter().map(|repr| repr.round.id.clone()).join(","))
-        {
-            h3 {
-                "Unallocated Judges"
-            }
-            div class="mb-4 sticky-top unallocated-judges-container" {
-                div id="unallocatedJudges" class="" {
-                    @for judge in participants.judges.values().filter(|j| !allocated_judge_ids.contains(&j.id)) {
-                        div class="judge-badge"
-                            data-judge-id=(judge.id)
-                            data-judge-number=(judge.number)
-                            data-role="P"
-                            draggable="true"
-                        {
-                            (judge.name) " (j" (judge.number) ")"
-                        }
-                    }
-                    @if participants.judges.values().all(|j| allocated_judge_ids.contains(&j.id)) {
-                        span class="text-muted" { "All judges are allocated" }
-                    }
-                }
-            }
-
-            table class="table" {
-                DrawTableHeaders tournament=(&tournament) editable=(true);
-
-                @for repr in reprs {
-                    @if repr.debates.is_empty() {
-                        div class="alert alert-warning" role="alert" {
-                            "Note: there exists no draw for " (repr.round.name)
-                        }
-                    } @else {
-                        RoomsOfRoundTable
-                            tournament=(&tournament)
-                            repr=(&repr)
-                            actions=(|_: &DebateRepr| maud! {"None"})
-                            participants=(participants)
-                            body_only=(true);
-                    }
-                }
-
-            }
-
-        }
-    }
 }
 
 #[derive(Deserialize)]
@@ -475,15 +218,80 @@ pub async fn draw_updates(
     })
 }
 
+use serde::Serialize;
+// ... existing imports
+
+#[derive(Serialize)]
+struct DrawUpdate {
+    unallocated_judges: Vec<Judge>,
+    rounds: Vec<RoundDrawRepr>,
+}
+
+// ... existing code
+
 async fn handle_socket(
     socket: ws::WebSocket,
     mut rx: Receiver<Msg>,
     pool: DbPool,
     tournament_id: String,
     round_ids: Vec<String>,
-    tournament: Tournament,
+    _tournament: Tournament,
 ) {
     let (mut sender, mut receiver) = socket.split();
+
+    // Send initial state
+    let pool1 = pool.clone();
+    let tournament_id_clone = tournament_id.clone();
+    let round_ids_clone = round_ids.clone();
+
+    let initial_data = spawn_blocking(move || {
+        let mut conn = pool1.get().unwrap();
+
+        let rounds = tournament_rounds::table
+            .filter(tournament_rounds::tournament_id.eq(&tournament_id_clone))
+            .filter(tournament_rounds::id.eq_any(&round_ids_clone))
+            .load::<Round>(&mut conn)
+            .unwrap();
+
+        let reprs = rounds
+            .into_iter()
+            .map(|round| RoundDrawRepr::of_round(round, &mut *conn))
+            .collect::<Vec<_>>();
+
+        let participants =
+            TournamentParticipants::load(&tournament_id_clone, &mut *conn);
+        let allocated_judge_ids: std::collections::HashSet<String> = reprs
+            .iter()
+            .flat_map(|repr| {
+                repr.debates.iter().flat_map(|debate| {
+                    debate.judges_of_debate.iter().map(|dj| dj.judge_id.clone())
+                })
+            })
+            .collect();
+
+        let unallocated_judges = participants
+            .judges
+            .values()
+            .filter(|j| !allocated_judge_ids.contains(&j.id))
+            .cloned()
+            .collect();
+
+        DrawUpdate {
+            unallocated_judges,
+            rounds: reprs,
+        }
+    })
+    .await
+    .unwrap();
+
+    let rendered = serde_json::to_string(&initial_data).unwrap();
+    if sender
+        .send(ws::Message::Text(rendered.into()))
+        .await
+        .is_err()
+    {
+        return;
+    }
 
     let mut send_task = tokio::spawn(async move {
         while let Ok(msg) = rx.recv().await {
@@ -499,42 +307,59 @@ async fn handle_socket(
 
             if should_update {
                 let pool1 = pool.clone();
-                let tournament = tournament.clone();
-                let tournament_id = tournament_id.clone();
-                let round_ids = round_ids.clone();
+                let tournament_id_clone = tournament_id.clone();
+                let round_ids_clone = round_ids.clone();
 
-                let rendered = spawn_blocking(move || {
+                let update_data = spawn_blocking(move || {
                     let mut conn = pool1.get().unwrap();
 
-                    let rounds = match tournament_rounds::table
-                        .filter(tournament_rounds::tournament_id.eq(&tournament.id))
-                        .filter(tournament_rounds::id.eq_any(&round_ids))
+                    let rounds = tournament_rounds::table
+                        .filter(
+                            tournament_rounds::tournament_id
+                                .eq(&tournament_id_clone),
+                        )
+                        .filter(tournament_rounds::id.eq_any(&round_ids_clone))
                         .load::<Round>(&mut conn)
-                        .optional()
-                        .unwrap() {
-                            Some(rounds) if rounds.len() == round_ids.len() => {
-                                rounds
-                            },
-                            Some(_) | None => {
-                                return maud! {
-                                    ErrorAlert msg=("Looks like a round was deleted. Please refresh the page!");
-                                }.render().into_inner()
-                            },
-                        };
+                        .unwrap();
 
+                    let reprs = rounds
+                        .into_iter()
+                        .map(|round| RoundDrawRepr::of_round(round, &mut *conn))
+                        .collect::<Vec<_>>();
 
-                    let reprs =
-                        rounds.into_iter().map(|round| {
-                            RoundDrawRepr::of_round(round, &mut *conn)
-                        }).collect::<Vec<_>>();
+                    let participants = TournamentParticipants::load(
+                        &tournament_id_clone,
+                        &mut *conn,
+                    );
+                    let allocated_judge_ids: std::collections::HashSet<String> =
+                        reprs
+                            .iter()
+                            .flat_map(|repr| {
+                                repr.debates.iter().flat_map(|debate| {
+                                    debate
+                                        .judges_of_debate
+                                        .iter()
+                                        .map(|dj| dj.judge_id.clone())
+                                })
+                            })
+                            .collect();
 
-                    let participants = TournamentParticipants::load(&tournament_id, &mut *conn);
+                    let unallocated_judges = participants
+                        .judges
+                        .values()
+                        .filter(|j| !allocated_judge_ids.contains(&j.id))
+                        .cloned()
+                        .collect();
 
-                    get_refreshable_part(&tournament, &reprs, &participants)
-                        .render()
-                        .into_inner()
+                    DrawUpdate {
+                        unallocated_judges,
+                        rounds: reprs,
+                    }
                 })
-                .await.unwrap();
+                .await
+                .unwrap();
+
+                let rendered = serde_json::to_string(&update_data).unwrap();
 
                 if sender
                     .send(ws::Message::Text(rendered.into()))
@@ -558,6 +383,8 @@ async fn handle_socket(
         _ = (&mut recv_task) => send_task.abort(),
     };
 }
+
+// ... existing code
 
 #[derive(Deserialize)]
 pub struct EditDrawForm {
@@ -773,14 +600,13 @@ impl std::fmt::Display for Role {
 }
 
 impl Role {
-    pub fn of_str(item: &str) -> Role {
+    pub fn of_str(item: &str) -> Result<Self, String> {
         match item {
-            "C" => Role::Chair,
-            "P" => Role::Panelist,
-            "T" => Role::Trainee,
-            _ => unreachable!(
-                "should not pass incorrect values to Role::from_str"
-            ),
+            "C" => Ok(Role::Chair),
+            "P" => Ok(Role::Panelist),
+            "T" => Ok(Role::Trainee),
+            "" => Ok(Role::Panelist), // Default role
+            _ => Err(format!("Invalid role: {}", item)),
         }
     }
 }
@@ -832,70 +658,73 @@ pub async fn move_judge(
         }
     };
 
-    diesel::delete(
-        tournament_debate_judges::table.filter(
-            tournament_debate_judges::judge_id.eq(&judge.id).and(
-                tournament_debate_judges::debate_id.eq_any(
-                    tournament_debates::table
-                        .filter(tournament_debates::round_id.eq_any(&round_ids))
-                        .select(tournament_debates::id),
+    let transaction_result = conn.transaction(|conn| {
+        diesel::delete(
+            tournament_debate_judges::table.filter(
+                tournament_debate_judges::judge_id.eq(&judge.id).and(
+                    tournament_debate_judges::debate_id.eq_any(
+                        tournament_debates::table
+                            .filter(
+                                tournament_debates::round_id.eq_any(&round_ids),
+                            )
+                            .select(tournament_debates::id),
+                    ),
                 ),
             ),
-        ),
-    )
-    .execute(&mut *conn)
-    .unwrap();
+        )
+        .execute(conn)?;
 
-    if let Some(to_debate_id) = form.to_debate_id.filter(|s| !s.is_empty()) {
-        let debate = match tournament_debates::table
-            .filter(
-                tournament_debates::id
-                    .eq(&to_debate_id)
-                    .and(tournament_debates::round_id.eq_any(&round_ids)),
-            )
-            .first::<Debate>(&mut *conn)
-            .optional()
-            .unwrap()
+        if let Some(to_debate_id) = form.to_debate_id.filter(|s| !s.is_empty())
         {
-            Some(d) => d,
-            None => {
-                return bad_request(maud! { "Debate not found" }.render());
-            }
-        };
+            let debate = match tournament_debates::table
+                .filter(
+                    tournament_debates::id
+                        .eq(&to_debate_id)
+                        .and(tournament_debates::round_id.eq_any(&round_ids)),
+                )
+                .first::<Debate>(conn)
+                .optional()?
+            {
+                Some(d) => d,
+                None => {
+                    // This will rollback the transaction
+                    return Err(diesel::result::Error::NotFound);
+                }
+            };
 
-        let role = match form.role.as_str() {
-            "C" => Role::Chair,
-            "P" => Role::Panelist,
-            "T" => Role::Trainee,
-            _ => Role::Panelist,
-        };
+            let role = match Role::of_str(&form.role) {
+                Ok(role) => role,
+                Err(e) => {
+                    // This will rollback the transaction
+                    return Err(diesel::result::Error::QueryBuilderError(
+                        e.into(),
+                    ));
+                }
+            };
 
-        diesel::insert_into(tournament_debate_judges::table)
-            .values((
-                tournament_debate_judges::debate_id.eq(debate.id),
-                tournament_debate_judges::judge_id.eq(judge.id),
-                tournament_debate_judges::status.eq(role.to_string()),
-            ))
-            .execute(&mut *conn)
-            .unwrap();
-    }
+            diesel::insert_into(tournament_debate_judges::table)
+                .values((
+                    tournament_debate_judges::id.eq(Uuid::new_v4().to_string()),
+                    tournament_debate_judges::debate_id.eq(debate.id),
+                    tournament_debate_judges::judge_id.eq(judge.id),
+                    tournament_debate_judges::status.eq(role.to_string()),
+                    tournament_debate_judges::tournament_id
+                        .eq(tournament.id.clone()),
+                ))
+                .execute(conn)?;
+        }
+        Ok(success(Default::default()))
+    });
 
-    let rounds = match tournament_rounds::table
-        .filter(tournament_rounds::id.eq_any(&round_ids))
-        .load::<Round>(&mut *conn)
-        .optional()
-        .unwrap()
-    {
-        Some(r) => r,
-        None => return err_not_found(),
+    let res = match transaction_result {
+        Ok(res) => res,
+        Err(diesel::result::Error::NotFound) => {
+            return bad_request(maud! { "Debate not found" }.render());
+        }
+        Err(e) => {
+            return bad_request(maud! { (e.to_string()) }.render());
+        }
     };
-
-    let reprs: Vec<RoundDrawRepr> = rounds
-        .into_iter()
-        .map(|round| RoundDrawRepr::of_round(round, &mut *conn))
-        .collect();
-
-    let participants = TournamentParticipants::load(&tournament_id, &mut *conn);
 
     for round_id in &round_ids {
         let _ = tx.send(Msg {
@@ -904,9 +733,7 @@ pub async fn move_judge(
         });
     }
 
-    let render =
-        get_refreshable_part(&tournament, &reprs, &participants).render();
-    success(render)
+    res
 }
 
 #[derive(Deserialize)]

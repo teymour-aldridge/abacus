@@ -27,7 +27,7 @@ impl<R: Renderable> Renderable for SidebarWrapper<'_, R> {
     ) {
         maud! {
 
-            div class="border-bottom px-4 pt-2 pb-0" style="background-color: #f8f9fa;" {
+            div class="border-bottom container-fluid px-4 pt-2 pb-0" style="background-color: #f8f9fa;" {
                 Sidebar tournament=(&self.tournament) rounds=(&self.rounds) selected_seq=(self.selected_seq) active_page=(self.active_page);
             }
             div class="px-4 py-4" {

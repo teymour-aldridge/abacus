@@ -192,6 +192,8 @@ fn main() {
 
                 diesel::insert_into(tournament_team_speakers::table)
                     .values((
+                        tournament_team_speakers::id
+                            .eq(Uuid::now_v7().to_string()),
                         tournament_team_speakers::team_id.eq(&team_id),
                         tournament_team_speakers::speaker_id.eq(&speaker_id),
                     ))

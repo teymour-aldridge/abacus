@@ -409,6 +409,8 @@ pub async fn update_eligibility_for_all(
                                 .eq(&round.id),
                             tournament_team_availability::team_id.eq(&team.id),
                             tournament_team_availability::available.eq(true),
+                            tournament_team_availability::tournament_id
+                                .eq(tournament.id.clone()),
                         ))
                         .on_conflict((
                             tournament_team_availability::round_id,

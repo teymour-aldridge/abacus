@@ -1,0 +1,26 @@
+name,priority
+East 102,80
+East 105,80
+East 107,80
+East 110,80
+East 111,80
+East G03,82
+North 211,70
+North 213,70
+North B02,90
+North B15,90
+North G01,100
+North G02,100
+North G05,100
+South 107,50
+South 201,50
+South 202,50
+South 211,50
+West 102,60
+West 103,60
+West 105,60
+West 107,60
+West 211,60
+West 213,60
+Central Auditorium,40
+Eastern Auditorium,42

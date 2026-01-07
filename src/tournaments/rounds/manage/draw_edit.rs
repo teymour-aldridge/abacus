@@ -22,8 +22,8 @@ use crate::{
     auth::User,
     msg::{Msg, MsgContents},
     schema::{
-        tournament_debate_judges, tournament_debates, tournament_judges,
-        tournament_rounds,
+        tournament_debate_judges, tournament_debate_teams, tournament_debates,
+        tournament_judges, tournament_rooms, tournament_rounds,
     },
     state::{Conn, DbPool},
     template::Page,
@@ -31,9 +31,10 @@ use crate::{
         Tournament,
         manage::sidebar::SidebarWrapper,
         participants::{DebateJudge, Judge, TournamentParticipants},
+        rooms::Room,
         rounds::{
             Round, TournamentRounds,
-            draws::{Debate, RoundDrawRepr},
+            draws::{Debate, DebateTeam, RoundDrawRepr},
         },
     },
     util_resp::{
@@ -46,28 +47,6 @@ use crate::{
 pub struct RoundsQuery {
     #[serde(default)]
     rounds: Vec<String>,
-}
-
-use axum::http::header;
-use axum::response::Html;
-
-const JS_CONTENT: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/", env!("JS_PATH")));
-
-const CSS_CONTENT: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/", env!("CSS_PATH")));
-
-pub async fn draw_edit_js()
--> ([(header::HeaderName, &'static str); 1], Html<&'static str>) {
-    (
-        [(header::CONTENT_TYPE, "application/javascript")],
-        Html(JS_CONTENT),
-    )
-}
-
-pub async fn draw_edit_css()
--> ([(header::HeaderName, &'static str); 1], Html<&'static str>) {
-    ([(header::CONTENT_TYPE, "text/css")], Html(CSS_CONTENT))
 }
 
 #[tracing::instrument(skip(conn))]
@@ -119,18 +98,16 @@ pub async fn edit_multiple_draws_page(
                     div id="root" {}
                     script {
                         (Raw::dangerously_create(&format!(
-                            r#"
-                            window.drawEditorConfig = {{
+                            r#"window.drawEditorConfig = {{
                                 tournamentId: "{}",
                                 roundIds: [{}]
-                            }};
-                            "#,
+                            }};"#,
                             tournament.id,
                             round_ids.iter().map(|id| format!("\"{}\"", id)).join(",")
                         )))
                     }
-                    script type="module" crossorigin="anonymous" src="/draw_edit.js" {}
-                    link rel="stylesheet" crossorigin="anonymous" href="/draw_edit.css";
+                    script type="module" crossorigin="anonymous" src="/draw_editor.js" {}
+                    link rel="stylesheet" crossorigin="anonymous" href="/draw_editor.css";
                 }
             })
             .render(),
@@ -218,12 +195,14 @@ pub async fn draw_updates(
     })
 }
 
+use crate::tournaments::teams::Team;
 use serde::Serialize;
-// ... existing imports
 
 #[derive(Serialize)]
 struct DrawUpdate {
     unallocated_judges: Vec<Judge>,
+    unallocated_teams: Vec<Team>,
+    unallocated_rooms: Vec<Room>,
     rounds: Vec<RoundDrawRepr>,
 }
 
@@ -276,8 +255,30 @@ async fn handle_socket(
             .cloned()
             .collect();
 
+        let unallocated_teams = participants.teams.values().cloned().collect();
+
+        // Get unallocated rooms
+        let all_rooms = tournament_rooms::table
+            .filter(tournament_rooms::tournament_id.eq(&tournament_id_clone))
+            .load::<Room>(&mut *conn)
+            .unwrap();
+        let allocated_room_ids: std::collections::HashSet<String> = reprs
+            .iter()
+            .flat_map(|repr| {
+                repr.debates
+                    .iter()
+                    .filter_map(|debate| debate.debate.room_id.clone())
+            })
+            .collect();
+        let unallocated_rooms = all_rooms
+            .into_iter()
+            .filter(|r| !allocated_room_ids.contains(&r.id))
+            .collect();
+
         DrawUpdate {
             unallocated_judges,
+            unallocated_teams,
+            unallocated_rooms,
             rounds: reprs,
         }
     })
@@ -351,8 +352,35 @@ async fn handle_socket(
                         .cloned()
                         .collect();
 
+                    let unallocated_teams =
+                        participants.teams.values().cloned().collect();
+
+                    // Get unallocated rooms
+                    let all_rooms = tournament_rooms::table
+                        .filter(
+                            tournament_rooms::tournament_id
+                                .eq(&tournament_id_clone),
+                        )
+                        .load::<Room>(&mut *conn)
+                        .unwrap();
+                    let allocated_room_ids: std::collections::HashSet<String> =
+                        reprs
+                            .iter()
+                            .flat_map(|repr| {
+                                repr.debates.iter().filter_map(|debate| {
+                                    debate.debate.room_id.clone()
+                                })
+                            })
+                            .collect();
+                    let unallocated_rooms = all_rooms
+                        .into_iter()
+                        .filter(|r| !allocated_room_ids.contains(&r.id))
+                        .collect();
+
                     DrawUpdate {
                         unallocated_judges,
+                        unallocated_teams,
+                        unallocated_rooms,
                         rounds: reprs,
                     }
                 })
@@ -786,4 +814,98 @@ pub async fn change_judge_role(
         "/tournaments/{tournament_id}/rounds/draws/edit?{}",
         round_ids.iter().map(|r| format!("rounds={}", r)).join("&")
     )))
+}
+
+#[derive(Deserialize, Debug)]
+pub struct MoveTeamForm {
+    team1_id: String,
+    team2_id: String,
+    rounds: Vec<String>,
+}
+
+pub async fn move_team(
+    Path(tournament_id): Path<String>,
+    user: User<true>,
+    Extension(tx): Extension<Sender<Msg>>,
+    mut conn: Conn<true>,
+    axum_extra::extract::Form(form): axum_extra::extract::Form<MoveTeamForm>,
+) -> StandardResponse {
+    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
+    tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+
+    let round_ids = form.rounds;
+
+    let transaction_result = conn.transaction(|conn| {
+        let team1_debate_team = tournament_debate_teams::table
+            .filter(tournament_debate_teams::team_id.eq(&form.team1_id))
+            .filter(tournament_debate_teams::tournament_id.eq(&tournament.id))
+            .filter(
+                tournament_debate_teams::debate_id.eq_any(
+                    tournament_debates::table
+                        .filter(tournament_debates::round_id.eq_any(&round_ids))
+                        .select(tournament_debates::id),
+                ),
+            )
+            .first::<DebateTeam>(conn)?;
+
+        let team2_debate_team = tournament_debate_teams::table
+            .filter(tournament_debate_teams::team_id.eq(&form.team2_id))
+            .filter(tournament_debate_teams::tournament_id.eq(&tournament.id))
+            .filter(
+                tournament_debate_teams::debate_id.eq_any(
+                    tournament_debates::table
+                        .filter(tournament_debates::round_id.eq_any(&round_ids))
+                        .select(tournament_debates::id),
+                ),
+            )
+            .first::<DebateTeam>(conn)?;
+
+        let temp_debate_id = team1_debate_team.debate_id.clone();
+        let temp_side = team1_debate_team.side;
+        let temp_seq = team1_debate_team.seq;
+
+        diesel::update(
+            tournament_debate_teams::table
+                .filter(tournament_debate_teams::id.eq(&team1_debate_team.id)),
+        )
+        .set((
+            tournament_debate_teams::debate_id
+                .eq(team2_debate_team.debate_id.clone()),
+            tournament_debate_teams::side.eq(team2_debate_team.side),
+            tournament_debate_teams::seq.eq(team2_debate_team.seq),
+        ))
+        .execute(conn)?;
+
+        diesel::update(
+            tournament_debate_teams::table
+                .filter(tournament_debate_teams::id.eq(&team2_debate_team.id)),
+        )
+        .set((
+            tournament_debate_teams::debate_id.eq(temp_debate_id),
+            tournament_debate_teams::side.eq(temp_side),
+            tournament_debate_teams::seq.eq(temp_seq),
+        ))
+        .execute(conn)?;
+
+        Ok(success(Default::default()))
+    });
+
+    let res = match transaction_result {
+        Ok(res) => res,
+        Err(diesel::result::Error::NotFound) => {
+            return bad_request(maud! { "Team not found in draw." }.render());
+        }
+        Err(e) => {
+            return bad_request(maud! { (e.to_string()) }.render());
+        }
+    };
+
+    for round_id in &round_ids {
+        let _ = tx.send(Msg {
+            tournament: tournament.clone(),
+            inner: MsgContents::DrawUpdated(round_id.clone()),
+        });
+    }
+
+    res
 }

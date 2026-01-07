@@ -3,9 +3,9 @@ use std::fs::File;
 use abacus::MIGRATIONS;
 use abacus::schema::{
     tournament_break_categories, tournament_institutions, tournament_judges,
-    tournament_members, tournament_round_motions, tournament_rounds,
-    tournament_speakers, tournament_team_speakers, tournament_teams,
-    tournaments, users,
+    tournament_members, tournament_rooms, tournament_round_motions,
+    tournament_rounds, tournament_speakers, tournament_team_speakers,
+    tournament_teams, tournaments, users,
 };
 use abacus::tournaments::config::{
     PullupMetric, RankableTeamMetric, SpeakerMetric,
@@ -22,7 +22,7 @@ use diesel::{Connection, QueryDsl, RunQueryDsl};
 use diesel_migrations::MigrationHarness;
 use uuid::Uuid;
 
-use crate::tabbycat_cli_copied::{JudgeRow, TeamRow};
+use crate::tabbycat_cli_copied::{JudgeRow, RoomRow, TeamRow};
 
 #[derive(Parser)]
 pub struct Import {
@@ -33,6 +33,8 @@ pub struct Import {
     judges: bool,
     #[clap(long, short, action)]
     rounds: bool,
+    #[clap(long, action)]
+    rooms: bool,
 }
 
 fn main() {
@@ -237,6 +239,28 @@ fn main() {
         }
     }
 
+    if args.rooms {
+        let mut rooms =
+            csv::Reader::from_reader(File::open("src/bin/rooms.csv").unwrap());
+        let headers = rooms.headers().unwrap().clone();
+
+        for (i, result) in rooms.records().enumerate() {
+            let room_rec = result.unwrap();
+            let room: RoomRow = room_rec.deserialize(Some(&headers)).unwrap();
+
+            diesel::insert_into(tournament_rooms::table)
+                .values((
+                    tournament_rooms::id.eq(Uuid::now_v7().to_string()),
+                    tournament_rooms::tournament_id.eq(&tournament_id),
+                    tournament_rooms::name.eq(room.name),
+                    tournament_rooms::priority.eq(room.priority),
+                    tournament_rooms::number.eq(i as i64),
+                ))
+                .execute(&mut conn)
+                .unwrap();
+        }
+    }
+
     if args.rounds {
         let open = Uuid::now_v7().to_string();
         diesel::insert_into(tournament_break_categories::table)
@@ -407,6 +431,12 @@ mod tabbycat_cli_copied {
         // this restriction) to aid with debugging
         pub short_code: String,
         pub full_name: String,
+    }
+
+    #[derive(Deserialize, Debug, Clone)]
+    pub struct RoomRow {
+        pub name: String,
+        pub priority: i64,
     }
 
     fn ret_false() -> bool {

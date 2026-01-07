@@ -61,7 +61,7 @@ impl<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool>
         body: NewR1,
     ) -> Page<NewR1, R2, R3, TX> {
         Page {
-            body: Some(body),
+            body: Some(body.into()),
             user: self.user,
             extra_head: self.extra_head,
             sidebar: self.sidebar,
@@ -149,6 +149,7 @@ impl<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool> Renderable
                         (extra)
                     }
                 }
+
                 body class="d-flex flex-column vh-100 overflow-hidden" {
 
                     div class="border-bottom bg-white flex-shrink-0" {

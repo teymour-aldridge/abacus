@@ -10,3 +10,5 @@
 assets/bootstrap.tar.gz
 *.css
 !frontend/src/index.css
+
+static/

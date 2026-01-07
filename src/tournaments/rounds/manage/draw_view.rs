@@ -69,6 +69,9 @@ pub async fn view_draws_page(
                         a href=(format!("/tournaments/{}/rounds/draws/edit?{}", &tournament.id, rounds_in_seq.iter().map(|r| format!("rounds={}", r.id)).join("&"))) class="btn btn-primary" {
                             "Edit Draw"
                         }
+                        a href=(format!("/tournaments/{}/rounds/draws/rooms/edit?{}", &tournament.id, rounds_in_seq.iter().map(|r| format!("rounds={}", r.id)).join("&"))) class="btn btn-primary" {
+                            "Edit Rooms"
+                        }
                     }
 
                     @for (round, draw) in &rounds_with_draws {

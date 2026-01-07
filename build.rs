@@ -88,21 +88,38 @@ fn main() {
     println!("cargo:rerun-if-changed=assets/scss/main.scss");
     println!("cargo:rerun-if-changed=assets/scss/custom.scss");
 
+    let status = Command::new("npm")
+        .arg("run")
+        .arg("build")
+        .arg("--prefix")
+        .arg("frontend")
+        .status()
+        .unwrap();
+
+    if !status.success() {
+        panic!("Failed to compile frontend");
+    }
+    println!("cargo:rerun-if-changed=frontend/src/DrawEditor.tsx");
+    println!("cargo:rerun-if-changed=frontend/src/DrawRoomAllocator.tsx");
+    println!("cargo:rerun-if-changed=frontend/src/index.tsx");
+    println!("cargo:rerun-if-changed=frontend/src/room_allocator.tsx");
+    println!("cargo:rerun-if-changed=frontend/vite.config.ts");
+
     lalrpop::process_root().unwrap();
 
-    println!("cargo:rerun-if-changed=static/dist/manifest.json");
-    let manifest_str = fs::read_to_string("static/dist/manifest.json").unwrap();
-    let manifest: HashMap<String, ManifestEntry> =
-        serde_json::from_str(&manifest_str).unwrap();
-    let entry = manifest.get("index.html").unwrap();
-    let js_path = &entry.file;
-    let css_path = entry
-        .css
-        .as_ref()
-        .and_then(|css| css.first())
-        .map(|s| s.as_str())
-        .unwrap_or("");
+    println!("cargo:rustc-env=DRAW_EDITOR_JS_PATH=static/dist/draw-editor.js");
 
-    println!("cargo:rustc-env=JS_PATH=static/dist/{}", js_path);
-    println!("cargo:rustc-env=CSS_PATH=static/dist/{}", css_path);
+    println!("cargo:rustc-env=DRAW_EDITOR_CSS_PATH=static/dist/style.css");
+
+    println!(
+        "cargo:rustc-env=DRAW_ROOM_ALLOCATOR_JS_PATH=static/dist/draw-room-allocator.js"
+    );
+
+    println!(
+        "cargo:rustc-env=DRAW_ROOM_ALLOCATOR_CSS_PATH=static/dist/store.css"
+    );
+
+    println!("cargo:rustc-env=STORE_JS_PATH=static/dist/store.js");
+
+    println!("cargo:rustc-env=STORE_CSS_PATH=static/dist/store.css");
 }

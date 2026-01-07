@@ -118,6 +118,84 @@ async fn style_css() -> impl IntoResponse {
     ([(header::CONTENT_TYPE, "text/css")], css_content)
 }
 
+async fn draw_editor_js() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "application/javascript")],
+        tokio::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/",
+            env!("DRAW_EDITOR_JS_PATH")
+        ))
+        .await
+        .unwrap(),
+    )
+}
+
+async fn draw_editor_css() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "text/css")],
+        tokio::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/",
+            env!("DRAW_EDITOR_CSS_PATH")
+        ))
+        .await
+        .unwrap(),
+    )
+}
+
+async fn draw_room_allocator_js() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "application/javascript")],
+        tokio::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/",
+            env!("DRAW_ROOM_ALLOCATOR_JS_PATH")
+        ))
+        .await
+        .unwrap(),
+    )
+}
+
+async fn draw_room_allocator_css() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "text/css")],
+        tokio::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/",
+            env!("DRAW_ROOM_ALLOCATOR_CSS_PATH")
+        ))
+        .await
+        .unwrap(),
+    )
+}
+
+async fn store_js() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "application/javascript")],
+        tokio::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/",
+            env!("STORE_JS_PATH")
+        ))
+        .await
+        .unwrap(),
+    )
+}
+
+async fn store_css() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "text/css")],
+        tokio::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/",
+            env!("STORE_CSS_PATH")
+        ))
+        .await
+        .unwrap(),
+    )
+}
+
 pub async fn run() {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
@@ -239,12 +317,22 @@ pub async fn run() {
         .route("/tournaments/:id/rounds/:round_id/availability/teams/all", post(crate::tournaments::rounds::manage::availability::teams::update_eligibility_for_all))
 
         // Draw Edit
-        .route("/draw_edit.js", get(crate::tournaments::rounds::manage::draw_edit::draw_edit_js))
-        .route("/draw_edit.css", get(crate::tournaments::rounds::manage::draw_edit::draw_edit_css))
+        .route("/draw_editor.js", get(draw_editor_js))
+        .route("/draw_editor.css", get(draw_editor_css))
         .route("/tournaments/:id/rounds/draws/edit", get(crate::tournaments::rounds::manage::draw_edit::edit_multiple_draws_page).post(crate::tournaments::rounds::manage::draw_edit::submit_cmd))
         .route("/tournaments/:id/rounds/draws/edit/ws", get(crate::tournaments::rounds::manage::draw_edit::draw_updates))
         .route("/tournaments/:id/rounds/draws/edit/move", post(crate::tournaments::rounds::manage::draw_edit::move_judge))
+        .route("/tournaments/:id/rounds/draws/edit/move_team", post(crate::tournaments::rounds::manage::draw_edit::move_team))
         .route("/tournaments/:id/rounds/draws/edit/role", post(crate::tournaments::rounds::manage::draw_edit::change_judge_role))
+
+        // Draw Room Allocator
+        .route("/draw_room_allocator.js", get(draw_room_allocator_js))
+        .route("/draw_room_allocator.css", get(draw_room_allocator_css))
+        .route("/store.js", get(store_js))
+        .route("/store.css", get(store_css))
+        .route("/tournaments/:id/rounds/draws/rooms/edit", get(crate::tournaments::rounds::manage::room_allocator::load_room_allocator_page))
+        .route("/tournaments/:id/rounds/draws/rooms/edit/ws", get(crate::tournaments::rounds::manage::room_allocator::room_allocator_updates))
+        .route("/tournaments/:id/rounds/draws/rooms/edit/move", post(crate::tournaments::rounds::draws::rooms::rooms::move_room))
 
         // Draw Generation
         .route("/tournaments/:id/rounds/:round_id/draws/create", get(crate::tournaments::rounds::draws::manage::create::generate_draw_page).post(crate::tournaments::rounds::draws::manage::create::do_generate_draw))

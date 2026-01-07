@@ -217,8 +217,6 @@ pub async fn view_judge_availability(
                     script src="https://cdn.jsdelivr.net/npm/htmx-ext-ws@2.0.2" crossorigin="anonymous" {
                     }
                 }
-                .render()
-                .into_inner()
             )
             .body(maud! {
                 SidebarWrapper tournament=(&tournament) rounds=(&rounds) active_page=(Some(crate::tournaments::manage::sidebar::SidebarPage::Setup)) selected_seq=(Some(round_seq)) {
@@ -580,6 +578,8 @@ pub async fn update_judge_availability_for_all(
                             tournament_judge_availability::judge_id
                                 .eq(&judge.id),
                             tournament_judge_availability::available.eq(true),
+                            tournament_judge_availability::tournament_id
+                                .eq(tournament.id.clone()),
                         ))
                         .on_conflict((
                             tournament_judge_availability::round_id,

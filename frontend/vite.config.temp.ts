@@ -5,17 +5,16 @@ import { resolve } from "path";
 export default defineConfig({
   plugins: [solid()],
   build: {
-    outDir: "../static/dist",
+    outDir: "../static/dist_test",
     emptyOutDir: true,
     rollupOptions: {
       input: {
         "draw-editor": resolve(__dirname, "src/index.tsx"),
-        "draw-room-allocator": resolve(__dirname, "src/room_allocator.tsx"),
       },
       output: {
         entryFileNames: `[name].js`,
         chunkFileNames: `[name].js`,
-        assetFileNames: `[name].[ext]`,
+        assetFileNames: `draw-editor-test.css`,
       },
     },
   },

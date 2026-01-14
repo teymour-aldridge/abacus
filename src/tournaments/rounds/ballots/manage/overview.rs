@@ -85,19 +85,19 @@ pub async fn admin_ballot_of_seq_overview(
 
                     div class="row g-3 mb-4" {
                         div class="col-md-4" {
-                            div class="p-3 border border-dark" {
+                            div class="p-3 border border-dark rounded-3" {
                                 div class="text-uppercase small fw-bold text-muted mb-1" style="letter-spacing: 1px;" { "Total Debates" }
                                 div class="fs-3 fw-bold" { (ballot_sets.len()) }
                             }
                         }
                         div class="col-md-4" {
-                            div class="p-3 border border-dark" {
+                            div class="p-3 border border-dark rounded-3" {
                                 div class="text-uppercase small fw-bold text-muted mb-1" style="letter-spacing: 1px;" { "Ballots Submitted" }
                                 div class="fs-3 fw-bold" { (total_ballots) " / " (total_expected) }
                             }
                         }
                         div class="col-md-4" {
-                            div class="p-3 border border-dark" {
+                            div class="p-3 border border-dark rounded-3" {
                                 div class="text-uppercase small fw-bold text-muted mb-1" style="letter-spacing: 1px;" { "Completion" }
                                 div class="fs-3 fw-bold" { (completion_rate) "%" }
                             }

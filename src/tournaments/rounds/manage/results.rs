@@ -19,6 +19,109 @@ use crate::{
     },
 };
 
+struct ResultsView {
+    tournament: Tournament,
+    rounds_in_seq: Vec<Round>,
+}
+
+impl Renderable for ResultsView {
+    fn render_to(
+        &self,
+        buffer: &mut hypertext::Buffer<hypertext::context::Node>,
+    ) {
+        maud! {
+            div {
+                h1 {
+                    "Results"
+                }
+
+                p class="lead" {
+                    "For rounds "
+                    @for (i, round) in self.rounds_in_seq.iter().enumerate() {
+                        @if i > 0 {
+                            ", "
+                        }
+                        (round.name)
+                    }
+                }
+
+                div class="row" {
+                    @for round in &self.rounds_in_seq {
+                        div class="col-md-6 col-lg-4 mb-4 p-2" {
+                            div class="card h-100" {
+                                div class="card-body d-flex flex-column" {
+                                    h5 class="card-title" { (round.name) }
+
+                                    div class="mb-3" {
+                                        h6 class="text-uppercase small fw-bold text-muted" { "Completion Status" }
+                                        @if round.completed {
+                                            span class="badge bg-success" { "Complete" }
+                                        } @else {
+                                            span class="badge bg-secondary" { "In Progress" }
+                                        }
+                                    }
+
+                                    div class="mb-3" {
+                                        h6 class="text-uppercase small fw-bold text-muted" { "Results Publication" }
+                                        @if round.results_published_at.is_some() {
+                                            span class="badge bg-success" { "Published" }
+                                        } @else {
+                                            span class="badge bg-secondary" { "Not Published" }
+                                        }
+                                    }
+
+                                    div class="mt-auto" {
+                                        @if round.completed {
+                                            form action=(format!("/tournaments/{}/rounds/{}/complete", self.tournament.id, round.id)) method="post" class="mb-2" {
+                                                input type="hidden" name="completed" value="false";
+                                                button class="btn btn-outline-secondary w-100" type="submit" {
+                                                    "Mark Incomplete"
+                                                }
+                                            }
+                                        } @else {
+                                            form action=(format!("/tournaments/{}/rounds/{}/complete", self.tournament.id, round.id)) method="post" class="mb-2" {
+                                                input type="hidden" name="completed" value="true";
+                                                button class="btn btn-primary w-100" type="submit" {
+                                                    "Mark Complete"
+                                                }
+                                            }
+                                        }
+
+                                        @if round.completed {
+                                            @if round.results_published_at.is_some() {
+                                                form action=(format!("/tournaments/{}/rounds/{}/results/publish", self.tournament.id, round.id)) method="post" {
+                                                    input type="hidden" name="published" value="false";
+                                                    button class="btn btn-danger w-100" type="submit" {
+                                                        "Unpublish Results"
+                                                    }
+                                                }
+                                            } @else {
+                                                form action=(format!("/tournaments/{}/rounds/{}/results/publish", self.tournament.id, round.id)) method="post" {
+                                                    input type="hidden" name="published" value="true";
+                                                    button class="btn btn-success w-100" type="submit" {
+                                                        "Publish Results"
+                                                    }
+                                                }
+                                            }
+                                        } @else {
+                                            button class="btn btn-secondary w-100" type="button" disabled {
+                                                "Publish Results"
+                                            }
+                                            small class="text-muted d-block mt-1" {
+                                                "Round must be marked complete before publishing results."
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }.render_to(buffer)
+    }
+}
+
 pub async fn manage_results_page(
     Path((tid, round_seq)): Path<(String, i64)>,
     user: User<true>,
@@ -34,100 +137,18 @@ pub async fn manage_results_page(
         return err_not_found();
     }
 
+    let view = ResultsView {
+        tournament: tournament.clone(),
+        rounds_in_seq,
+    };
+
     success(
         Page::new()
             .user(user)
             .tournament(tournament.clone())
             .body(maud! {
                 SidebarWrapper tournament=(&tournament) rounds=(&all_rounds) active_page=(Some(crate::tournaments::manage::sidebar::SidebarPage::Results)) selected_seq=(Some(round_seq)) {
-                    div class="container" {
-                        h1 {
-                            "Results"
-                        }
-
-                        p class="lead" {
-                            "For rounds "
-                            @for (i, round) in rounds_in_seq.iter().enumerate() {
-                                @if i > 0 {
-                                    ", "
-                                }
-                                (round.name)
-                            }
-                        }
-
-                        div class="row" {
-                            @for round in &rounds_in_seq {
-                                div class="col-md-6 col-lg-4 mb-4 p-2" {
-                                    div class="card h-100" {
-                                        div class="card-body d-flex flex-column" {
-                                            h5 class="card-title" { (round.name) }
-
-                                            div class="mb-3" {
-                                                h6 class="text-uppercase small fw-bold text-muted" { "Completion Status" }
-                                                @if round.completed {
-                                                    span class="badge bg-success" { "Complete" }
-                                                } @else {
-                                                    span class="badge bg-secondary" { "In Progress" }
-                                                }
-                                            }
-
-                                            div class="mb-3" {
-                                                h6 class="text-uppercase small fw-bold text-muted" { "Results Publication" }
-                                                @if round.results_published_at.is_some() {
-                                                    span class="badge bg-success" { "Published" }
-                                                } @else {
-                                                    span class="badge bg-secondary" { "Not Published" }
-                                                }
-                                            }
-
-                                            div class="mt-auto" {
-                                                @if round.completed {
-                                                    form action=(format!("/tournaments/{}/rounds/{}/complete", tid, round.id)) method="post" class="mb-2" {
-                                                        input type="hidden" name="completed" value="false";
-                                                        button class="btn btn-outline-secondary w-100" type="submit" {
-                                                            "Mark Incomplete"
-                                                        }
-                                                    }
-                                                } @else {
-                                                    form action=(format!("/tournaments/{}/rounds/{}/complete", tid, round.id)) method="post" class="mb-2" {
-                                                        input type="hidden" name="completed" value="true";
-                                                        button class="btn btn-primary w-100" type="submit" {
-                                                            "Mark Complete"
-                                                        }
-                                                    }
-                                                }
-
-                                                @if round.completed {
-                                                    @if round.results_published_at.is_some() {
-                                                        form action=(format!("/tournaments/{}/rounds/{}/results/publish", tid, round.id)) method="post" {
-                                                            input type="hidden" name="published" value="false";
-                                                            button class="btn btn-danger w-100" type="submit" {
-                                                                "Unpublish Results"
-                                                            }
-                                                        }
-                                                    } @else {
-                                                        form action=(format!("/tournaments/{}/rounds/{}/results/publish", tid, round.id)) method="post" {
-                                                            input type="hidden" name="published" value="true";
-                                                            button class="btn btn-success w-100" type="submit" {
-                                                                "Publish Results"
-                                                            }
-                                                        }
-                                                    }
-                                                } @else {
-                                                    button class="btn btn-secondary w-100" type="button" disabled {
-                                                        "Publish Results"
-                                                    }
-                                                    small class="text-muted d-block mt-1" {
-                                                        "Round must be marked complete before publishing results."
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    (view)
                 }
             })
             .render(),

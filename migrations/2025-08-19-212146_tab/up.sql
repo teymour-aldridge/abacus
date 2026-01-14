@@ -265,7 +265,8 @@ create table if not exists tournament_round_motions (
     tournament_id text not null references tournaments (id),
     round_id text not null references tournament_rounds(id),
     infoslide text,
-    motion text not null
+    motion text not null,
+    published_at timestamp
 );
 
 -- When generating draws, we have a ticketing system. This allows us to avoid

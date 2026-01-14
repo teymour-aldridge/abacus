@@ -1,15 +1,6 @@
-use serde::Deserialize;
-use std::collections::HashMap;
 use std::env;
-use std::fs;
 use std::path::Path;
 use std::process::Command;
-
-#[derive(Deserialize, Debug)]
-struct ManifestEntry {
-    file: String,
-    css: Option<Vec<String>>,
-}
 
 fn main() {
     // Check for bootstrap

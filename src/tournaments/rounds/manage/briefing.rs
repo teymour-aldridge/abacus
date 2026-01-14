@@ -7,10 +7,11 @@ use chrono::Utc;
 use diesel::prelude::*;
 use hypertext::prelude::*;
 use serde::Deserialize;
+use std::collections::HashMap;
 
 use crate::{
     auth::User,
-    schema::tournament_rounds,
+    schema::{tournament_round_motions, tournament_rounds},
     state::{AppState, Conn},
     template::Page,
     tournaments::{
@@ -25,6 +26,7 @@ use crate::{
 struct BriefingRoomView {
     tournament: Tournament,
     rounds: Vec<Round>,
+    can_publish_motions: HashMap<String, bool>,
 }
 
 impl Renderable for BriefingRoomView {
@@ -72,31 +74,43 @@ impl Renderable for BriefingRoomView {
                                         }
                                     }
 
+                                    h6 class="card-subtitle mb-2 text-muted" { "Draw Release" }
                                     div class="mt-auto" {
                                         form action=(format!("/tournaments/{}/rounds/{}/draws/setreleased", self.tournament.id, round.id)) method="post" {
                                             div class="d-grid gap-2" {
                                                 @if round.draw_status != "released_teams" && round.draw_status != "released_full" {
-                                                    button class="btn btn-primary" type="submit" name="status" value="released_teams" {
+                                                    button class="btn btn-warning" type="submit" name="status" value="released_teams" {
                                                         "Publish Teams Only"
                                                     }
-                                                    button class="btn btn-success" type="submit" name="status" value="released_full" {
+                                                    button class="btn btn-danger" type="submit" name="status" value="released_full" {
                                                         "Publish Teams & Judges"
                                                     }
                                                 } @else if round.draw_status == "released_teams" {
-                                                    button class="btn btn-success" type="submit" name="status" value="released_full" {
+                                                    button class="btn btn-danger" type="submit" name="status" value="released_full" {
                                                         "Publish Judges Too"
                                                     }
-                                                    button class="btn btn-danger" type="submit" name="status" value="confirmed" {
+                                                    button class="btn btn-secondary" type="submit" name="status" value="confirmed" {
                                                         "Hide Draw"
                                                     }
                                                 } @else if round.draw_status == "released_full" {
-                                                    button class="btn btn-warning" type="submit" name="status" value="released_teams" {
-                                                        "Hide Judges (Teams Only)"
+                                                    button class="btn btn-secondary" type="submit" name="status" value="released_teams" {
+                                                        "Hide Judges (show teams only)"
                                                     }
-                                                    button class="btn btn-danger" type="submit" name="status" value="confirmed" {
+                                                    button class="btn btn-secondary" type="submit" name="status" value="confirmed" {
                                                         "Hide Draw"
                                                     }
                                                 }
+                                            }
+                                        }
+                                    }
+
+                                    @if *self.can_publish_motions.get(&round.id).unwrap_or(&false) {
+                                        hr class="my-3";
+                                        h6 class="card-subtitle mb-2 text-muted" { "Motions Release" }
+                                        p class="card-text" { "The motions for this round are not yet public." }
+                                        form action=(format!("/tournaments/{}/rounds/{}/motions/publish", self.tournament.id, round.id)) method="post" {
+                                            div class="d-grid gap-2" {
+                                                button class="btn btn-warning" type="submit" { "Publish Motions" }
                                             }
                                         }
                                     }
@@ -122,9 +136,32 @@ pub async fn get_briefing_room(
         TournamentRounds::fetch(&tournament_id, &mut conn).unwrap();
     let rounds = Round::of_seq(round_seq, &tournament_id, &mut conn);
 
+    let can_publish_motions: HashMap<String, bool> = rounds
+        .iter()
+        .map(|round| {
+            let has_motions = tournament_round_motions::table
+                .filter(tournament_round_motions::round_id.eq(&round.id))
+                .count()
+                .get_result::<i64>(&mut conn)
+                .unwrap_or(0)
+                > 0;
+
+            let has_unpublished_motions = tournament_round_motions::table
+                .filter(tournament_round_motions::round_id.eq(&round.id))
+                .filter(tournament_round_motions::published_at.is_null())
+                .count()
+                .get_result::<i64>(&mut conn)
+                .unwrap_or(0)
+                > 0;
+
+            (round.id.clone(), has_motions && has_unpublished_motions)
+        })
+        .collect();
+
     let view = BriefingRoomView {
         tournament: tournament.clone(),
         rounds,
+        can_publish_motions,
     };
 
     success(

@@ -5,3 +5,4 @@
 
 pub mod actions;
 pub mod alert;
+pub mod non_public;

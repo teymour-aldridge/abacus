@@ -286,6 +286,7 @@ diesel::table! {
         round_id -> Text,
         infoslide -> Nullable<Text>,
         motion -> Text,
+        published_at -> Nullable<Timestamp>,
     }
 }
 

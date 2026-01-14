@@ -80,10 +80,25 @@ pub async fn submit_ballot_page(
 
     let debate_repr = DebateRepr::fetch(&debate.id, &mut *conn);
 
-    let motions: Vec<Motion> = tournament_round_motions::table
+    let is_superuser = if let Some(ref user) = user {
+        tournament
+            .check_user_is_superuser(&user.id, &mut *conn)
+            .is_ok()
+    } else {
+        false
+    };
+
+    let mut motions_query = tournament_round_motions::table
         .filter(tournament_round_motions::round_id.eq(&round.id))
-        .load::<Motion>(&mut *conn)
-        .unwrap();
+        .into_boxed();
+
+    if !is_superuser {
+        motions_query = motions_query
+            .filter(tournament_round_motions::published_at.is_not_null());
+    }
+
+    let motions: Vec<Motion> =
+        motions_query.load::<Motion>(&mut *conn).unwrap();
 
     let current_rounds = Round::current_rounds(&tournament_id, &mut *conn);
 

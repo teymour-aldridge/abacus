@@ -133,7 +133,7 @@ pub fn aggregate_ballot_set(
                 let (votes_prop, votes_opp) = ballots.iter().fold(
                     (0, 0),
                     |(votes_prop, votes_opp), ballot| {
-                        let side = get_side_judge_voted_for_in_2_team_format(
+                        let side = side_judge_voted_for_in_2_team_format(
                             &debate, ballot,
                         );
                         match side {
@@ -153,10 +153,9 @@ pub fn aggregate_ballot_set(
                     .iter()
                     .find_map(|ballot| {
                         if ballot.ballot().judge_id == chair.judge_id {
-                            let side =
-                                get_side_judge_voted_for_in_2_team_format(
-                                    &debate, ballot,
-                                );
+                            let side = side_judge_voted_for_in_2_team_format(
+                                &debate, ballot,
+                            );
                             Some(side)
                         } else {
                             None
@@ -203,6 +202,7 @@ pub fn aggregate_ballot_set(
                     .unwrap();
             };
 
+            // todo: should add a "margin includes dissenters" property
             let _add_speaks = {
                 let ballot_a = &ballots[0];
 
@@ -256,7 +256,7 @@ pub fn aggregate_ballot_set(
     }
 }
 
-fn get_side_judge_voted_for_in_2_team_format(
+fn side_judge_voted_for_in_2_team_format(
     debate: &DebateRepr,
     ballot: &BallotRepr,
 ) -> i64 {

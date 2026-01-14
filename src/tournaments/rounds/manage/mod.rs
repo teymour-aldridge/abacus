@@ -26,6 +26,7 @@ pub mod create;
 pub mod draw_edit;
 pub mod draw_view;
 pub mod edit;
+pub mod motions;
 pub mod results;
 pub mod room_allocator;
 pub mod setup;

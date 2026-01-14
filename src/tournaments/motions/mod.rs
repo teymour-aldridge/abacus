@@ -13,8 +13,10 @@ use crate::{
         rounds::{Motion, Round, TournamentRounds},
     },
     util_resp::{StandardResponse, success},
+    widgets::non_public::NonPublic,
 };
 
+#[derive(Clone)]
 struct MotionsContent<'a> {
     motions: &'a Vec<(Motion, String)>,
 }
@@ -75,8 +77,24 @@ pub async fn public_motions_page(
         .cloned()
         .collect();
 
-    let motions: Vec<(Motion, String)> = tournament_round_motions::table
+    let is_admin = if let Some(ref u) = user {
+        tournament
+            .check_user_is_superuser(&u.id, &mut *conn)
+            .is_ok()
+    } else {
+        false
+    };
+
+    let mut query = tournament_round_motions::table
         .filter(tournament_round_motions::tournament_id.eq(&tournament_id))
+        .into_boxed();
+
+    if !is_admin {
+        query =
+            query.filter(tournament_round_motions::published_at.is_not_null());
+    }
+
+    let motions: Vec<(Motion, String)> = query
         .load::<Motion>(&mut *conn)
         .unwrap()
         .into_iter()
@@ -88,15 +106,10 @@ pub async fn public_motions_page(
         })
         .collect();
 
-    let current_rounds = Round::current_rounds(&tournament_id, &mut *conn);
+    let has_unpublished_motions =
+        motions.iter().any(|(m, _)| m.published_at.is_none());
 
-    let is_admin = if let Some(ref u) = user {
-        tournament
-            .check_user_is_superuser(&u.id, &mut *conn)
-            .is_ok()
-    } else {
-        false
-    };
+    let current_rounds = Round::current_rounds(&tournament_id, &mut *conn);
 
     let motions_content = MotionsContent { motions: &motions };
 
@@ -109,7 +122,14 @@ pub async fn public_motions_page(
                 .current_rounds(current_rounds.clone())
                 .body(maud! {
                     SidebarWrapper tournament=(&tournament) rounds=(&rounds_data) selected_seq=(current_rounds.first().map(|r| r.seq)) active_page=(None) {
-                        (motions_content)
+                        @if has_unpublished_motions {
+                            (NonPublic {
+                                title: "Unpublished Motions",
+                                child: motions_content.clone()
+                            })
+                        } @else {
+                            (motions_content)
+                        }
                     }
                 })
                 .render(),

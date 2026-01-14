@@ -1,5 +1,3 @@
-use std::fmt::Write;
-
 use axum::{
     Extension,
     extract::{Path, Query, WebSocketUpgrade, ws},

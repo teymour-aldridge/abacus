@@ -278,7 +278,9 @@ impl TournamentRounds {
     }
 }
 
-#[derive(Queryable, QueryableByName)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, Queryable, Identifiable, Insertable,
+)]
 #[diesel(table_name = tournament_round_motions)]
 pub struct Motion {
     pub id: String,
@@ -286,4 +288,5 @@ pub struct Motion {
     pub round_id: String,
     pub infoslide: Option<String>,
     pub motion: String,
+    pub published_at: Option<chrono::NaiveDateTime>,
 }

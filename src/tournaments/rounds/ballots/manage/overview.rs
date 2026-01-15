@@ -104,7 +104,6 @@ pub async fn admin_ballot_of_seq_overview(
                         }
                     }
 
-                    // Ballots Table
                     div class="table-responsive" {
                         table class="table table-hover table-borderless align-middle" {
                             thead class="border-bottom border-dark" {
@@ -119,41 +118,69 @@ pub async fn admin_ballot_of_seq_overview(
                             tbody {
                                 @for (debate, ballots) in ballot_sets.iter() {
                                     @let num_judges = debate.judges_of_debate.len();
-                                    @for (idx, judge_in_debate) in debate.judges_of_debate.iter().enumerate() {
-                                        @let judge = &debate.judges[&judge_in_debate.judge_id];
-                                        @let ballot_opt = ballots.iter().find(|b| b.ballot.judge_id == judge.id);
+
+                                    @if num_judges == 0 {
                                         tr class="border-bottom" {
-                                            @if idx == 0 {
-                                                td rowspan=(num_judges) class="text-center py-4 fw-bold fs-5" {
-                                                    (debate.debate.number)
-                                                }
-                                                td rowspan=(num_judges) class="py-4" {
-                                                    div class="d-flex flex-column gap-1" {
-                                                        @for team in &debate.teams_of_debate {
-                                                            div class="small" {
-                                                                span class="fw-bold" { (debate.teams[&team.team_id].name) }
-                                                            }
+                                            td class="text-center py-4 fw-bold fs-5" {
+                                                (debate.debate.number)
+                                            }
+                                            td class="py-4" {
+                                                div class="d-flex flex-column gap-1" {
+                                                    @for team in &debate.teams_of_debate {
+                                                        div class="small" {
+                                                            span class="fw-bold" { (debate.teams[&team.team_id].name) }
                                                         }
                                                     }
                                                 }
                                             }
-                                            td class="py-3" {
-                                                div class="fw-bold" { (judge.name) }
+                                            td class="py-3" style="color: #6c757d;" {
+                                                div class="fw-bold fst-italic" { "No judges assigned" }
                                             }
                                             td class="py-3" {
-                                                @match ballot_opt {
-                                                    Some(_) => {
-                                                        span class="badge bg-success text-uppercase small" style="letter-spacing: 0.5px;" { "Submitted" }
-                                                    },
-                                                    None => {
-                                                        span class="badge bg-danger text-uppercase small" style="letter-spacing: 0.5px;" { "Missing" }
-                                                    },
-                                                }
+                                                span class="badge text-uppercase small" style="background-color: #6c757d; color: white; letter-spacing: 0.5px;" { "No Judge" }
                                             }
                                             td class="text-end py-3" {
-                                                @if ballot_opt.is_some() {
-                                                    a href=(format!("/tournaments/{}/debates/{}/ballots", tournament.id, debate.debate.id))
-                                                        class="btn btn-sm btn-outline-dark" { "View" }
+                                            }
+                                        }
+                                    } @else {
+                                        @for (idx, judge_in_debate) in debate.judges_of_debate.iter().enumerate() {
+                                            tr class="border-bottom" {
+                                                @let judge = &debate.judges[&judge_in_debate.judge_id];
+                                                @let ballot_opt = ballots.iter().find(|b| b.ballot.judge_id == judge.id);
+
+                                                @if idx == 0 {
+                                                    td rowspan=(num_judges) class="text-center py-4 fw-bold fs-5" {
+                                                        (debate.debate.number)
+                                                    }
+                                                    td rowspan=(num_judges) class="py-4" {
+                                                        div class="d-flex flex-column gap-1" {
+                                                            @for team in &debate.teams_of_debate {
+                                                                div class="small" {
+                                                                    span class="fw-bold" { (debate.teams[&team.team_id].name) }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                td class="py-3" {
+                                                    div class="fw-bold" { (judge.name) }
+                                                }
+                                                td class="py-3" {
+                                                    @match ballot_opt {
+                                                        Some(_) => {
+                                                            span class="badge text-uppercase small" style="background-color: #198754; color: white; letter-spacing: 0.5px;" { "Submitted" }
+                                                        },
+                                                        None => {
+                                                            span class="badge text-uppercase small" style="background-color: #d9534f; color: white; letter-spacing: 0.5px;" { "Missing" }
+                                                        },
+                                                    }
+                                                }
+                                                td class="text-end py-3" {
+                                                    @if ballot_opt.is_some() {
+                                                        a href=(format!("/tournaments/{}/debates/{}/ballots", tournament.id, debate.debate.id))
+                                                            class="btn btn-sm" style="border: 1px solid #212529; color: #212529;" { "View" }
+                                                    }
                                                 }
                                             }
                                         }

@@ -19,7 +19,7 @@ use crate::{
             Institution,
             manage::{
                 create_team::CreateTeamForm,
-                institution_selector::InstitutionSelector,
+                institution_selector::InstitutionSelector, team_form::TeamForm,
             },
         },
         rounds::TournamentRounds,
@@ -138,30 +138,26 @@ pub async fn edit_team_details_page(
         Some("institution_id"),
     );
 
+    let rounds = TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
+
+    let form = TeamForm::new(&institution_selector).with_team_name(&team.name);
+
     success(
         Page::new()
             .user(user)
-            .tournament(tournament)
+            .tournament(tournament.clone())
             .body(maud! {
-                // todo: this can be deduplicated from `create_team`
-                form method="post" {
-                  div class="mb-3" {
-                    label for="teamName" class="form-label" { "Name of new team" }
-                    input type="text"
-                          class="form-control"
-                          id="teamName"
-                          aria-describedby="teamNameHelp"
-                          value=(team.name)
-                          name="name";
-                    div id="teamNameHelp" class="form-text" {
-                        "The team name. Please note that (if an institution is "
-                        "selected) this will be prefixed with the institution name."
+                SidebarWrapper tournament=(&tournament) rounds=(&rounds) active_page=(None) selected_seq=(None) {
+                    div class="card" {
+                        div class="card-body" {
+                            h1 class="card-title" { "Edit Team" }
+                            form method="post" {
+                              (form)
+                              button type="submit" class="btn btn-primary" { "Save" }
+                            }
+                        }
                     }
-                  }
-                  (institution_selector)
-                  button type="submit" class="btn btn-primary" { "Create team" }
                 }
-
             })
             .render(),
     )

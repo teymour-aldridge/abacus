@@ -17,7 +17,10 @@ use crate::{
     tournaments::{
         Tournament,
         participants::{
-            Institution, manage::institution_selector::InstitutionSelector,
+            Institution,
+            manage::{
+                institution_selector::InstitutionSelector, team_form::TeamForm,
+            },
         },
         snapshots::take_snapshot,
     },
@@ -42,30 +45,22 @@ pub async fn create_teams_page(
         .unwrap();
     let institution_selector =
         InstitutionSelector::new(&institutions, None, Some("institution_id"));
+    let form = TeamForm::new(&institution_selector);
 
     success(Page::new()
         .user(user)
         .tournament(tournament)
         .body(maud! {
-            form method="post" {
-              h1 {
-                  "Create new team"
-              }
-              div class="mb-3" {
-                label for="teamName" class="form-label" { "Name of new team" }
-                input
-                    type="text"
-                    class="form-control"
-                    id="teamName"
-                    aria-describedby="teamNameHelp"
-                    name="name";
-                div id="teamNameHelp" class="form-text" {
-                    "The team name. Please note that (if an institution is "
-                    "selected) this will be prefixed with the institution name."
+            div class="card" {
+                div class="card-body" {
+                    h1 class="card-title" {
+                        "Create new team"
+                    }
+                    form method="post" {
+                      (form)
+                      button type="submit" class="btn btn-primary" { "Create team" }
+                    }
                 }
-              }
-              (institution_selector)
-              button type="submit" class="btn btn-primary" { "Create team" }
             }
         })
         .render())

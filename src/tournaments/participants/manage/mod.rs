@@ -40,6 +40,7 @@ pub mod institution_selector;
 pub mod manage_judge;
 pub mod manage_private_urls;
 pub mod manage_team;
+pub mod team_form;
 
 pub struct ParticipantsTable(Tournament, TournamentParticipants);
 

@@ -7,6 +7,8 @@ use axum_extra::extract::{PrivateCookieJar, cookie::Key};
 use diesel::prelude::*;
 use hypertext::prelude::*;
 use serde::Deserialize;
+use tokio::task::spawn_blocking;
+use tracing::{Instrument, Level};
 use url::Url;
 
 use crate::{
@@ -60,14 +62,19 @@ pub struct NextParams {
     next: Option<String>,
 }
 
+#[tracing::instrument(skip(conn, params, jar, form))]
 pub async fn do_login(
     user: Option<User<true>>,
     Query(params): Query<NextParams>,
     mut conn: Conn<true>,
     jar: PrivateCookieJar<Key>,
+    // note: MUST be skipped in tracing for security reasons!
     Form(form): Form<LoginForm>,
 ) -> (PrivateCookieJar<Key>, StandardResponse) {
     let next = params.next.as_deref();
+
+    let span = tracing::span!(Level::TRACE, "retrieve_user");
+    let guard = span.enter();
     let user1 =
         match users::table
             .filter(users::email.eq(&form.id).or(users::username.eq(&form.id)))
@@ -87,12 +94,39 @@ pub async fn do_login(
                     .render(),
              ))),
         };
+    drop(guard);
 
-    let parsed_hash = PasswordHash::new(&user1.password_hash).unwrap();
-    if Argon2::default()
-        .verify_password(form.password.as_bytes(), &parsed_hash)
-        .is_err()
-    {
+    // todo: invert this (this flow is confusing)
+    let wrong_password = {
+        let hash = user1.password_hash.clone();
+        let r = spawn_blocking(move || {
+            if !cfg!(fuzzing) {
+                let parsed_hash = PasswordHash::new(&hash).unwrap();
+
+                Argon2::default()
+                    .verify_password(form.password.as_bytes(), &parsed_hash)
+                    .is_err()
+            } else {
+                tracing::error!(
+                    "Not using password hashing. This should never
+                    occur in a release build (hashing is disabled to speed up
+                    the process of fuzzing)."
+                );
+                // disable hashing to speed up fuzzing process
+                hash != form.password
+            }
+        })
+        .instrument(tracing::span!(
+            tracing::Level::DEBUG,
+            "password_verification"
+        ))
+        .await
+        .unwrap();
+
+        r
+    };
+
+    if wrong_password {
         // todo: password rate limiting
         return (jar, bad_request(
             Page::new()

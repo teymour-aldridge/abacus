@@ -72,6 +72,7 @@ pub struct CreateTeamForm {
     pub institution_id: String,
 }
 
+#[tracing::instrument(skip(conn, tx, form))]
 pub async fn do_create_team(
     Path(tid): Path<String>,
     user: User<true>,
@@ -145,6 +146,7 @@ pub async fn do_create_team(
     .unwrap();
 
     if exists {
+        tracing::trace!("Error: team already exists");
         return bad_request(
             Page::new()
                 .user(user)
@@ -157,6 +159,8 @@ pub async fn do_create_team(
                 .render(),
         );
     }
+
+    tracing::trace!("Team does not exist, proceeding to create");
 
     let next_number = tournament_teams::table
         .filter(tournament_teams::tournament_id.eq(&tid))

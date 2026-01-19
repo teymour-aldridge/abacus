@@ -48,6 +48,11 @@ pub struct Tournament {
     pub substantive_speakers: i64,
     pub reply_speakers: bool,
     pub reply_must_speak: bool,
+    pub substantive_speech_min_speak: f32,
+    pub substantive_speech_max_speak: f32,
+    pub substantive_speech_step: f32,
+    pub reply_speech_min_speak: Option<f32>,
+    pub reply_speech_max_speak: Option<f32>,
     pub max_substantive_speech_index_for_reply: Option<i64>,
     pub pool_ballot_setup: String,
     pub elim_ballot_setup: String,
@@ -112,6 +117,7 @@ impl Tournament {
         }
     }
 
+    #[tracing::instrument(skip(conn))]
     pub fn check_user_has_permission(
         &self,
         user_id: &str,
@@ -155,7 +161,16 @@ impl Tournament {
         let select = diesel::dsl::select(diesel::dsl::exists(
             has_permission.union(is_superuser),
         ));
-        match select.get_result::<bool>(conn).unwrap() {
+
+        let get_result = select.get_result::<bool>(conn).unwrap();
+
+        tracing::trace!(
+            "User has permission {:?} = {}",
+            permission,
+            get_result
+        );
+
+        match get_result {
             true => Ok(()),
             false => unauthorized().map(|_| ()),
         }

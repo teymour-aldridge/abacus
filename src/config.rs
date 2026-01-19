@@ -196,25 +196,7 @@ async fn store_css() -> impl IntoResponse {
     )
 }
 
-pub async fn run() {
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::DEBUG)
-        .init();
-
-    let db_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| ":memory:".to_string());
-
-    let pool: DbPool = Pool::builder()
-        .max_size(if db_url == ":memory:" { 1 } else { 10 })
-        .build(ConnectionManager::<SqliteConnection>::new(db_url))
-        .unwrap();
-
-    {
-        let conn = pool.get().unwrap();
-        let mut conn = conn;
-        conn.run_pending_migrations(MIGRATIONS).unwrap();
-    }
-
+pub fn create_app(pool: DbPool) -> Router {
     let secret_str = std::env::var("SECRET_KEY").ok();
     let key = if let Some(secret) = secret_str.filter(|s| s.len() >= 64) {
         Key::from(secret.as_bytes())
@@ -230,7 +212,7 @@ pub async fn run() {
 
     let state = crate::state::AppState { pool, key };
 
-    let app = Router::new()
+    Router::new()
         .route("/", get(home))
         .route("/style.css", get(style_css))
         .route("/login", get(crate::auth::login::login_page).post(crate::auth::login::do_login))
@@ -247,20 +229,52 @@ pub async fn run() {
         .route("/tournaments/:id/teams/create", get(crate::tournaments::participants::manage::create_team::create_teams_page).post(crate::tournaments::participants::manage::create_team::do_create_team))
         .route("/tournaments/:id/teams/:team_id", get(crate::tournaments::participants::manage::manage_team::manage_team_page))
         .route("/tournaments/:id/teams/:team_id/edit", get(crate::tournaments::participants::manage::manage_team::edit_team_details_page).post(crate::tournaments::participants::manage::manage_team::do_edit_team_details))
-        .route("/tournaments/:id/teams/:team_id/speakers/create", get(crate::tournaments::participants::manage::create_speaker::create_speaker_page).post(crate::tournaments::participants::manage::create_speaker::do_create_speaker))
+        // todo: the `participants` part should be standardised across the
+        // application
+        .route(
+            "/tournaments/:id/teams/:team_id/speakers/create",
+            get(crate::tournaments::participants::manage::create_speaker::create_speaker_page)
+                .post(crate::tournaments::participants::manage::create_speaker::do_create_speaker),
+        )
 
         // Judges
         .route("/tournaments/:id/judges/create", get(crate::tournaments::participants::manage::create_judge::create_judge_page).post(crate::tournaments::participants::manage::create_judge::do_create_judge))
         .route("/tournaments/:id/judges/:judge_id/edit", get(crate::tournaments::participants::manage::manage_judge::edit_judge_details_page).post(crate::tournaments::participants::manage::manage_judge::do_edit_judge_details))
 
         // Legacy routes (for backwards compatibility)
-        .route("/tournaments/:id/participants/team", get(crate::tournaments::participants::manage::manage_team::manage_team_page))
-        .route("/tournaments/:id/participants/team/create", get(crate::tournaments::participants::manage::create_team::create_teams_page).post(crate::tournaments::participants::manage::create_team::do_create_team))
-        .route("/tournaments/:id/participants/team/edit", get(crate::tournaments::participants::manage::manage_team::edit_team_details_page).post(crate::tournaments::participants::manage::manage_team::do_edit_team_details))
-        .route("/tournaments/:id/participants/judge/create", get(crate::tournaments::participants::manage::create_judge::create_judge_page).post(crate::tournaments::participants::manage::create_judge::do_create_judge))
-        .route("/tournaments/:id/participants/judge/edit", get(crate::tournaments::participants::manage::manage_judge::edit_judge_details_page).post(crate::tournaments::participants::manage::manage_judge::do_edit_judge_details))
-        .route("/tournaments/:id/participants/speaker/create", get(crate::tournaments::participants::manage::create_speaker::create_speaker_page).post(crate::tournaments::participants::manage::create_speaker::do_create_speaker))
-        .route("/tournaments/:id/participants/updates", get(crate::tournaments::participants::manage::tournament_participant_updates))
+        .route(
+            "/tournaments/:id/participants/team",
+            get(crate::tournaments::participants::manage::manage_team::manage_team_page)
+        )
+        .route(
+            "/tournaments/:id/participants/team/create",
+            get(crate::tournaments::participants::manage::create_team::create_teams_page)
+                .post(crate::tournaments::participants::manage::create_team::do_create_team)
+        )
+        .route(
+            "/tournaments/:id/participants/team/edit",
+            get(crate::tournaments::participants::manage::manage_team::edit_team_details_page)
+                .post(crate::tournaments::participants::manage::manage_team::do_edit_team_details)
+        )
+        .route(
+            "/tournaments/:id/participants/judge/create",
+            get(crate::tournaments::participants::manage::create_judge::create_judge_page)
+                .post(crate::tournaments::participants::manage::create_judge::do_create_judge)
+        )
+        .route(
+            "/tournaments/:id/participants/judge/edit",
+            get(crate::tournaments::participants::manage::manage_judge::edit_judge_details_page)
+                .post(crate::tournaments::participants::manage::manage_judge::do_edit_judge_details)
+        )
+        .route(
+            "/tournaments/:id/participants/speaker/create",
+            get(crate::tournaments::participants::manage::create_speaker::create_speaker_page)
+                .post(crate::tournaments::participants::manage::create_speaker::do_create_speaker)
+        )
+        .route(
+            "/tournaments/:id/participants/updates",
+            get(crate::tournaments::participants::manage::tournament_participant_updates)
+        )
 
         // Constraints (unified for both speakers and judges)
         .route("/tournaments/:id/participants/:ptype/:pid/constraints", get(crate::tournaments::participants::manage::constraints::manage_constraints_page))
@@ -292,10 +306,8 @@ pub async fn run() {
         .route("/tournaments/:id/privateurls/:private_url/rounds/:round_id/feedback/submit", get(crate::tournaments::feedback::public::submit::submit_feedback_page).post(crate::tournaments::feedback::public::submit::do_submit_feedback))
 
         // Rounds
-        .route("/tournaments/:id/rounds", get(crate::tournaments::rounds::manage::manage_rounds_page))
-        .route("/tournaments/:id/rounds/:round_seq/setup", get(crate::tournaments::rounds::manage::setup::setup_round_page))
-        .route("/tournaments/:id/rounds/create", get(crate::tournaments::rounds::manage::create::create_new_round_of_specific_category_page).post(crate::tournaments::rounds::manage::create::do_create_new_round_of_specific_category))
-        .route("/tournaments/:id/rounds/create_top", post(crate::tournaments::rounds::manage::create::create_new_round))
+        .route("/tournaments/:id/rounds/create", get(crate::tournaments::rounds::manage::create::create_new_round))
+        .route("/tournaments/:id/rounds/:category_id/create", get(crate::tournaments::rounds::manage::create::create_new_round_of_specific_category_page).post(crate::tournaments::rounds::manage::create::do_create_new_round_of_specific_category))
         .route("/tournaments/:id/rounds/:round_seq", get(crate::tournaments::rounds::manage::view::view_tournament_rounds_page))
         .route("/tournaments/:id/rounds/:round_seq/draw", get(crate::tournaments::rounds::draws::public::view::view_active_draw_page))
         .route("/tournaments/:id/rounds/:round_seq/draw/manage", get(crate::tournaments::rounds::manage::draw_view::view_draws_page))
@@ -356,10 +368,12 @@ pub async fn run() {
         .route("/tournaments/:id/debates/:debate_id/ballots", get(crate::tournaments::rounds::ballots::manage::view_ballot_set::view_ballot_set_page))
         .route("/tournaments/:id/privateurls/:private_url", get(crate::tournaments::privateurls::view::private_url_page))
 
-//...
-        .route("/tournaments/:id/privateurls/:url/rounds/:round_id/submit", get(crate::tournaments::rounds::ballots::public::submit::submit_ballot_page).post(crate::tournaments::rounds::ballots::public::submit::do_submit_ballot))
+        .route(
+            "/tournaments/:id/privateurls/:url/rounds/:round_id/submit",
+            get(crate::tournaments::rounds::ballots::public::submit::submit_ballot_page)
+                .post(crate::tournaments::rounds::ballots::public::submit::do_submit_ballot),
+        )
         .layer(axum::Extension(tx))
-//...
         .layer(axum::Extension(state.pool.clone()))
         .with_state(state)
         .layer(
@@ -381,7 +395,29 @@ pub async fn run() {
                 .layer(axum::middleware::from_fn(
                     crate::state::transaction_middleware,
                 )),
-        );
+        )
+}
+
+pub async fn run() {
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .init();
+
+    let db_url = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| ":memory:".to_string());
+
+    let pool: DbPool = Pool::builder()
+        .max_size(if db_url == ":memory:" { 1 } else { 10 })
+        .build(ConnectionManager::<SqliteConnection>::new(db_url))
+        .unwrap();
+
+    {
+        let conn = pool.get().unwrap();
+        let mut conn = conn;
+        conn.run_pending_migrations(MIGRATIONS).unwrap();
+    }
+
+    let app = create_app(pool);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:8000")
         .await

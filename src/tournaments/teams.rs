@@ -13,12 +13,13 @@ pub struct Team {
 }
 
 impl Team {
+    #[tracing::instrument(skip(conn))]
     pub fn fetch(
         team_id: &str,
         tournament_id: &str,
         conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Result<Team, FailureResponse> {
-        tournament_teams::table
+        let ret = tournament_teams::table
             .filter(
                 tournament_teams::id
                     .eq(team_id)
@@ -27,6 +28,10 @@ impl Team {
             .first::<Team>(&mut *conn)
             .optional()
             .unwrap()
-            .ok_or(FailureResponse::NotFound(()))
+            .ok_or(FailureResponse::NotFound(()));
+
+        tracing::trace!("ok? {}", ret.is_ok());
+
+        ret
     }
 }

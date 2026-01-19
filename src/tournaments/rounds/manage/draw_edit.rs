@@ -687,6 +687,10 @@ pub async fn move_judge(
     };
 
     let transaction_result = conn.transaction(|conn| {
+        // todo: this behaviour is wrong and should be restricted to
+        // only apply to rounds with the same sequence (i.e. judges
+        // can of course be assigned to multiple debates across
+        // non-concurrent rounds)
         diesel::delete(
             tournament_debate_judges::table.filter(
                 tournament_debate_judges::judge_id.eq(&judge.id).and(
@@ -715,7 +719,6 @@ pub async fn move_judge(
             {
                 Some(d) => d,
                 None => {
-                    // This will rollback the transaction
                     return Err(diesel::result::Error::NotFound);
                 }
             };
@@ -723,7 +726,6 @@ pub async fn move_judge(
             let role = match Role::of_str(&form.role) {
                 Ok(role) => role,
                 Err(e) => {
-                    // This will rollback the transaction
                     return Err(diesel::result::Error::QueryBuilderError(
                         e.into(),
                     ));
@@ -732,7 +734,7 @@ pub async fn move_judge(
 
             diesel::insert_into(tournament_debate_judges::table)
                 .values((
-                    tournament_debate_judges::id.eq(Uuid::new_v4().to_string()),
+                    tournament_debate_judges::id.eq(Uuid::now_v7().to_string()),
                     tournament_debate_judges::debate_id.eq(debate.id),
                     tournament_debate_judges::judge_id.eq(judge.id),
                     tournament_debate_judges::status.eq(role.to_string()),

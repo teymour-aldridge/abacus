@@ -17,7 +17,7 @@ use crate::{
     util_resp::{StandardResponse, bad_request, see_other_ok, success},
 };
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TournamentConfig {
     pub team_tab_public: bool,
     pub speaker_tab_public: bool,
@@ -29,6 +29,11 @@ pub struct TournamentConfig {
     pub reply_speakers: bool,
     pub reply_must_speak: bool,
     pub max_substantive_speech_index_for_reply: Option<i64>,
+    pub substantive_speech_min_speak: f32,
+    pub substantive_speech_max_speak: f32,
+    pub substantive_speech_step: f32,
+    pub reply_speech_min_speak: Option<f32>,
+    pub reply_speech_max_speak: Option<f32>,
     pub pool_ballot_setup: String,
     pub elim_ballot_setup: String,
     pub elim_ballots_require_speaks: bool,
@@ -41,7 +46,7 @@ pub struct TournamentConfig {
     pub exclude_from_speaker_standings_after: Option<i64>,
 }
 
-fn config_of_tournament(tournament: &Tournament) -> TournamentConfig {
+pub fn config_of_tournament(tournament: &Tournament) -> TournamentConfig {
     TournamentConfig {
         team_tab_public: tournament.team_tab_public,
         speaker_tab_public: tournament.speaker_tab_public,
@@ -65,6 +70,11 @@ fn config_of_tournament(tournament: &Tournament) -> TournamentConfig {
         speaker_standings_metrics: tournament.speaker_standings_metrics.clone(),
         exclude_from_speaker_standings_after: tournament
             .exclude_from_speaker_standings_after,
+        substantive_speech_min_speak: tournament.substantive_speech_min_speak,
+        substantive_speech_max_speak: tournament.substantive_speech_max_speak,
+        substantive_speech_step: tournament.substantive_speech_step,
+        reply_speech_min_speak: tournament.reply_speech_min_speak,
+        reply_speech_max_speak: tournament.reply_speech_max_speak,
     }
 }
 

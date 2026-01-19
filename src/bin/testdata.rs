@@ -134,7 +134,7 @@ fn main() {
             tournaments::pullup_metrics
                 .eq(serde_json::to_string(&[PullupMetric::Random]).unwrap()),
             tournaments::repeat_pullup_penalty.eq(0),
-            tournaments::exclude_from_speaker_standings_after.eq(-1),
+            tournaments::exclude_from_speaker_standings_after.eq(None::<i64>),
         ))
         .execute(&mut conn)
         .unwrap();

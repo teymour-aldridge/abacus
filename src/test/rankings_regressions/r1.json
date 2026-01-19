@@ -1,0 +1,168 @@
+{
+  "init": {
+    "teams": [
+      {
+        "speakers": [
+          {
+            "name": "Team 0 Speaker 0",
+            "email": "0@0.com"
+          },
+          {
+            "name": "Team 0 Speaker 1",
+            "email": "0@0.com"
+          },
+          {
+            "name": "Team 0 Speaker 2",
+            "email": "0@0.com"
+          }
+        ],
+        "name": "Team 0"
+      },
+      {
+        "speakers": [
+          {
+            "name": "Team 1 Speaker 0",
+            "email": "0@0.com"
+          },
+          {
+            "name": "Team 1 Speaker 1",
+            "email": "0@0.com"
+          },
+          {
+            "name": "Team 1 Speaker 2",
+            "email": "0@0.com"
+          }
+        ],
+        "name": "Team 1"
+      },
+      {
+        "speakers": [
+          {
+            "name": "Team 2 Speaker 0",
+            "email": "0@0.com"
+          },
+          {
+            "name": "Team 2 Speaker 1",
+            "email": "0@0.com"
+          },
+          {
+            "name": "Team 2 Speaker 2",
+            "email": "0@0.com"
+          }
+        ],
+        "name": "Team 2"
+      },
+      {
+        "speakers": [
+          {
+            "name": "Team 3 Speaker 0",
+            "email": "0@0.com"
+          },
+          {
+            "name": "Team 3 Speaker 1",
+            "email": "0@0.com"
+          },
+          {
+            "name": "Team 3 Speaker 2",
+            "email": "0@0.com"
+          }
+        ],
+        "name": "Team 3"
+      }
+    ],
+    "judges": [
+      {
+        "name": "Judge 0",
+        "email": "0@0.com"
+      },
+      {
+        "name": "Judge 1",
+        "email": "0@0.com"
+      }
+    ],
+    "in_rounds": 1,
+    "conf": {
+      "team_tab_public": true,
+      "speaker_tab_public": true,
+      "standings_public": true,
+      "show_round_results": true,
+      "show_draws": true,
+      "teams_per_side": 1,
+      "substantive_speakers": 3,
+      "reply_speakers": true,
+      "reply_must_speak": false,
+      "max_substantive_speech_index_for_reply": 2,
+      "substantive_speech_min_speak": 60.0,
+      "substantive_speech_max_speak": 80.0,
+      "substantive_speech_step": 0.5,
+      "reply_speech_min_speak": 30.0,
+      "reply_speech_max_speak": 40.0,
+      "pool_ballot_setup": "consensus",
+      "elim_ballot_setup": "consensus",
+      "elim_ballots_require_speaks": false,
+      "institution_penalty": 0,
+      "history_penalty": 0,
+      "pullup_metrics": "[\"random\"]",
+      "repeat_pullup_penalty": 0,
+      "team_standings_metrics": "[\"wins\",\"draw_strength_by_wins\"]",
+      "speaker_standings_metrics": "[\"Avg\",\"StdDev\"]",
+      "exclude_from_speaker_standings_after": null
+    }
+  },
+  "in_rounds": [
+    {
+      "draw": [
+        {
+          "teams": [
+            "Team 1",
+            "Team 0"
+          ],
+          "c": "Judge 1",
+          "p": [],
+          "t": [],
+          "ballots": {
+            "Judge 1": {
+              "entries": [
+                [
+                  ["Team 1 Speaker 0", 60.5],
+                  ["Team 1 Speaker 1", 60.5],
+                  ["Team 1 Speaker 2", 60.5]
+                ],
+                [
+                  ["Team 0 Speaker 0", 60.5],
+                  ["Team 0 Speaker 1", 60.5],
+                  ["Team 0 Speaker 2", 60.5]
+                ]
+              ]
+            }
+          }
+        },
+        {
+          "teams": [
+            "Team 2",
+            "Team 3"
+          ],
+          "c": "Judge 0",
+          "p": [],
+          "t": [],
+          "ballots": {
+            "Judge 0": {
+              "entries": [
+                [
+                  ["Team 2 Speaker 0", 60.5],
+                  ["Team 2 Speaker 1", 60.5],
+                  ["Team 2 Speaker 2", 60.5]
+                ],
+                [
+                  ["Team 3 Speaker 0", 60.5],
+                  ["Team 3 Speaker 1", 60.5],
+                  ["Team 3 Speaker 2", 60.5]
+                ]
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

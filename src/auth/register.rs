@@ -8,6 +8,9 @@ use chrono::Utc;
 use diesel::{insert_into, prelude::*};
 use hypertext::prelude::*;
 use serde::Deserialize;
+use tokio::task::spawn_blocking;
+use tracing::Instrument;
+use tracing::Level;
 use uuid::Uuid;
 
 use crate::auth::set_login_cookie;
@@ -58,7 +61,7 @@ pub async fn register_page(user: Option<User<true>>) -> StandardResponse {
     )
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct RegisterForm {
     pub username: String,
     pub email: String,
@@ -66,14 +69,15 @@ pub struct RegisterForm {
     pub password2: String,
 }
 
+#[tracing::instrument(skip(conn, jar, form))]
 pub async fn do_register(
     user: Option<User<true>>,
     mut conn: Conn<true>,
     jar: PrivateCookieJar<Key>,
+    // note: MUST be skipped in tracing for security reasons!
     Form(form): Form<RegisterForm>,
 ) -> (PrivateCookieJar<Key>, StandardResponse) {
     if user.is_some() {
-        // todo: flash message
         // todo: flash message
         return (
             jar,
@@ -128,15 +132,24 @@ pub async fn do_register(
             ))
         }
         None => {
-            let salt = SaltString::generate(&mut OsRng);
             let id = Uuid::now_v7().to_string();
 
-            let argon2 = Argon2::default();
+            let password_hash = spawn_blocking(move || {
+                if !cfg!(fuzzing) {
+                    let salt = SaltString::generate(&mut OsRng);
 
-            let password_hash = argon2
-                .hash_password(form.password.as_bytes(), &salt)
-                .unwrap()
-                .to_string();
+                    let argon2 = Argon2::default();
+                    argon2
+                        .hash_password(form.password.as_bytes(), &salt)
+                        .unwrap()
+                        .to_string()
+                } else {
+                    form.password
+                }
+            })
+            .instrument(tracing::span!(Level::TRACE, "hash_password"))
+            .await
+            .unwrap();
 
             insert_into(users::table)
                 .values((

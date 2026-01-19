@@ -259,6 +259,8 @@ impl Renderable for BallotFormRenderer {
 /// speakers: [s1, s2, s3, s4, s5, s6, s7, s8]
 /// scores: [85, 86, 87, 88, 89, 90, 91, 92]
 /// ```
+///
+// TODO: we can refactor this to
 pub struct BallotSubmissionForm {
     #[serde(default)]
     speakers: Vec<String>,
@@ -546,6 +548,8 @@ pub async fn do_submit_ballot(
                 tournament_speaker_score_entries::speaker_position.eq(i as i64),
                 tournament_speaker_score_entries::score
                     .eq(entry.1.to_f32().unwrap()),
+                tournament_speaker_score_entries::tournament_id
+                    .eq(&tournament.id),
             ))
         }
     }

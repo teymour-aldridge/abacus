@@ -36,6 +36,13 @@ create table if not exists tournaments (
     reply_speakers boolean not null default 'f',
     reply_must_speak boolean not null default 't',
 
+    substantive_speech_min_speak float not null default 50.0,
+    substantive_speech_max_speak float not null default 99.0,
+    substantive_speech_step float not null default 1.0,
+
+    reply_speech_min_speak float,
+    reply_speech_max_speak float,
+
     -- e.g. "1" => must be first speaker, "2" => must be first OR second speaker
     max_substantive_speech_index_for_reply integer,
 

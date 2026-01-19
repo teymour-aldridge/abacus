@@ -36,6 +36,8 @@ pub async fn create_judge_page(
         &mut *conn,
     )?;
 
+    tracing::trace!("User has permission to manage participants.");
+
     let institutions = tournament_institutions::table
         .filter(tournament_institutions::tournament_id.eq(&tournament.id))
         .load::<Institution>(&mut *conn)
@@ -110,6 +112,9 @@ pub async fn do_create_judge(
     Form(form): Form<CreateJudgeForm>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
+
+    tracing::trace!("Retrieved tournament with id = {}", tournament.id);
+
     tournament.check_user_has_permission(
         &user.id,
         crate::permission::Permission::ManageParticipants,

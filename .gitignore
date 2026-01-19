@@ -12,3 +12,6 @@ assets/bootstrap.tar.gz
 !frontend/src/index.css
 
 static/
+
+.DS_Store
+fuzz/Cargo.lock

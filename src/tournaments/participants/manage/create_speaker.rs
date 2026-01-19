@@ -65,12 +65,15 @@ pub struct CreateSpeakerForm {
     pub email: String,
 }
 
+#[tracing::instrument(skip(conn, form))]
 pub async fn do_create_speaker(
     Path((tournament_id, team_id)): Path<(String, String)>,
     user: User<true>,
     mut conn: Conn<true>,
     Form(form): Form<CreateSpeakerForm>,
 ) -> StandardResponse {
+    tracing::trace!("Create speaker route");
+
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
     let team = Team::fetch(&team_id, &tournament_id, &mut *conn)?;
@@ -126,6 +129,7 @@ pub async fn do_create_speaker(
 
     diesel::insert_into(tournament_team_speakers::table)
         .values((
+            tournament_team_speakers::id.eq(Uuid::now_v7().to_string()),
             tournament_team_speakers::team_id.eq(team.id),
             tournament_team_speakers::speaker_id.eq(speaker_id),
         ))

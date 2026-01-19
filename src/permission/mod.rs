@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum Permission {
     /// Permission to manage judge<->team conflicts as well as judge<->judge
     /// conflicts.

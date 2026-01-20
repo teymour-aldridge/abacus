@@ -73,6 +73,62 @@ pub enum UserRole {
 }
 
 impl Tournament {
+    pub fn max_substantive_speak(&self) -> rust_decimal::Decimal {
+        rust_decimal::Decimal::from_f32_retain(
+            self.substantive_speech_max_speak,
+        )
+        .unwrap()
+    }
+
+    pub fn min_substantive_speak(&self) -> rust_decimal::Decimal {
+        rust_decimal::Decimal::from_f32_retain(
+            self.substantive_speech_min_speak,
+        )
+        .unwrap()
+    }
+
+    pub fn speak_step(&self) -> rust_decimal::Decimal {
+        rust_decimal::Decimal::from_f32_retain(
+            self.substantive_speech_min_speak,
+        )
+        .unwrap()
+    }
+
+    pub fn check_score_valid(
+        &self,
+        score: rust_decimal::Decimal,
+        is_reply: bool,
+        speaker_name: String,
+    ) -> Result<(), String> {
+        if !is_reply {
+            if score < self.min_substantive_speak() {
+                return Err(format!(
+                    "Score of {score} for {speaker_name} is lower than the minimum permissable speak {}.",
+                    self.substantive_speech_min_speak
+                ));
+            }
+
+            if self.max_substantive_speak() < score {
+                return Err(format!(
+                    "Score of {score} for {speaker_name} is greater than the maximum permissable speak {}.",
+                    self.substantive_speech_min_speak
+                ));
+            }
+
+            if score % self.speak_step() != rust_decimal::Decimal::ZERO {
+                return Err(format!(
+                    "Score of {score} for {speaker_name} does not match requirement
+                     that the score be a multiple of {}.",
+                    self.speak_step()
+                ));
+            }
+        } else {
+            todo!("validation for reply speaks")
+        }
+
+        Ok(())
+    }
+
     pub fn pullup_metrics(&self) -> Vec<PullupMetric> {
         serde_json::from_str(&self.pullup_metrics).unwrap()
     }

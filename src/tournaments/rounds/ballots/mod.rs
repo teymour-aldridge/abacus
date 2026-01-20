@@ -16,6 +16,7 @@ use crate::{
 };
 
 pub mod aggregate;
+pub mod form_components;
 pub mod manage;
 pub mod public;
 
@@ -25,6 +26,50 @@ pub struct BallotRepr {
 }
 
 impl BallotRepr {
+    /// Insert the provided ballot into the database. This cannot be used to
+    /// update existing ballots, only to create new ones!
+    pub fn insert(&self, conn: &mut impl LoadConnection<Backend = Sqlite>) {
+        let n = diesel::insert_into(tournament_ballots::table)
+            .values((
+                tournament_ballots::id.eq(&self.ballot.id),
+                tournament_ballots::tournament_id
+                    .eq(&self.ballot.tournament_id),
+                tournament_ballots::debate_id.eq(&self.ballot.debate_id),
+                tournament_ballots::judge_id.eq(&self.ballot.judge_id),
+                tournament_ballots::submitted_at.eq(&self.ballot.submitted_at),
+                tournament_ballots::motion_id.eq(&self.ballot.motion_id),
+                tournament_ballots::version.eq(&self.ballot.version),
+                tournament_ballots::change.eq(&self.ballot.change),
+                tournament_ballots::editor_id.eq(&self.ballot.editor_id),
+            ))
+            .execute(conn)
+            .unwrap();
+        assert_eq!(n, 1);
+
+        for score in &self.scores {
+            let n =
+                diesel::insert_into(tournament_speaker_score_entries::table)
+                    .values((
+                        tournament_speaker_score_entries::id.eq(&score.id),
+                        tournament_speaker_score_entries::tournament_id
+                            .eq(&score.tournament_id),
+                        tournament_speaker_score_entries::ballot_id
+                            .eq(&score.ballot_id),
+                        tournament_speaker_score_entries::team_id
+                            .eq(&score.team_id),
+                        tournament_speaker_score_entries::speaker_id
+                            .eq(&score.speaker_id),
+                        tournament_speaker_score_entries::speaker_position
+                            .eq(&score.speaker_position),
+                        tournament_speaker_score_entries::score
+                            .eq(&score.score),
+                    ))
+                    .execute(conn)
+                    .unwrap();
+            assert_eq!(n, 1);
+        }
+    }
+
     pub fn get_human_readable_description_for_problems<'a, 'b>(
         &'a self,
         other: &'b BallotRepr,
@@ -148,6 +193,38 @@ impl BallotRepr {
             other, tournament, debate,
         )
         .is_empty()
+    }
+
+    pub fn problems_of_set(
+        ballots: &[BallotRepr],
+        tournament: &Tournament,
+        debate: &DebateRepr,
+    ) -> Vec<String> {
+        // Assert all ballots are from the same debate
+        let debate_id = &debate.debate.id;
+        for ballot in ballots {
+            assert_eq!(
+                &ballot.ballot.debate_id, debate_id,
+                "All ballots must be from the same debate"
+            );
+        }
+
+        let mut problems = Vec::new();
+        for ballot in ballots {
+            for other_ballot in ballots {
+                if ballot.ballot.id == other_ballot.ballot.id {
+                    continue;
+                }
+                problems.extend(
+                    ballot.get_human_readable_description_for_problems(
+                        other_ballot,
+                        tournament,
+                        debate,
+                    ),
+                );
+            }
+        }
+        problems
     }
 
     pub fn ballot(&self) -> &Ballot {

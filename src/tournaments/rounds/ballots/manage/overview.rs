@@ -69,7 +69,6 @@ pub async fn admin_ballot_of_seq_overview(
             .tournament(tournament.clone())
             .body(maud! {
                 SidebarWrapper rounds=(&all_rounds) tournament=(&tournament) active_page=(Some(crate::tournaments::manage::sidebar::SidebarPage::Ballots)) selected_seq=(Some(round_seq)) {
-                    // Page Header
                     div class="mb-4 pb-3 border-bottom border-2 border-dark" {
                         h1 class="mb-2" { "Ballot Status" }
                         p class="text-muted mb-0" { (rounds[0].name) }
@@ -118,6 +117,7 @@ pub async fn admin_ballot_of_seq_overview(
                             tbody {
                                 @for (debate, ballots) in ballot_sets.iter() {
                                     @let num_judges = debate.judges_of_debate.len();
+                                    @let ballot_problems = BallotRepr::problems_of_set(ballots, &tournament, debate);
 
                                     @if num_judges == 0 {
                                         tr class="border-bottom" {
@@ -169,7 +169,18 @@ pub async fn admin_ballot_of_seq_overview(
                                                 td class="py-3" {
                                                     @match ballot_opt {
                                                         Some(_) => {
-                                                            span class="badge text-uppercase small" style="background-color: #198754; color: white; letter-spacing: 0.5px;" { "Submitted" }
+                                                            @if ballot_problems.is_empty() {
+                                                                span class="badge text-uppercase small" style="background-color: #198754; color: white; letter-spacing: 0.5px;" { "Submitted" }
+                                                            } @else {
+                                                                div class="d-flex flex-column gap-2" {
+                                                                    span class="badge text-uppercase small" style="background-color: #ffc107; color: #212529; letter-spacing: 0.5px;" { "Problems" }
+                                                                    div class="small text-muted" style="font-size: 0.75rem; line-height: 1.4;" {
+                                                                        @for problem in &ballot_problems {
+                                                                            div { (problem) }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
                                                         },
                                                         None => {
                                                             span class="badge text-uppercase small" style="background-color: #d9534f; color: white; letter-spacing: 0.5px;" { "Missing" }

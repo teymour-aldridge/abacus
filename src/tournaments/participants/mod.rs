@@ -119,6 +119,9 @@ pub struct TournamentParticipants {
 }
 
 impl TournamentParticipants {
+    // TODO: how expensive is this method to call? Should profile and if
+    // necessary make changes.
+    #[tracing::instrument(skip(conn))]
     pub fn load(
         tid: &str,
         conn: &mut impl LoadConnection<Backend = Sqlite>,

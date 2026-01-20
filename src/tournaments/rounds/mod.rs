@@ -158,6 +158,7 @@ pub struct TournamentRounds {
 }
 
 impl TournamentRounds {
+    #[tracing::instrument(skip(conn))]
     pub fn fetch(
         tid: &str,
         conn: &mut impl LoadConnection<Backend = Sqlite>,

@@ -14,6 +14,8 @@ use crate::{
     util_resp::{StandardResponse, success},
 };
 
+#[tracing::instrument(skip(conn))]
+/// Displays the ballot set for an individual debate.
 pub async fn view_ballot_set_page(
     Path((tournament_id, debate_id)): Path<(String, String)>,
     user: User<true>,

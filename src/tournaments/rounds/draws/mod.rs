@@ -7,12 +7,14 @@ use crate::schema::tournament_debate_teams;
 use crate::schema::tournament_debates;
 use crate::schema::tournament_judges;
 use crate::schema::tournament_rooms;
+use crate::schema::tournament_round_motions;
 use crate::schema::tournament_speakers;
 use crate::schema::tournament_team_speakers;
 use crate::schema::tournament_teams;
 use crate::tournaments::participants::DebateJudge;
 use crate::tournaments::participants::Judge;
 use crate::tournaments::participants::Speaker;
+use crate::tournaments::rounds::Motion;
 use crate::tournaments::rounds::ballots::BallotRepr;
 use crate::tournaments::teams::Team;
 
@@ -79,24 +81,34 @@ pub struct DebateRepr {
     pub speakers_of_team: HashMap<String, Vec<Speaker>>,
     pub judges_of_debate: Vec<DebateJudge>,
     pub judges: HashMap<String, Judge>,
+    pub motions: HashMap<String, Motion>,
 }
 
 impl DebateRepr {
+    #[tracing::instrument(skip(conn))]
     pub fn fetch(
         id: &str,
         conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Self {
+        Self::try_fetch(id, conn).unwrap()
+    }
+
+    #[tracing::instrument(skip(conn))]
+    // todo: this method executes far too many database queries and its
+    // efficiency can thus be improved
+    pub fn try_fetch(
+        id: &str,
+        conn: &mut impl LoadConnection<Backend = Sqlite>,
+    ) -> Result<Self, diesel::result::Error> {
         let debate = tournament_debates::table
             .filter(tournament_debates::id.eq(&id))
-            .first::<Debate>(conn)
-            .unwrap();
+            .first::<Debate>(conn)?;
 
         let room = match &debate.room_id {
             Some(room_id) => Some(
                 tournament_rooms::table
                     .filter(tournament_rooms::id.eq(room_id))
-                    .first::<Room>(conn)
-                    .unwrap(),
+                    .first::<Room>(conn)?,
             ),
             None => None,
         };
@@ -113,8 +125,7 @@ impl DebateRepr {
                 2.into_sql::<BigInt>() * tournament_debate_teams::seq
                     + tournament_debate_teams::side,
             ))
-            .load::<DebateTeam>(conn)
-            .unwrap();
+            .load::<DebateTeam>(conn)?;
 
         let teams = tournament_teams::table
             .filter(tournament_teams::tournament_id.eq(&debate.tournament_id))
@@ -126,8 +137,7 @@ impl DebateRepr {
                         .collect_vec(),
                 ),
             )
-            .load::<Team>(conn)
-            .unwrap();
+            .load::<Team>(conn)?;
 
         let tournament_team_speakers =
             tournament_team_speakers::table
@@ -138,8 +148,7 @@ impl DebateRepr {
                     tournament_team_speakers::team_id,
                     tournament_team_speakers::speaker_id,
                 ))
-                .load::<(String, String)>(&mut *conn)
-                .unwrap();
+                .load::<(String, String)>(&mut *conn)?;
 
         let tournament_speakers = tournament_speakers::table
             .filter(
@@ -150,8 +159,7 @@ impl DebateRepr {
                         .collect_vec(),
                 ),
             )
-            .load::<Speaker>(&mut *conn)
-            .unwrap();
+            .load::<Speaker>(&mut *conn)?;
 
         let judges_of_debate = tournament_debate_judges::table
             .filter(tournament_debate_judges::debate_id.eq(&debate.id))
@@ -173,8 +181,7 @@ impl DebateRepr {
                     name.asc()
                 },
             ))
-            .load::<DebateJudge>(conn)
-            .unwrap();
+            .load::<DebateJudge>(conn)?;
 
         let judges = tournament_judges::table
             .filter(tournament_judges::tournament_id.eq(&debate.tournament_id))
@@ -186,13 +193,22 @@ impl DebateRepr {
                         .collect_vec(),
                 ),
             )
-            .load::<Judge>(conn)
-            .unwrap()
+            .load::<Judge>(conn)?
             .into_iter()
             .map(|judge| (judge.id.clone(), judge))
             .collect();
 
-        Self {
+        let motions: HashMap<_, _> = tournament_round_motions::table
+            .filter(
+                tournament_round_motions::round_id.eq(debate.round_id.clone()),
+            )
+            .load::<Motion>(&mut *conn)
+            .unwrap()
+            .into_iter()
+            .map(|t| (t.id.clone(), t))
+            .collect();
+
+        Ok(Self {
             debate,
             room,
             teams_of_debate: debate_teams,
@@ -217,10 +233,12 @@ impl DebateRepr {
             },
             judges_of_debate,
             judges,
-        }
+            motions,
+        })
     }
 
     /// Retrieve all the ballots that have been submitted for this debate.
+    #[tracing::instrument(skip(conn))]
     pub fn ballots(
         &self,
         conn: &mut impl LoadConnection<Backend = Sqlite>,

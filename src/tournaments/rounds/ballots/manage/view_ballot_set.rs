@@ -8,8 +8,8 @@ use crate::{
     template::Page,
     tournaments::{
         Tournament,
-        manage::sidebar::SidebarWrapper,
-        rounds::{TournamentRounds, draws::DebateRepr},
+        manage::sidebar::{SidebarPage, SidebarWrapper},
+        rounds::{TournamentRounds, ballots::BallotRepr, draws::DebateRepr},
     },
     util_resp::{StandardResponse, success},
 };
@@ -39,25 +39,7 @@ pub async fn view_ballot_set_page(
         })
         .collect_vec();
 
-    let problems = {
-        let mut problems = Vec::new();
-        for ballot in &ballots {
-            for other_ballot in &ballots {
-                if ballot.ballot.id == other_ballot.ballot.id {
-                    continue;
-                }
-
-                problems.extend(
-                    ballot.get_human_readable_description_for_problems(
-                        &other_ballot,
-                        &tournament,
-                        &debate,
-                    ),
-                )
-            }
-        }
-        problems
-    };
+    let problems = BallotRepr::problems_of_set(&ballots, &tournament, &debate);
 
     let round = crate::tournaments::rounds::Round::fetch(
         &debate.debate.round_id,
@@ -70,7 +52,16 @@ pub async fn view_ballot_set_page(
             .user(user)
             .tournament(tournament.clone())
             .body(maud! {
-                SidebarWrapper rounds=(&all_rounds) tournament=(&tournament) active_page=(Some(crate::tournaments::manage::sidebar::SidebarPage::Ballots)) selected_seq=(Some(round.seq)) {
+                SidebarWrapper
+                    rounds=(&all_rounds)
+                    tournament=(&tournament)
+                    active_page=
+                        (
+                            Some(SidebarPage::Ballots)
+                        )
+                    selected_seq=(Some(round.seq))
+                {
+
                     div class="container py-5" style="max-width: 800px;" {
                         header class="mb-5" {
                             h1 class="display-4 fw-bold mb-3" {
@@ -152,21 +143,12 @@ pub async fn view_ballot_set_page(
                                                         .find(|s| s.id == score.speaker_id)
                                                         .unwrap();
 
-                                                    @let position_name = match (tournament.teams_per_side, debate_team.side, debate_team.seq, score.speaker_position) {
-                                                        (1, 0, 0, 0) => "PM",
-                                                        (1, 0, 0, 1) => "DPM",
-                                                        (1, 1, 0, 0) => "LO",
-                                                        (1, 1, 0, 1) => "DLO",
-                                                        (2, 0, 0, 0) => "PM",
-                                                        (2, 0, 0, 1) => "DPM",
-                                                        (2, 1, 0, 0) => "LO",
-                                                        (2, 1, 0, 1) => "DLO",
-                                                        (2, 0, 1, 0) => "MG",
-                                                        (2, 0, 1, 1) => "GW",
-                                                        (2, 1, 1, 0) => "MO",
-                                                        (2, 1, 1, 1) => "OW",
-                                                        _ => "Speaker",
-                                                    };
+                                                    @let position_name =
+                                                        tournament.speaker_position_name(
+                                                            debate_team.side,
+                                                            debate_team.seq,
+                                                            score.speaker_position
+                                                        );
 
                                                     li class="list-group-item d-flex justify-content-between align-items-center" style="border-left: 2px solid var(--bs-gray-900); border-right: none; border-top: 1px solid var(--bs-gray-200); border-bottom: none;" {
                                                         div {

@@ -231,4 +231,31 @@ impl Tournament {
             false => unauthorized().map(|_| ()),
         }
     }
+
+    pub fn speaker_position_name(
+        &self,
+        side: i64,
+        seq: i64,
+        speaker_position: i64,
+    ) -> &'static str {
+        match (self.teams_per_side, side, seq, speaker_position) {
+            (1, 0, 0, 0) => "1st Prop",
+            (1, 0, 0, 1) => "2nd Prop",
+            (1, 0, 0, 2) => "3rd Prop",
+            (1, 0, 0, 3) => "Prop Reply",
+            (1, 1, 0, 0) => "1st Opp",
+            (1, 1, 0, 1) => "2nd Opp",
+            (1, 1, 0, 2) => "3rd Opp",
+            (1, 1, 0, 3) => "Opp Reply",
+            (2, 0, 0, 0) => "PM",
+            (2, 0, 0, 1) => "DPM",
+            (2, 1, 0, 0) => "LO",
+            (2, 1, 0, 1) => "DLO",
+            (2, 0, 1, 0) => "MG",
+            (2, 0, 1, 1) => "GW",
+            (2, 1, 1, 0) => "MO",
+            (2, 1, 1, 1) => "OW",
+            _ => unreachable!("invalid position provided"),
+        }
+    }
 }

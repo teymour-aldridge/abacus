@@ -107,6 +107,7 @@ pub async fn admin_ballot_of_seq_overview(
                         table class="table table-hover table-borderless align-middle" {
                             thead class="border-bottom border-dark" {
                                 tr {
+                                    th scope="col" class="text-uppercase small fw-bold text-muted py-3" { "Round" }
                                     th scope="col" class="text-uppercase small fw-bold text-muted py-3" style="width: 80px;" { "Debate" }
                                     th scope="col" class="text-uppercase small fw-bold text-muted py-3" { "Teams" }
                                     th scope="col" class="text-uppercase small fw-bold text-muted py-3" { "Judge" }
@@ -121,6 +122,9 @@ pub async fn admin_ballot_of_seq_overview(
 
                                     @if num_judges == 0 {
                                         tr class="border-bottom" {
+                                            td class="text-center py-4 fw-bold fs-5" {
+                                                (rounds.iter().find(|r| r.id == debate.debate.round_id).unwrap().name)
+                                            }
                                             td class="text-center py-4 fw-bold fs-5" {
                                                 (debate.debate.number)
                                             }
@@ -149,6 +153,9 @@ pub async fn admin_ballot_of_seq_overview(
                                                 @let ballot_opt = ballots.iter().find(|b| b.ballot.judge_id == judge.id);
 
                                                 @if idx == 0 {
+                                                    td class="text-center py-4 fw-bold fs-5" {
+                                                        (rounds.iter().find(|r| r.id == debate.debate.round_id).unwrap().name)
+                                                    }
                                                     td rowspan=(num_judges) class="text-center py-4 fw-bold fs-5" {
                                                         (debate.debate.number)
                                                     }

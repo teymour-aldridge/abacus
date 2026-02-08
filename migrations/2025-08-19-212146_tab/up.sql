@@ -16,6 +16,8 @@ create table if not exists tournaments (
 
     -- Configuration
 
+    -- CONFIGURATION: WHAT DATA SHOULD BE PUBLIC?
+
     -- whether to publish the team tab
     team_tab_public boolean not null default 'f',
     -- whether to publish the speaker tab
@@ -29,32 +31,53 @@ create table if not exists tournaments (
     -- whether to show draws publicly
     show_draws boolean not null default 't',
 
+    -- CONFIGURATION: WHAT ARE THE FORMAT RULES?
+
     -- 1 for Australs/WSDC, 2 for BP
     teams_per_side integer not null,
     -- Speakers/team in each debate (2 for BP, 3 for Australs)
     substantive_speakers integer not null,
     reply_speakers boolean not null default 'f',
     reply_must_speak boolean not null default 't',
+    -- e.g. "1" => must be first speaker, "2" => must be first OR second speaker
+    max_substantive_speech_index_for_reply integer,
 
-    substantive_speech_min_speak float not null default 50.0,
-    substantive_speech_max_speak float not null default 99.0,
-    substantive_speech_step float not null default 1.0,
+
+    -- CONFIGURATION: VOTING
+
+    -- individual or consensus ballots for the pool
+    pool_ballot_setup text not null check(pool_ballot_setup in ('consensus', 'individual')),
+    -- individual or consensus ballots for the elimination rounds
+    elim_ballot_setup text not null check (elim_ballot_setup in ('consensus', 'individual')),
+    -- whether ballots who are not in the majority should be included when
+    -- computing average speaks for a given round
+    margin_includes_dissenters boolean not null default 't',
+
+    -- CONFIGURATION: HOW ARE DEBATES SCORED?
+
+    -- whether speaks are required for each preliminary round
+    require_prelim_substantive_speaks boolean not null default 't',
+    require_prelim_speaker_order boolean not null default 't'
+        check (not require_prelim_substantive_speaks or require_prelim_speaker_order),
+
+    -- whether speaks are required for each elimination round
+    require_elim_substantive_speaks boolean not null default 'f',
+    require_elim_speaker_order boolean not null default 't'
+        check (not require_elim_substantive_speaks or require_elim_speaker_order),
+
+    substantive_speech_min_speak float default 50.0,
+    substantive_speech_max_speak float default 99.0,
+    substantive_speech_step float default 1.0,
 
     reply_speech_min_speak float,
     reply_speech_max_speak float,
 
-    -- e.g. "1" => must be first speaker, "2" => must be first OR second speaker
-    max_substantive_speech_index_for_reply integer,
+    -- CONFIGURATION: DRAW RULES
 
-    -- individual or consensus ballots for the pool
-    pool_ballot_setup text not null check(pool_ballot_setup in ('consensus', 'individual')),
-
-    -- individual or consensus ballots for the elimination rounds
-    elim_ballot_setup text not null check (elim_ballot_setup in ('consensus', 'individual')),
-    -- whether elimination ballots require speaker scores
-    elim_ballots_require_speaks boolean not null,
-
-    -- DRAW RULES
+    -- The penalty applied when teams from the same institution are assigned
+    -- to debate against each other on the draw. Higher values make it less
+    -- likely that teams from the same institution will debate against each
+    -- other.
     institution_penalty integer not null,
     history_penalty integer not null,
     pullup_metrics text not null
@@ -62,7 +85,7 @@ create table if not exists tournaments (
             and json_type(pullup_metrics) = 'array'),
     repeat_pullup_penalty integer not null check (repeat_pullup_penalty >= 0),
 
-    -- STANDINGS
+    -- CONFIGURATION: STANDINGS
     -- metrics, e.g. ["wins", "ballots", "atss"]
     team_standings_metrics text not null
         check(json_valid(team_standings_metrics) = 1
@@ -337,6 +360,7 @@ create table if not exists tournament_debates (
     room_id text references tournament_rooms(id),
     -- unique ID (starting from zero) assigned to each debate
     number integer not null check (number >= 0),
+    status text not null check (status in ('confirmed', 'draft', 'conflict')),
     unique (tournament_id, round_id, number)
 );
 
@@ -392,12 +416,24 @@ create table if not exists tournament_speaker_metrics (
     unique (tournament_id, speaker_id, metric_kind)
 );
 
+-- It is the responsibility of the appplication to ensure that
+-- `tournament_debate_team_results` and `tournament_debate_speaker_results`
+-- are (a) created and (b) updated as and when new ballots come in.
+--
+-- The correct behaviour is that either
+-- 1. when there is a ballot conflict, then no results rows exist for a debate
+--    ID
+-- 2. when the ballots do not conflict with each other, the results are then
+--    created
+--
+-- This requires logic to maintain this invariant whenever a new ballot is
+-- submitted, or an administrator manually edits ballots.
 create table if not exists tournament_debate_team_results (
     id text primary key not null,
     tournament_id text not null references tournaments (id),
     debate_id text not null references tournament_debates (id),
     team_id text not null references tournament_teams (id),
-    points integer not null
+    points integer
 );
 
 create table if not exists tournament_debate_speaker_results (
@@ -407,8 +443,12 @@ create table if not exists tournament_debate_speaker_results (
     speaker_id text not null references tournament_speakers (id),
     team_id text not null references tournament_teams (id),
     position integer not null,
-    score float not null
+    score float
 );
+
+-- TODO: in the future we will (eventually) want to add support for paper
+-- ballots. It might make sense to do so as an optional extension service
+-- (i.e. not part of the core application).
 
 -- an individual ballot from an adjudicator
 create table if not exists tournament_ballots (
@@ -429,6 +469,19 @@ create table if not exists tournament_ballots (
     unique (debate_id, version, judge_id)
 );
 
+-- Ballot parts for in-rounds.
+
+-- This table might seem redundant (which it is when speaker scores are
+-- supplied) but it is relevant for formats which do not use speaker scores.
+create table if not exists tournament_team_rank_entries (
+    id text primary key not null,
+    tournament_id text not null references tournaments (id),
+    ballot_id text not null references touranment_ballots (id),
+    team_id text not null references tournament_teams (id),
+    points integer not null check (points >= 0),
+    unique (ballot_id, team_id)
+);
+
 create table if not exists tournament_speaker_score_entries (
     id text primary key not null,
     tournament_id text not null references tournaments (id),
@@ -436,7 +489,7 @@ create table if not exists tournament_speaker_score_entries (
     team_id text not null references tournament_teams(id),
     speaker_id text not null references tournament_speakers(id),
     speaker_position integer not null,
-    score float not null,
+    score float,
     unique (ballot_id, team_id, speaker_id)
 );
 

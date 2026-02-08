@@ -12,7 +12,10 @@ use crate::{
         tournament_group_members, tournament_group_permissions,
         tournament_groups, tournament_members, tournaments,
     },
-    tournaments::config::{PullupMetric, RankableTeamMetric},
+    tournaments::{
+        config::{PullupMetric, RankableTeamMetric},
+        rounds::{Round, ballots::aggregate::BallotAggregationMethod},
+    },
     util_resp::{FailureResponse, unauthorized},
 };
 
@@ -48,15 +51,19 @@ pub struct Tournament {
     pub substantive_speakers: i64,
     pub reply_speakers: bool,
     pub reply_must_speak: bool,
-    pub substantive_speech_min_speak: f32,
-    pub substantive_speech_max_speak: f32,
-    pub substantive_speech_step: f32,
-    pub reply_speech_min_speak: Option<f32>,
-    pub reply_speech_max_speak: Option<f32>,
     pub max_substantive_speech_index_for_reply: Option<i64>,
     pub pool_ballot_setup: String,
     pub elim_ballot_setup: String,
-    pub elim_ballots_require_speaks: bool,
+    pub margin_includes_dissenters: bool,
+    pub require_prelim_substantive_speaks: bool,
+    pub require_prelim_speaker_order: bool,
+    pub require_elim_substantive_speaks: bool,
+    pub require_elim_speaker_order: bool,
+    pub substantive_speech_min_speak: Option<f32>,
+    pub substantive_speech_max_speak: Option<f32>,
+    pub substantive_speech_step: Option<f32>,
+    pub reply_speech_min_speak: Option<f32>,
+    pub reply_speech_max_speak: Option<f32>,
     pub institution_penalty: i64,
     pub history_penalty: i64,
     pub pullup_metrics: String,
@@ -72,26 +79,114 @@ pub enum UserRole {
     CAP,
 }
 
+pub enum RoundKind {
+    Elim,
+    Prelim,
+}
+
 impl Tournament {
-    pub fn max_substantive_speak(&self) -> rust_decimal::Decimal {
-        rust_decimal::Decimal::from_f32_retain(
-            self.substantive_speech_max_speak,
-        )
-        .unwrap()
+    pub fn agg_method_for_current_round(
+        &self,
+        conn: &mut impl LoadConnection<Backend = Sqlite>,
+    ) -> BallotAggregationMethod {
+        match self.current_round_type(conn) {
+            RoundKind::Elim => {
+                if self.elim_is_consensus() {
+                    BallotAggregationMethod::Consensus
+                } else {
+                    BallotAggregationMethod::Individual
+                }
+            }
+            RoundKind::Prelim => {
+                if self.pool_is_consensus() {
+                    BallotAggregationMethod::Consensus
+                } else {
+                    BallotAggregationMethod::Individual
+                }
+            }
+        }
     }
 
-    pub fn min_substantive_speak(&self) -> rust_decimal::Decimal {
-        rust_decimal::Decimal::from_f32_retain(
-            self.substantive_speech_min_speak,
-        )
-        .unwrap()
+    // todo: obviously retrieving all the rounds first is not necessary here
+    pub fn current_round_type(
+        &self,
+        conn: &mut impl LoadConnection<Backend = Sqlite>,
+    ) -> RoundKind {
+        match Round::current_rounds(&self.id, conn)
+            .get(0)
+            .unwrap()
+            .kind
+            .as_str()
+        {
+            "P" => RoundKind::Prelim,
+            "E" => RoundKind::Elim,
+            _ => unreachable!(),
+        }
     }
 
-    pub fn speak_step(&self) -> rust_decimal::Decimal {
-        rust_decimal::Decimal::from_f32_retain(
-            self.substantive_speech_min_speak,
-        )
-        .unwrap()
+    /// Note: concurrent rounds will always have the same scoring rules.
+    pub fn current_round_is_consensus(
+        &self,
+        conn: &mut impl LoadConnection<Backend = Sqlite>,
+    ) -> bool {
+        match self.current_round_type(conn) {
+            RoundKind::Elim => self.elim_is_consensus(),
+            RoundKind::Prelim => self.pool_is_consensus(),
+        }
+    }
+
+    pub fn current_round_uses_speaks(
+        &self,
+        conn: &mut impl LoadConnection<Backend = Sqlite>,
+    ) -> bool {
+        match self.current_round_type(conn) {
+            RoundKind::Elim => self.require_elim_substantive_speaks,
+            RoundKind::Prelim => self.require_prelim_substantive_speaks,
+        }
+    }
+
+    // todo: consistent naming of preliminary/in-rounds/pool
+    pub fn pool_is_consensus(&self) -> bool {
+        self.pool_ballot_setup == "consensus"
+    }
+
+    pub fn elim_is_consensus(&self) -> bool {
+        self.elim_ballot_setup == "consensus"
+    }
+
+    pub fn pool_uses_speaks(&self) -> bool {
+        self.require_prelim_substantive_speaks
+    }
+
+    pub fn round_requires_speaker_order(&self, round: &Round) -> bool {
+        if round.is_elim() {
+            self.require_elim_speaker_order
+        } else {
+            self.require_prelim_speaker_order
+        }
+    }
+
+    pub fn round_requires_speaks(&self, round: &Round) -> bool {
+        if round.is_elim() {
+            self.require_elim_substantive_speaks
+        } else {
+            self.require_prelim_substantive_speaks
+        }
+    }
+
+    pub fn max_substantive_speak(&self) -> Option<rust_decimal::Decimal> {
+        self.substantive_speech_max_speak
+            .and_then(rust_decimal::Decimal::from_f32_retain)
+    }
+
+    pub fn min_substantive_speak(&self) -> Option<rust_decimal::Decimal> {
+        self.substantive_speech_min_speak
+            .and_then(rust_decimal::Decimal::from_f32_retain)
+    }
+
+    pub fn speak_step(&self) -> Option<rust_decimal::Decimal> {
+        self.substantive_speech_step
+            .and_then(rust_decimal::Decimal::from_f32_retain)
     }
 
     pub fn check_score_valid(
@@ -101,26 +196,31 @@ impl Tournament {
         speaker_name: String,
     ) -> Result<(), String> {
         if !is_reply {
-            if score < self.min_substantive_speak() {
-                return Err(format!(
-                    "Score of {score} for {speaker_name} is lower than the minimum permissable speak {}.",
-                    self.substantive_speech_min_speak
-                ));
+            if let Some(min) = self.min_substantive_speak() {
+                if score < min {
+                    return Err(format!(
+                        "Score of {score} for {speaker_name} is lower than the minimum permissible speak {min}.",
+                    ));
+                }
             }
 
-            if self.max_substantive_speak() < score {
-                return Err(format!(
-                    "Score of {score} for {speaker_name} is greater than the maximum permissable speak {}.",
-                    self.substantive_speech_min_speak
-                ));
+            if let Some(max) = self.max_substantive_speak() {
+                if max < score {
+                    return Err(format!(
+                        "Score of {score} for {speaker_name} is greater than the maximum permissible speak {max}.",
+                    ));
+                }
             }
 
-            if score % self.speak_step() != rust_decimal::Decimal::ZERO {
-                return Err(format!(
-                    "Score of {score} for {speaker_name} does not match requirement
-                     that the score be a multiple of {}.",
-                    self.speak_step()
-                ));
+            if let Some(step) = self.speak_step() {
+                if step != rust_decimal::Decimal::ZERO
+                    && score % step != rust_decimal::Decimal::ZERO
+                {
+                    return Err(format!(
+                        "Score of {score} for {speaker_name} does not match requirement \
+                         that the score be a multiple of {step}.",
+                    ));
+                }
             }
         } else {
             todo!("validation for reply speaks")

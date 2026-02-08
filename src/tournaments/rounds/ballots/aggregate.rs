@@ -1,7 +1,6 @@
-use std::collections::HashMap;
+use std::collections::HashSet;
 
 use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
-use itertools::Itertools;
 use rust_decimal::{Decimal, prelude::FromPrimitive};
 use uuid::Uuid;
 
@@ -11,34 +10,32 @@ use crate::{
     },
     tournaments::{
         Tournament,
-        rounds::{ballots::BallotRepr, draws::DebateRepr},
+        rounds::{Round, ballots::BallotRepr, draws::DebateRepr},
     },
 };
 
 #[derive(Queryable)]
 pub struct TournamentDebateSpeakerResult {
     pub id: String,
+    pub tournament_id: String,
     pub debate_id: String,
     pub speaker_id: String,
     pub team_id: String,
     pub position: i64,
-    pub score: f32,
+    pub score: Option<f32>,
 }
 
 #[derive(Queryable)]
 pub struct TournamentDebateTeamResult {
     pub id: String,
+    pub tournament_id: String,
     pub debate_id: String,
     pub team_id: String,
-    pub points: i64,
+    pub points: Option<i64>,
 }
 
 pub enum BallotAggregationMethod {
     Consensus,
-    // TODO: different formats will aggregate individual ballots differently.
-    // This currently implements (what I believe is the correct) WSDC behaviour
-    // - the winner is selected based on the number of ballots in favour and the
-    // speaks are the average of all the submitted ballots.
     Individual,
 }
 
@@ -47,31 +44,100 @@ pub enum BallotAggregationMethod {
 /// function will likely panic (or write incorrect data to the database).
 pub fn aggregate_ballot_set(
     ballots: &[BallotRepr],
-    aggregate_how: BallotAggregationMethod,
     tournament: &Tournament,
     debate: &DebateRepr,
     conn: &mut impl LoadConnection<Backend = Sqlite>,
 ) {
     assert!(!ballots.is_empty());
+    let method = tournament.agg_method_for_current_round(conn);
 
-    match aggregate_how {
+    for a in ballots {
+        for b in ballots {
+            assert!(a.is_isomorphic(b, tournament, debate))
+        }
+    }
+
+    // todo: we very often conduct numerous highly unnecessary queries like
+    // this one
+    let is_elim =
+        Round::fetch(&debate.debate.round_id, conn).unwrap().kind == "E";
+
+    match method {
         BallotAggregationMethod::Consensus => {
-            for a in ballots {
-                for b in ballots {
-                    assert!(a.is_isomorphic(b, tournament, debate))
-                }
-            }
-
             let canonical = &ballots[0];
+            if is_elim {
+                aggregate_consensus_elimination(canonical, debate, conn);
+            } else {
+                aggregate_consensus_prelim(canonical, tournament, conn);
+            }
+        }
+        BallotAggregationMethod::Individual => {
+            assert_eq!(
+                ballots[0].team_count(),
+                2,
+                "Individual ballot aggregation requires exactly 2 teams"
+            );
 
-            let mut speaker_points = Vec::new();
+            let did_prop_win = determine_winner_by_vote(ballots, debate);
 
-            for score in &canonical.scores {
-                speaker_points.push((
+            insert_two_team_results(ballots, debate, did_prop_win, conn);
+
+            if !is_elim && tournament.current_round_uses_speaks(conn) {
+                let speaker_points = compute_averaged_speaker_scores(
+                    ballots,
+                    &ballots[0].metadata.tournament_id,
+                    &ballots[0].metadata.debate_id,
+                );
+
+                diesel::insert_into(tournament_debate_speaker_results::table)
+                    .values(speaker_points)
+                    .execute(conn)
+                    .unwrap();
+            }
+        }
+    }
+}
+
+fn aggregate_consensus_prelim(
+    canonical: &BallotRepr,
+    tournament: &Tournament,
+    conn: &mut impl LoadConnection<Backend = Sqlite>,
+) {
+    let team_points: Vec<_> = canonical
+        .team_ranks
+        .iter()
+        .map(|team| {
+            (
+                tournament_debate_team_results::id
+                    .eq(Uuid::now_v7().to_string()),
+                tournament_debate_team_results::tournament_id
+                    .eq(canonical.metadata.tournament_id.clone()),
+                tournament_debate_team_results::debate_id
+                    .eq(canonical.metadata.debate_id.clone()),
+                tournament_debate_team_results::team_id
+                    .eq(team.team_id.clone()),
+                tournament_debate_team_results::points.eq(Some(team.points)),
+            )
+        })
+        .collect();
+
+    diesel::insert_into(tournament_debate_team_results::table)
+        .values(team_points)
+        .execute(conn)
+        .unwrap();
+
+    if tournament.current_round_uses_speaks(conn) {
+        let speaker_points: Vec<_> = canonical
+            .scores
+            .iter()
+            .map(|score| {
+                (
                     tournament_debate_speaker_results::id
                         .eq(Uuid::now_v7().to_string()),
+                    tournament_debate_speaker_results::tournament_id
+                        .eq(canonical.metadata.tournament_id.clone()),
                     tournament_debate_speaker_results::debate_id
-                        .eq(canonical.ballot.debate_id.clone()),
+                        .eq(canonical.metadata.debate_id.clone()),
                     tournament_debate_speaker_results::speaker_id
                         .eq(score.speaker_id.clone()),
                     tournament_debate_speaker_results::team_id
@@ -79,193 +145,224 @@ pub fn aggregate_ballot_set(
                     tournament_debate_speaker_results::position
                         .eq(score.speaker_position),
                     tournament_debate_speaker_results::score.eq(score.score),
-                ));
-            }
+                )
+            })
+            .collect();
 
-            let mut team_scores = HashMap::new();
-            for team in canonical.teams() {
-                let scores = canonical.scores_of_team(&team);
-                let team_score: Decimal = scores
-                    .iter()
-                    .map(|score| {
-                        rust_decimal::Decimal::from_f32_retain(score.score)
-                            .unwrap()
-                    })
-                    .sum();
-                team_scores.insert(team, team_score);
-            }
-
-            let team_points =
-                team_scores
-                    .iter()
-                    .sorted_by_key(|score| -score.1)
-                    .enumerate()
-                    .map(|(idx, (team, _))| {
-                        (
-                            tournament_debate_team_results::id
-                                .eq(Uuid::now_v7().to_string()),
-                            tournament_debate_team_results::debate_id
-                                .eq(canonical.ballot.debate_id.clone()),
-                            tournament_debate_team_results::team_id
-                                .eq(team.clone()),
-                            tournament_debate_team_results::points
-                                .eq((canonical.team_count() - 1 - idx) as i64),
-                        )
-                    })
-                    .collect_vec();
-
-            diesel::insert_into(tournament_debate_team_results::table)
-                .values(team_points)
-                .execute(conn)
-                .unwrap();
+        if !speaker_points.is_empty() {
             diesel::insert_into(tournament_debate_speaker_results::table)
                 .values(speaker_points)
                 .execute(conn)
                 .unwrap();
         }
-        BallotAggregationMethod::Individual => {
-            // voting only makes sense for 2-team formats
-            assert_eq!(ballots[0].team_count(), 2);
-
-            let debate = DebateRepr::fetch(&ballots[0].ballot.debate_id, conn);
-
-            let _record_winner_in_db = {
-                let (votes_prop, votes_opp) = ballots.iter().fold(
-                    (0, 0),
-                    |(votes_prop, votes_opp), ballot| {
-                        let side = side_judge_voted_for_in_2_team_format(
-                            &debate, ballot,
-                        );
-                        match side {
-                            0 => (votes_prop + 1, votes_opp),
-                            1 => (votes_prop, votes_opp + 1),
-                            _ => unreachable!(),
-                        }
-                    },
-                );
-
-                let chair = debate
-                    .judges_of_debate
-                    .iter()
-                    .find(|j| j.status == "C")
-                    .unwrap();
-                let chair_vote = ballots
-                    .iter()
-                    .find_map(|ballot| {
-                        if ballot.ballot().judge_id == chair.judge_id {
-                            let side = side_judge_voted_for_in_2_team_format(
-                                &debate, ballot,
-                            );
-                            Some(side)
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap();
-
-                let did_prop_win = if votes_opp < votes_prop {
-                    true
-                } else if votes_prop < votes_opp {
-                    false
-                } else {
-                    chair_vote == 0
-                };
-
-                diesel::insert_into(tournament_debate_team_results::table)
-                    .values(&[
-                        (
-                            tournament_debate_team_results::id
-                                .eq(Uuid::now_v7().to_string()),
-                            tournament_debate_team_results::debate_id
-                                .eq(debate.debate.id.clone()),
-                            tournament_debate_team_results::team_id.eq(debate
-                                .team_of_side_and_seq(0, 0)
-                                .team_id
-                                .clone()),
-                            tournament_debate_team_results::points
-                                .eq(did_prop_win as i64),
-                        ),
-                        (
-                            tournament_debate_team_results::id
-                                .eq(Uuid::now_v7().to_string()),
-                            tournament_debate_team_results::debate_id
-                                .eq(debate.debate.id.clone()),
-                            tournament_debate_team_results::team_id.eq(debate
-                                .team_of_side_and_seq(0, 0)
-                                .team_id
-                                .clone()),
-                            tournament_debate_team_results::points
-                                .eq(!did_prop_win as i64),
-                        ),
-                    ])
-                    .execute(conn)
-                    .unwrap();
-            };
-
-            // todo: should add a "margin includes dissenters" property
-            let _add_speaks = {
-                let ballot_a = &ballots[0];
-
-                let mut scores_for_db = Vec::new();
-                for score in &ballot_a.scores {
-                    let mut sum: Decimal = score.score.try_into().unwrap();
-
-                    for other_ballots in ballots.iter().filter(|ballot| {
-                        ballot.ballot().id != ballot_a.ballot().id
-                    }) {
-                        let other_score: Decimal = other_ballots
-                            .scores
-                            .iter()
-                            .find(|o| {
-                                o.speaker_id == score.speaker_id
-                                    && o.speaker_position
-                                        == score.speaker_position
-                            })
-                            .unwrap()
-                            .score
-                            .try_into()
-                            .unwrap();
-                        sum += other_score;
-                    }
-
-                    let avg =
-                        sum / (Decimal::from_usize(ballots.len()).unwrap());
-
-                    // TODO: we record iron-person speeches here, but we later
-                    // need to handle them properly!
-                    scores_for_db.push((
-                        tournament_debate_speaker_results::id
-                            .eq(Uuid::now_v7().to_string()),
-                        tournament_debate_speaker_results::debate_id
-                            .eq(debate.debate.id.clone()),
-                        tournament_debate_speaker_results::speaker_id
-                            .eq(score.speaker_id.clone()),
-                        tournament_debate_speaker_results::team_id
-                            .eq(score.team_id.clone()),
-                        tournament_debate_speaker_results::position
-                            .eq(score.speaker_position),
-                        tournament_debate_speaker_results::score.eq({
-                            let x: f32 = avg.round_dp(2).try_into().unwrap();
-                            x
-                        }),
-                    ));
-                }
-                scores_for_db
-            };
-        }
     }
+}
+
+fn aggregate_consensus_elimination(
+    canonical: &BallotRepr,
+    debate: &DebateRepr,
+    conn: &mut impl LoadConnection<Backend = Sqlite>,
+) {
+    let advancing: HashSet<String> = canonical
+        .team_ranks
+        .iter()
+        .filter(|s| {
+            assert!(s.points == 0 || s.points == 1, "{}", s.points);
+            s.points == 1
+        })
+        .map(|s| s.team_id.clone())
+        .collect();
+
+    let team_points: Vec<_> = debate
+        .teams_of_debate
+        .iter()
+        .map(|team| {
+            let is_advancing = advancing.contains(team.team_id.as_str());
+            (
+                tournament_debate_team_results::id
+                    .eq(Uuid::now_v7().to_string()),
+                tournament_debate_team_results::tournament_id
+                    .eq(canonical.metadata.tournament_id.clone()),
+                tournament_debate_team_results::debate_id
+                    .eq(canonical.metadata.debate_id.clone()),
+                tournament_debate_team_results::team_id
+                    .eq(team.team_id.clone()),
+                tournament_debate_team_results::points
+                    .eq(Some(is_advancing as i64)),
+            )
+        })
+        .collect();
+
+    diesel::insert_into(tournament_debate_team_results::table)
+        .values(team_points)
+        .execute(conn)
+        .unwrap();
+}
+
+/// Determine the winner in a 2-team format by counting votes.
+/// Returns `true` if the proposition (side 0) won.
+fn determine_winner_by_vote(
+    ballots: &[BallotRepr],
+    debate: &DebateRepr,
+) -> bool {
+    let (votes_prop, votes_opp) =
+        ballots
+            .iter()
+            .fold((0, 0), |(votes_prop, votes_opp), ballot| {
+                let side =
+                    side_judge_voted_for_in_2_team_format(debate, ballot);
+                match side {
+                    0 => (votes_prop + 1, votes_opp),
+                    1 => (votes_prop, votes_opp + 1),
+                    _ => unreachable!(),
+                }
+            });
+
+    if votes_prop > votes_opp {
+        return true;
+    }
+    if votes_opp > votes_prop {
+        return false;
+    }
+
+    let chair = debate
+        .judges_of_debate
+        .iter()
+        .find(|j| j.status == "C")
+        .expect("No chair judge found");
+
+    let chair_vote = ballots
+        .iter()
+        .find_map(|ballot| {
+            if ballot.ballot().judge_id == chair.judge_id {
+                Some(side_judge_voted_for_in_2_team_format(debate, ballot))
+            } else {
+                None
+            }
+        })
+        .expect("Chair ballot not found");
+
+    chair_vote == 0
+}
+
+fn insert_two_team_results(
+    ballots: &[BallotRepr],
+    debate: &DebateRepr,
+    did_prop_win: bool,
+    conn: &mut impl LoadConnection<Backend = Sqlite>,
+) {
+    let prop_team = debate.team_of_side_and_seq(0, 0);
+    let opp_team = debate.team_of_side_and_seq(1, 0);
+
+    let team_points = vec![
+        (
+            tournament_debate_team_results::id.eq(Uuid::now_v7().to_string()),
+            tournament_debate_team_results::tournament_id
+                .eq(ballots[0].metadata.tournament_id.clone()),
+            tournament_debate_team_results::debate_id
+                .eq(ballots[0].metadata.debate_id.clone()),
+            tournament_debate_team_results::team_id
+                .eq(prop_team.team_id.clone()),
+            tournament_debate_team_results::points
+                .eq(Some(did_prop_win as i64)),
+        ),
+        (
+            tournament_debate_team_results::id.eq(Uuid::now_v7().to_string()),
+            tournament_debate_team_results::tournament_id
+                .eq(ballots[0].metadata.tournament_id.clone()),
+            tournament_debate_team_results::debate_id
+                .eq(ballots[0].metadata.debate_id.clone()),
+            tournament_debate_team_results::team_id
+                .eq(opp_team.team_id.clone()),
+            tournament_debate_team_results::points
+                .eq(Some(!did_prop_win as i64)),
+        ),
+    ];
+
+    diesel::insert_into(tournament_debate_team_results::table)
+        .values(team_points)
+        .execute(conn)
+        .unwrap();
+}
+
+fn compute_averaged_speaker_scores(
+    ballots: &[BallotRepr],
+    tournament_id: &str,
+    debate_id: &str,
+) -> Vec<(
+    diesel::dsl::Eq<tournament_debate_speaker_results::id, String>,
+    diesel::dsl::Eq<tournament_debate_speaker_results::tournament_id, String>,
+    diesel::dsl::Eq<tournament_debate_speaker_results::debate_id, String>,
+    diesel::dsl::Eq<tournament_debate_speaker_results::speaker_id, String>,
+    diesel::dsl::Eq<tournament_debate_speaker_results::team_id, String>,
+    diesel::dsl::Eq<tournament_debate_speaker_results::position, i64>,
+    diesel::dsl::Eq<tournament_debate_speaker_results::score, Option<f32>>,
+)> {
+    let mut speaker_points = Vec::new();
+
+    for score in &ballots[0].scores {
+        let mut sum: Decimal = score
+            .score
+            .expect("Scores must be provided when speaks are enabled")
+            .try_into()
+            .unwrap();
+
+        for other_ballot in ballots.iter().skip(1) {
+            let other_score: Decimal = other_ballot
+                .scores
+                .iter()
+                .find(|o| {
+                    o.speaker_id == score.speaker_id
+                        && o.speaker_position == score.speaker_position
+                })
+                .expect("Speaker score not found in ballot")
+                .score
+                .expect("Scores must be provided when speaks are enabled")
+                .try_into()
+                .unwrap();
+
+            sum += other_score;
+        }
+
+        let avg = sum / Decimal::from_usize(ballots.len()).unwrap();
+        let avg_f32: f32 = avg.round_dp(2).try_into().unwrap();
+
+        speaker_points.push((
+            tournament_debate_speaker_results::id
+                .eq(Uuid::now_v7().to_string()),
+            tournament_debate_speaker_results::tournament_id
+                .eq(tournament_id.to_string()),
+            tournament_debate_speaker_results::debate_id
+                .eq(debate_id.to_string()),
+            tournament_debate_speaker_results::speaker_id
+                .eq(score.speaker_id.clone()),
+            tournament_debate_speaker_results::team_id
+                .eq(score.team_id.clone()),
+            tournament_debate_speaker_results::position
+                .eq(score.speaker_position),
+            tournament_debate_speaker_results::score.eq(Some(avg_f32)),
+        ));
+    }
+
+    speaker_points
 }
 
 fn side_judge_voted_for_in_2_team_format(
     debate: &DebateRepr,
     ballot: &BallotRepr,
 ) -> i64 {
-    let winner = ballot.teams_in_rank_order().next().unwrap();
-    let side = debate
+    let winner = ballot
+        .team_ranks
+        .iter()
+        .find(|team| team.points == 1)
+        .expect("No winning team found on ballot")
+        .team_id
+        .clone();
+
+    debate
         .teams_of_debate
         .iter()
-        .find(|team| team.id == winner)
-        .unwrap()
-        .side;
-    side
+        .find(|team| team.team_id == winner)
+        .expect("Winning team not found in debate")
+        .side
 }

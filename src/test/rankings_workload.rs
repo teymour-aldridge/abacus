@@ -364,7 +364,7 @@ impl<'a> Arbitrary<'a> for Workload {
                     max_substantive_speech_index_for_reply: None,
                     pool_ballot_setup: "consensus".to_string(),
                     elim_ballot_setup: "consensus".to_string(),
-                    elim_ballots_require_speaks: false,
+                    require_elim_ballot_substantive_speaks: false,
                     institution_penalty: 0,
                     history_penalty: 0,
                     pullup_metrics: serde_json::to_string(&[
@@ -411,7 +411,7 @@ impl<'a> Arbitrary<'a> for Workload {
                     max_substantive_speech_index_for_reply: Some(2),
                     pool_ballot_setup: "consensus".to_string(),
                     elim_ballot_setup: "consensus".to_string(),
-                    elim_ballots_require_speaks: false,
+                    require_elim_ballot_substantive_speaks: false,
                     institution_penalty: 0,
                     history_penalty: 0,
                     pullup_metrics: serde_json::to_string(&[

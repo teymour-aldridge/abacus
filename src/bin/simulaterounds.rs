@@ -14,10 +14,7 @@ use abacus::{
         participants::{DebateJudge, Judge},
         rounds::{
             Motion, Round, TournamentRounds,
-            ballots::{
-                BallotRepr,
-                aggregate::{BallotAggregationMethod, aggregate_ballot_set},
-            },
+            ballots::{BallotRepr, aggregate::aggregate_ballot_set},
             draws::{
                 Debate, DebateRepr,
                 manage::drawalgs::{self, do_draw},
@@ -334,13 +331,7 @@ fn simulate_concurrent_in_rounds(
                 reprs.push(BallotRepr::fetch(&ballot_id, conn));
             }
 
-            aggregate_ballot_set(
-                &reprs,
-                BallotAggregationMethod::Consensus,
-                tournament,
-                &repr,
-                conn,
-            );
+            aggregate_ballot_set(&reprs, tournament, &repr, conn);
         };
 
         diesel::update(

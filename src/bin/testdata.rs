@@ -116,7 +116,7 @@ fn main() {
             tournaments::max_substantive_speech_index_for_reply.eq(2),
             tournaments::pool_ballot_setup.eq("consensus"),
             tournaments::elim_ballot_setup.eq("consensus"),
-            tournaments::elim_ballots_require_speaks.eq(false),
+            tournaments::require_elim_substantive_speaks.eq(false),
             tournaments::institution_penalty.eq(0),
             tournaments::history_penalty.eq(0),
             tournaments::team_standings_metrics.eq(serde_json::to_string(&[

@@ -21,7 +21,7 @@ pub struct Round {
     pub tournament_id: String,
     pub seq: i64,
     pub name: String,
-    kind: String,
+    pub kind: String,
     break_cat: Option<String>,
     pub completed: bool,
     pub draw_status: String,
@@ -39,6 +39,42 @@ pub enum RoundStatus {
 }
 
 impl Round {
+    pub fn is_elim(&self) -> bool {
+        self.kind == "E"
+    }
+
+    pub fn is_prelim(&self) -> bool {
+        self.kind == "P"
+    }
+
+    pub fn break_category(&self) -> Option<&str> {
+        self.break_cat.as_deref()
+    }
+
+    /// Returns `true` if this round is the final elimination round in its
+    /// break category (i.e. no other round in the same category has a higher
+    /// sequence number).
+    ///
+    /// Panics if called on a preliminary round.
+    pub fn is_final_of_break_category(
+        &self,
+        conn: &mut impl LoadConnection<Backend = Sqlite>,
+    ) -> bool {
+        let cat = self
+            .break_cat
+            .as_ref()
+            .expect("is_final_of_break_category called on a round without a break category");
+
+        let max_seq: Option<i64> = tournament_rounds::table
+            .filter(tournament_rounds::tournament_id.eq(&self.tournament_id))
+            .filter(tournament_rounds::break_category.eq(cat))
+            .select(diesel::dsl::max(tournament_rounds::seq))
+            .first::<Option<i64>>(conn)
+            .unwrap();
+
+        max_seq == Some(self.seq)
+    }
+
     pub fn of_seq(
         seq: i64,
         tournament_id: &str,

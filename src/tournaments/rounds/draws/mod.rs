@@ -276,6 +276,7 @@ pub struct Debate {
     pub round_id: String,
     pub room_id: Option<String>,
     pub number: i64,
+    pub status: String,
 }
 
 #[derive(QueryableByName, Queryable, Debug, Clone, Serialize)]

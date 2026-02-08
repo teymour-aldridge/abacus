@@ -36,7 +36,7 @@ pub struct TournamentConfig {
     pub reply_speech_max_speak: Option<f32>,
     pub pool_ballot_setup: String,
     pub elim_ballot_setup: String,
-    pub elim_ballots_require_speaks: bool,
+    pub require_elim_ballot_substantive_speaks: bool,
     pub institution_penalty: i64,
     pub history_penalty: i64,
     pub pullup_metrics: String,
@@ -61,7 +61,8 @@ pub fn config_of_tournament(tournament: &Tournament) -> TournamentConfig {
             .max_substantive_speech_index_for_reply,
         pool_ballot_setup: tournament.pool_ballot_setup.clone(),
         elim_ballot_setup: tournament.elim_ballot_setup.clone(),
-        elim_ballots_require_speaks: tournament.elim_ballots_require_speaks,
+        require_elim_ballot_substantive_speaks: tournament
+            .require_elim_substantive_speaks,
         institution_penalty: tournament.institution_penalty,
         history_penalty: tournament.history_penalty,
         pullup_metrics: tournament.pullup_metrics.clone(),
@@ -70,9 +71,15 @@ pub fn config_of_tournament(tournament: &Tournament) -> TournamentConfig {
         speaker_standings_metrics: tournament.speaker_standings_metrics.clone(),
         exclude_from_speaker_standings_after: tournament
             .exclude_from_speaker_standings_after,
-        substantive_speech_min_speak: tournament.substantive_speech_min_speak,
-        substantive_speech_max_speak: tournament.substantive_speech_max_speak,
-        substantive_speech_step: tournament.substantive_speech_step,
+        substantive_speech_min_speak: tournament
+            .substantive_speech_min_speak
+            .unwrap_or(0.0),
+        substantive_speech_max_speak: tournament
+            .substantive_speech_max_speak
+            .unwrap_or(100.0),
+        substantive_speech_step: tournament
+            .substantive_speech_step
+            .unwrap_or(0.5),
         reply_speech_min_speak: tournament.reply_speech_min_speak,
         reply_speech_max_speak: tournament.reply_speech_max_speak,
     }
@@ -183,8 +190,8 @@ pub async fn update_tournament_configuration(
             .eq(new_config.max_substantive_speech_index_for_reply),
         tournaments::pool_ballot_setup.eq(new_config.pool_ballot_setup),
         tournaments::elim_ballot_setup.eq(new_config.elim_ballot_setup),
-        tournaments::elim_ballots_require_speaks
-            .eq(new_config.elim_ballots_require_speaks),
+        tournaments::require_elim_substantive_speaks
+            .eq(new_config.require_elim_ballot_substantive_speaks),
         tournaments::institution_penalty.eq(new_config.institution_penalty),
         tournaments::history_penalty.eq(new_config.history_penalty),
         tournaments::pullup_metrics.eq(new_config.pullup_metrics),

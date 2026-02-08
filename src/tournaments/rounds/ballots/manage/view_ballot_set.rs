@@ -35,7 +35,7 @@ pub async fn view_ballot_set_page(
         .filter(|judge| {
             ballots
                 .iter()
-                .all(|ballot| ballot.ballot.judge_id != (judge.1.id))
+                .all(|ballot| ballot.metadata.judge_id != (judge.1.id))
         })
         .collect_vec();
 
@@ -155,13 +155,19 @@ pub async fn view_ballot_set_page(
                                                             strong style="font-weight: 600; margin-right: 0.5rem;" { (position_name) }
                                                             span style="color: var(--bs-gray-900);" { (speaker.name) }
                                                         }
-                                                        span class="badge bg-dark" {
-                                                            (score.score)
+                                                        @if let Some(s) = score.score {
+                                                            span class="badge bg-dark" {
+                                                                (s)
+                                                            }
+                                                        } @else {
+                                                            span class="badge bg-secondary" {
+                                                                "-"
+                                                            }
                                                         }
                                                     }
                                                 }
 
-                                                @let total: f32 = ballot.scores_of_team(&team_id).iter().map(|s| s.score).sum();
+                                                @let total: f32 = ballot.scores_of_team(&team_id).iter().filter_map(|s| s.score).sum();
                                                 li class="list-group-item d-flex justify-content-between align-items-center bg-light" style="border-left: 2px solid var(--bs-gray-900); border-right: none; border-top: 2px solid var(--bs-gray-900); border-bottom: 1px solid var(--bs-gray-200);" {
                                                     em style="color: var(--bs-gray-700); font-size: 0.875rem;" {
                                                         "Total for " (full_team_name) " (" (short_name) ")"

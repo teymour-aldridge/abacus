@@ -129,7 +129,7 @@ diesel::table! {
         speaker_id -> Text,
         team_id -> Text,
         position -> BigInt,
-        score -> Float,
+        score -> Nullable<Float>,
     }
 }
 
@@ -139,7 +139,7 @@ diesel::table! {
         tournament_id -> Text,
         debate_id -> Text,
         team_id -> Text,
-        points -> BigInt,
+        points -> Nullable<BigInt>,
     }
 }
 
@@ -161,6 +161,7 @@ diesel::table! {
         round_id -> Text,
         room_id -> Nullable<Text>,
         number -> BigInt,
+        status -> Text,
     }
 }
 
@@ -347,7 +348,7 @@ diesel::table! {
         team_id -> Text,
         speaker_id -> Text,
         speaker_position -> BigInt,
-        score -> Float,
+        score -> Nullable<Float>,
     }
 }
 
@@ -387,6 +388,16 @@ diesel::table! {
         team_id -> Text,
         metric_kind -> Text,
         metric_value -> Float,
+    }
+}
+
+diesel::table! {
+    tournament_team_rank_entries (id) {
+        id -> Text,
+        tournament_id -> Text,
+        ballot_id -> Text,
+        team_id -> Text,
+        points -> BigInt,
     }
 }
 
@@ -433,15 +444,19 @@ diesel::table! {
         substantive_speakers -> BigInt,
         reply_speakers -> Bool,
         reply_must_speak -> Bool,
-        substantive_speech_min_speak -> Float,
-        substantive_speech_max_speak -> Float,
-        substantive_speech_step -> Float,
-        reply_speech_min_speak -> Nullable<Float>,
-        reply_speech_max_speak -> Nullable<Float>,
         max_substantive_speech_index_for_reply -> Nullable<BigInt>,
         pool_ballot_setup -> Text,
         elim_ballot_setup -> Text,
-        elim_ballots_require_speaks -> Bool,
+        margin_includes_dissenters -> Bool,
+        require_prelim_substantive_speaks -> Bool,
+        require_prelim_speaker_order -> Bool,
+        require_elim_substantive_speaks -> Bool,
+        require_elim_speaker_order -> Bool,
+        substantive_speech_min_speak -> Nullable<Float>,
+        substantive_speech_max_speak -> Nullable<Float>,
+        substantive_speech_step -> Nullable<Float>,
+        reply_speech_min_speak -> Nullable<Float>,
+        reply_speech_max_speak -> Nullable<Float>,
         institution_penalty -> BigInt,
         history_penalty -> BigInt,
         pullup_metrics -> Text,
@@ -545,6 +560,8 @@ diesel::joinable!(tournament_team_availability -> tournament_teams (team_id));
 diesel::joinable!(tournament_team_availability -> tournaments (tournament_id));
 diesel::joinable!(tournament_team_metrics -> tournament_teams (team_id));
 diesel::joinable!(tournament_team_metrics -> tournaments (tournament_id));
+diesel::joinable!(tournament_team_rank_entries -> tournament_teams (team_id));
+diesel::joinable!(tournament_team_rank_entries -> tournaments (tournament_id));
 diesel::joinable!(tournament_team_speakers -> tournament_speakers (speaker_id));
 diesel::joinable!(tournament_team_speakers -> tournament_teams (team_id));
 diesel::joinable!(tournament_team_standings -> tournament_teams (team_id));
@@ -591,6 +608,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     tournament_speakers,
     tournament_team_availability,
     tournament_team_metrics,
+    tournament_team_rank_entries,
     tournament_team_speakers,
     tournament_team_standings,
     tournament_teams,

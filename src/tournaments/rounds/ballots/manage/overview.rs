@@ -200,8 +200,8 @@ pub async fn admin_ballot_of_seq_overview(
                                         tr class="border-bottom" {
                                             @let judge = &debate.judges[
                                                 &judge_in_debate.judge_id];
-                                            @let ballot_opt = ballots.iter()
-                                                .find(|b| b.ballot.judge_id == judge.id);
+                                            @let ballot_of_judge = ballots.iter()
+                                                .find(|b| b.metadata.judge_id == judge.id);
 
                                             @if idx == 0 {
                                                 td class="text-center py-4 fw-bold fs-5" {
@@ -230,7 +230,7 @@ pub async fn admin_ballot_of_seq_overview(
                                                 div class="fw-bold" { (judge.name) }
                                             }
                                             td class="py-3" {
-                                                @match ballot_opt {
+                                                @match ballot_of_judge {
                                                     Some(_) => {
                                                         @if ballot_problems.is_empty() {
                                                             span class="badge text-uppercase small"
@@ -268,7 +268,7 @@ pub async fn admin_ballot_of_seq_overview(
                                                 }
                                             }
                                             td class="text-end py-3" {
-                                                @if ballot_opt.is_some() {
+                                                @if ballot_of_judge.is_some() {
                                                     a href=(format!(
                                                         "/tournaments/{}/debates/{}/ballots",
                                                         tournament.id,

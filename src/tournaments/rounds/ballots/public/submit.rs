@@ -20,11 +20,8 @@ use crate::{
         rounds::{
             Motion, Round,
             ballots::{
-                Ballot, BallotRepr, BallotScore,
-                form_components::{
-                    MotionSelector, SpeakerInput, get_score_bounds,
-                },
-                manage::edit::SingleBallot,
+                BallotMetadata, BallotRepr, BallotScore, BallotTeamRank,
+                common_ballot_html::BallotFormFields, update_debate_status,
             },
             draws::{Debate, DebateRepr},
         },
@@ -35,6 +32,28 @@ use crate::{
     },
     widgets::alert::ErrorAlert,
 };
+
+use super::super::manage::edit::SingleBallot;
+
+/// Compute how many teams advance in an elimination round.
+///
+/// - 2-team formats: always 1.
+/// - 4-team formats: 2, unless this is the final round of the break category,
+///   in which case 1.
+pub fn num_advancing_for_elim_round(
+    tournament: &Tournament,
+    round: &Round,
+    conn: &mut impl LoadConnection<Backend = Sqlite>,
+) -> usize {
+    let total_teams = (tournament.teams_per_side * 2) as usize;
+    if total_teams == 2 {
+        1
+    } else if round.is_final_of_break_category(conn) {
+        1
+    } else {
+        total_teams / 2
+    }
+}
 
 pub async fn submit_ballot_page(
     Path((tournament_id, private_url, round_id)): Path<(
@@ -63,6 +82,20 @@ pub async fn submit_ballot_page(
 
     let round = Round::fetch(&round_id, &mut *conn)?;
 
+    if round.completed {
+        let current_rounds = Round::current_rounds(&tournament_id, &mut *conn);
+        return bad_request(
+            Page::new()
+                .tournament(tournament.clone())
+                .user_opt(user)
+                .current_rounds(current_rounds)
+                .body(maud! {
+                    ErrorAlert msg = "Error: this round has been completed. Ballots can no longer be submitted.";
+                })
+                .render(),
+        );
+    }
+
     if round.draw_status != "released_full" {
         let current_rounds = Round::current_rounds(&tournament_id, &mut *conn);
         return bad_request(
@@ -78,7 +111,6 @@ pub async fn submit_ballot_page(
     }
 
     let debate = debate_of_judge_in_round(&judge.id, &round.id, &mut *conn)?;
-
     let debate_repr = DebateRepr::fetch(&debate.id, &mut *conn);
 
     let is_superuser = if let Some(ref user) = user {
@@ -101,6 +133,16 @@ pub async fn submit_ballot_page(
     let motions: Vec<Motion> =
         motions_query.load::<Motion>(&mut *conn).unwrap();
 
+    let num_advancing = if round.is_elim() {
+        Some(num_advancing_for_elim_round(
+            &tournament,
+            &round,
+            &mut *conn,
+        ))
+    } else {
+        None
+    };
+
     let current_rounds = Round::current_rounds(&tournament_id, &mut *conn);
 
     success(
@@ -108,108 +150,34 @@ pub async fn submit_ballot_page(
             .user_opt(user)
             .tournament(tournament.clone())
             .current_rounds(current_rounds)
-            .body(SubmitBallotForm {
-                tournament,
-                debate: debate_repr,
-                motions,
-                form_data: None,
+            .body(maud! {
+                div class="container py-5" style="max-width: 800px;" {
+                    header class="mb-5" {
+                        h1 class="display-4 fw-bold mb-3" { "Submit Ballot" }
+                        span class="badge bg-light text-dark" {
+                            "Round " (round.name)
+                        }
+                    }
+
+                    form method="post" {
+                        (BallotFormFields {
+                            tournament: &tournament,
+                            debate: &debate_repr,
+                            round: &round,
+                            motions: &motions,
+                            current_values: None,
+                            field_prefix: "",
+                            num_advancing,
+                        })
+
+                        button type="submit" class="btn btn-dark btn-lg" {
+                            "Submit Ballot"
+                        }
+                    }
+                }
             })
             .render(),
     )
-}
-
-/// Renders the form to submit a given ballot.
-struct SubmitBallotForm {
-    tournament: Tournament,
-    debate: DebateRepr,
-    motions: Vec<Motion>,
-    form_data: Option<SingleBallot>,
-}
-
-impl Renderable for SubmitBallotForm {
-    fn render_to(
-        &self,
-        buffer: &mut hypertext::Buffer<hypertext::context::Node>,
-    ) {
-        let substantive_speakers =
-            self.tournament.substantive_speakers as usize;
-        let reply_speakers = if self.tournament.reply_speakers { 1 } else { 0 };
-        let total_speakers = substantive_speakers + reply_speakers;
-
-        maud! {
-            div class="container py-5" style="max-width: 800px;" {
-                header class="mb-5" {
-                    h1 class="display-4 fw-bold mb-3" { "Submit Ballot" }
-                    span class="badge bg-light text-dark" {
-                        "Round " (self.debate.debate.round_id)
-                    }
-                }
-
-                form method="post" {
-                    @if self.motions.len() > 1 {
-                        (MotionSelector {
-                            motions: &self.motions,
-                            selected_motion_id: self.form_data.as_ref().map(|d| d.motion_id.as_str()),
-                            field_name: "motion_id",
-                        })
-                    }
-
-                    section class="mb-5" {
-                        h2 class="h4 text-uppercase fw-bold text-secondary mb-4" {
-                            "Speaker Scores"
-                        }
-
-                        @for side in 0..2 {
-                            div class="mb-5" {
-                                @for seq in 0..self.tournament.teams_per_side {
-                                    @let team_idx = 2 * (seq as usize) + side;
-                                    @let debate_team = &self.debate.teams_of_debate[team_idx];
-                                    @let team = self.debate.teams.get(&debate_team.team_id).unwrap();
-                                    @let speakers = self.debate.speakers_of_team.get(&debate_team.team_id).unwrap();
-
-                                    @if seq > 0 {
-                                        hr class="my-3";
-                                    }
-
-                                    div class="mb-3" {
-                                        h3 class="h5 text-muted" { (team.name) }
-
-                                        @for speaker_row in 0..total_speakers {
-                                            @let is_reply = speaker_row >= substantive_speakers;
-                                            @let (min_score, max_score) = get_score_bounds(&self.tournament, is_reply);
-                                            @let form_speaker = self.form_data.as_ref()
-                                                .and_then(|d| d.teams.get(team_idx))
-                                                .and_then(|t| t.speakers.get(speaker_row));
-
-                                            (SpeakerInput {
-                                                team_name: &team.name,
-                                                speaker_position: speaker_row,
-                                                speakers,
-                                                selected_speaker_id: form_speaker.map(|s| s.id.as_str()),
-                                                score: form_speaker.map(|s| s.score),
-                                                min_score,
-                                                max_score,
-                                                score_step: self.tournament.substantive_speech_step,
-                                                speaker_field_name: &format!("teams[{}].speakers[{}].id", team_idx, speaker_row),
-                                                score_field_name: &format!("teams[{}].speakers[{}].score", team_idx, speaker_row),
-                                            })
-                                        }
-
-                                        input type="hidden" name=(format!("teams[{}].id", team_idx)) value=(debate_team.team_id);
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    button type="submit" class="btn btn-dark btn-lg" {
-                        "Submit Ballot"
-                    }
-                }
-            }
-        }
-        .render_to(buffer);
-    }
 }
 
 pub async fn do_submit_ballot(
@@ -241,7 +209,19 @@ pub async fn do_submit_ballot(
     let current_rounds = Round::current_rounds(&tournament_id, &mut *conn);
     let round = Round::fetch(&round_id, &mut *conn)?;
 
-    // todo: remove stringly typed API
+    if round.completed {
+        return bad_request(
+            Page::new()
+                .tournament(tournament.clone())
+                .user_opt(user)
+                .current_rounds(current_rounds)
+                .body(maud! {
+                    ErrorAlert msg = "Error: this round has been completed. Ballots can no longer be submitted.";
+                })
+                .render(),
+        );
+    }
+
     if round.draw_status != "released_full" {
         return bad_request(
             Page::new()
@@ -258,168 +238,245 @@ pub async fn do_submit_ballot(
     let debate = debate_of_judge_in_round(&judge.id, &round.id, &mut *conn)?;
     let debate_repr = DebateRepr::fetch(&debate.id, &mut *conn);
 
-    // todo: check whether (according to configured rules) it is permissable
-    //       to submit a second ballot if an existing one exists
     let pre_existing_ballot = tournament_ballots::table
         .filter(tournament_ballots::tournament_id.eq(&tournament.id))
         .filter(tournament_ballots::judge_id.eq(&judge.id))
         .filter(tournament_ballots::debate_id.eq(&debate.id))
         .order_by(tournament_ballots::submitted_at.desc())
-        .first::<Ballot>(&mut *conn)
+        .first::<BallotMetadata>(&mut *conn)
         .optional()
         .unwrap();
 
-    let participants = TournamentParticipants::load(&tournament.id, &mut *conn);
-
-    let teams_count = (tournament.teams_per_side * 2) as usize;
-    let speakers_count = tournament.substantive_speakers as usize
-        + (tournament.reply_speakers as usize);
+    if !debate_repr.motions.contains_key(&form.motion_id) {
+        return bad_request(
+            Page::new()
+                .tournament(tournament.clone())
+                .user_opt(user)
+                .current_rounds(current_rounds)
+                .body(maud! {
+                    ErrorAlert msg = "Error: data submitted incorrectly formatted (invalid motion)";
+                })
+                .render(),
+        );
+    }
 
     let new_ballot_id = Uuid::now_v7().to_string();
+    let records_positions = tournament.round_requires_speaker_order(&round);
+    let records_scores = tournament.round_requires_speaks(&round);
+    let is_elim = round.is_elim();
 
-    let repr = BallotRepr {
-        ballot: Ballot {
-            id: new_ballot_id.clone(),
-            tournament_id: tournament_id.clone(),
-            debate_id: debate.id,
-            judge_id: judge.id.clone(),
-            submitted_at: Utc::now().naive_utc(),
-            motion_id: {
-                if !debate_repr.motions.contains_key(&form.motion_id) {
-                    return bad_request(
-                        Page::new()
-                            .tournament(tournament.clone())
-                            .user_opt(user)
-                            .current_rounds(current_rounds)
-                            .body(maud! {
-                                ErrorAlert msg = "Error: data submitted incorrectly formatted (invalid motion)";
-                            })
-                            .render()
-                    );
-                }
-                form.motion_id
-            },
-            version: pre_existing_ballot.map(|b| b.version + 1).unwrap_or(1),
-            // todo: implement a function to describe changes between two
-            //       ballots
-            // todo: should we describe the changes in a human-readable summary
-            //       or instead try to visualise them (diff-style)?
-            change: None,
-            editor_id: Some(judge.id.clone()),
-        },
-        scores: {
-            if form.teams.len() != teams_count
-                || form
-                    .teams
-                    .iter()
-                    .any(|team| team.speakers.len() != speakers_count)
-            {
-                return bad_request(
-                    Page::new()
-                        .tournament(tournament.clone())
-                        .user_opt(user)
-                        .current_rounds(current_rounds)
-                        .body(maud! {
-                            ErrorAlert msg = "Error: data submitted incorrectly formatted (wrong number of speakers/scores)";
-                        })
-                        .render()
-                );
-            }
+    // Build speaker scores (only when we record speaker positions)
+    let scores = if records_positions {
+        let participants =
+            TournamentParticipants::load(&tournament.id, &mut *conn);
+        let teams_count = (tournament.teams_per_side * 2) as usize;
+        let speakers_count = tournament.substantive_speakers as usize
+            + (tournament.reply_speakers as usize);
 
-            form.teams
+        if form.teams.len() != teams_count
+            || form
+                .teams
                 .iter()
-                .enumerate()
-                .map(|(i, submitted_team)| {
-                    // 0 = OG, 1 = OO, 2 = CG, 3 = CO
-                    let side = i % 2;
-                    // 0 / 2 = 0, 1 / 2 = 0, 2 / 2 = 1, 3 / 2 = 1
-                    let seq = i / 2;
-                    if debate_repr.team_of_side_and_seq(side as i64, seq as i64).team_id
-                        != submitted_team.id
-                    {
-                        return bad_request(
-                            Page::new()
-                                .tournament(tournament.clone())
-                                .user_opt(user.clone())
-                                .current_rounds(current_rounds.clone())
-                                .body(maud! {
-                                    // todo: ErrorAlert.msg ->
-                                    //       ErrorAlert.children
-                                    // so that we can write
-                                    // ErrorAlert {
-                                    //      contents
-                                    // }
-                                    ErrorAlert msg = "Team submitted does not match the provided data.";
-                                })
-                                .render(),
-                        )
-                        .map(|_| unreachable!());
-                    };
+                .any(|team| team.speakers.len() != speakers_count)
+        {
+            return bad_request(
+                Page::new()
+                    .tournament(tournament.clone())
+                    .user_opt(user)
+                    .current_rounds(current_rounds)
+                    .body(maud! {
+                        ErrorAlert msg = "Error: data submitted incorrectly formatted (wrong number of speakers/scores)";
+                    })
+                    .render(),
+            );
+        }
 
-                    submitted_team.speakers.iter().enumerate().map(
-                        |(j, submitted_speaker_and_score)| {
-                            if let Err(e) = tournament.check_score_valid(
-                                rust_decimal::Decimal::from_f32_retain(
-                                    submitted_speaker_and_score.score,
-                                )
+        let mut scores = Vec::new();
+        for (i, submitted_team) in form.teams.iter().enumerate() {
+            let side = i % 2;
+            let seq = i / 2;
+            let expected_team_id = &debate_repr
+                .team_of_side_and_seq(side as i64, seq as i64)
+                .team_id;
+
+            for (j, submitted_speaker) in
+                submitted_team.speakers.iter().enumerate()
+            {
+                let score = if records_scores {
+                    if let Some(score_val) = submitted_speaker.score {
+                        if let Err(e) = tournament.check_score_valid(
+                            rust_decimal::Decimal::from_f32_retain(score_val)
                                 .unwrap(),
-                                // todo: compute based on format rules
-                                // (we should probably create a new ),
-                                // potentially adding a new field to the form
-                                false,
-                                participants
-                                    .speakers
-                                    .get(&submitted_speaker_and_score.id)
-                                    .unwrap()
-                                    .name
-                                    .clone(),
-                            ) {
-                                return bad_request(
-                                    Page::new()
-                                        .tournament(tournament.clone())
-                                        .user_opt(user.clone())
-                                        .current_rounds(current_rounds.clone())
-                                        .body(maud! {
-                                            // todo: ErrorAlert.msg ->
-                                            //       ErrorAlert.children
-                                            // so that we can write
-                                            // ErrorAlert {
-                                            //      contents
-                                            // }
-                                            ErrorAlert msg = (e.clone());
-                                        })
-                                        .render(),
-                                )
-                                .map(|_| unreachable!());
-                            }
+                            j >= tournament.substantive_speakers as usize,
+                            participants
+                                .speakers
+                                .get(&submitted_speaker.id)
+                                .unwrap()
+                                .name
+                                .clone(),
+                        ) {
+                            let msg = e;
+                            return bad_request(
+                                Page::new()
+                                    .tournament(tournament.clone())
+                                    .user_opt(user)
+                                    .current_rounds(current_rounds)
+                                    .body(maud! {
+                                        ErrorAlert msg = (msg.as_str());
+                                    })
+                                    .render(),
+                            );
+                        }
+                    }
+                    submitted_speaker.score
+                } else {
+                    None
+                };
 
-                            Ok(BallotScore {
-                                id: Uuid::now_v7().to_string(),
-                                tournament_id: tournament_id.clone(),
-                                ballot_id: new_ballot_id.clone(),
-                                team_id: submitted_team.id.clone(),
-                                speaker_id: submitted_speaker_and_score
-                                    .id
-                                    .clone(),
-                                speaker_position: j as i64,
-                                score: submitted_speaker_and_score.score,
-                            })
-                        },
-                    ).collect::<Result<Vec<_>, _>>()
-                })
-                .collect::<Result<Vec<_>, _>>()?
-                .into_iter()
-                .flatten()
-                .collect()
-        },
+                scores.push(BallotScore {
+                    id: Uuid::now_v7().to_string(),
+                    tournament_id: tournament_id.clone(),
+                    ballot_id: new_ballot_id.clone(),
+                    team_id: expected_team_id.clone(),
+                    speaker_id: submitted_speaker.id.clone(),
+                    speaker_position: j as i64,
+                    score,
+                });
+            }
+        }
+        scores
+    } else {
+        Vec::new()
     };
 
+    // Build team ranks
+    let team_ranks = if is_elim {
+        let num_advancing =
+            num_advancing_for_elim_round(&tournament, &round, &mut *conn);
+        let advancing = form.all_advancing_team_ids();
+
+        // Validate count
+        if advancing.len() != num_advancing {
+            return bad_request(
+                Page::new()
+                    .tournament(tournament.clone())
+                    .user_opt(user)
+                    .current_rounds(current_rounds)
+                    .body(maud! {
+                        ErrorAlert msg = (format!(
+                            "Error: expected {} advancing team(s), but {} were selected",
+                            num_advancing,
+                            advancing.len()
+                        ).as_str());
+                    })
+                    .render(),
+            );
+        }
+
+        build_team_ranks_from_advancing(
+            &advancing,
+            &new_ballot_id,
+            &tournament_id,
+            &debate_repr,
+        )
+    } else {
+        build_team_ranks_from_scores(
+            &scores,
+            &new_ballot_id,
+            &tournament_id,
+            &debate_repr,
+            &tournament,
+        )
+    };
+
+    let metadata = BallotMetadata {
+        id: new_ballot_id,
+        tournament_id: tournament_id.clone(),
+        debate_id: debate.id.clone(),
+        judge_id: judge.id.clone(),
+        submitted_at: Utc::now().naive_utc(),
+        motion_id: form.motion_id,
+        version: pre_existing_ballot.map(|b| b.version + 1).unwrap_or(0),
+        change: None,
+        editor_id: None,
+    };
+
+    let repr = BallotRepr::new_prelim(metadata, scores, team_ranks);
     repr.insert(&mut *conn);
+
+    // Refresh debate repr so we pick up the newly inserted ballot
+    let debate_repr = DebateRepr::fetch(&debate.id, &mut *conn);
+    update_debate_status(&debate_repr, &tournament, &mut *conn);
 
     see_other_ok(Redirect::to(&format!(
         "/tournaments/{}/privateurls/{}",
         tournament_id, private_url
     )))
+}
+
+/// Build team rank entries from speaker scores.
+///
+/// Teams receive one point for each team that they beat.
+pub fn build_team_ranks_from_scores(
+    scores: &[BallotScore],
+    ballot_id: &str,
+    tournament_id: &str,
+    debate: &DebateRepr,
+    tournament: &Tournament,
+) -> Vec<BallotTeamRank> {
+    let n_teams = (tournament.teams_per_side * 2) as usize;
+
+    let mut team_totals: Vec<(String, f64)> = Vec::new();
+    for dt in &debate.teams_of_debate {
+        let total: f64 = scores
+            .iter()
+            .filter(|s| s.team_id == dt.team_id)
+            .filter_map(|s| s.score.map(|v| v as f64))
+            .sum();
+        team_totals.push((dt.team_id.clone(), total));
+    }
+
+    team_totals.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    // Assign points: in a 2-team format, winner=1, loser=0.
+    // In a 4-team format, 1st=3, 2nd=2, 3rd=1, 4th=0.
+    team_totals
+        .iter()
+        .enumerate()
+        .map(|(rank, (team_id, _))| BallotTeamRank {
+            id: Uuid::now_v7().to_string(),
+            tournament_id: tournament_id.to_string(),
+            ballot_id: ballot_id.to_string(),
+            team_id: team_id.clone(),
+            points: (n_teams - 1 - rank) as i64,
+        })
+        .collect()
+}
+
+/// For advancing rounds we adopt the convention that advancing teams receive
+/// one point and that eliminated teams receive zero points.
+pub fn build_team_ranks_from_advancing(
+    advancing_team_ids: &[String],
+    ballot_id: &str,
+    tournament_id: &str,
+    debate: &DebateRepr,
+) -> Vec<BallotTeamRank> {
+    debate
+        .teams_of_debate
+        .iter()
+        .map(|dt| {
+            let is_advancing = advancing_team_ids.contains(&dt.team_id);
+            BallotTeamRank {
+                id: Uuid::now_v7().to_string(),
+                tournament_id: tournament_id.to_string(),
+                ballot_id: ballot_id.to_string(),
+                team_id: dt.team_id.clone(),
+                points: is_advancing as i64,
+            }
+        })
+        .collect()
 }
 
 fn debate_of_judge_in_round(

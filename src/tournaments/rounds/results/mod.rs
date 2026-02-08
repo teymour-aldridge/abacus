@@ -24,7 +24,7 @@ struct TeamResult {
     tournament_id: String,
     debate_id: String,
     team_id: String,
-    points: i64,
+    points: Option<i64>,
 }
 
 pub async fn view_results_page(
@@ -141,7 +141,7 @@ pub async fn view_results_page(
 
         let team_results_map: HashMap<(String, String), i64> = team_results
             .into_iter()
-            .map(|r| ((r.debate_id, r.team_id), r.points))
+            .filter_map(|r| r.points.map(|p| ((r.debate_id, r.team_id), p)))
             .collect();
 
         display_data_list.push(RoundDisplayData {

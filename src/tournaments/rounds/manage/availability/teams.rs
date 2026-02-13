@@ -171,8 +171,6 @@ pub async fn view_team_availability(
                     script src="https://cdn.jsdelivr.net/npm/htmx-ext-ws@2.0.2" crossorigin="anonymous" {
                     }
                 }
-                .render()
-                .into_inner()
             )
             .user(user)
             .tournament(tournament.clone())

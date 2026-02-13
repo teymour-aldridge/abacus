@@ -306,6 +306,8 @@ pub fn create_app(pool: DbPool) -> Router {
         .route("/tournaments/:id/privateurls/:private_url/rounds/:round_id/feedback/submit", get(crate::tournaments::feedback::public::submit::submit_feedback_page).post(crate::tournaments::feedback::public::submit::do_submit_feedback))
 
         // Rounds
+        .route("/tournaments/:id/rounds", get(crate::tournaments::rounds::manage::manage_rounds_page))
+        .route("/tournaments/:id/rounds/:round_seq/setup", get(crate::tournaments::rounds::manage::setup::setup_round_page))
         .route("/tournaments/:id/rounds/create", get(crate::tournaments::rounds::manage::create::create_new_round))
         .route("/tournaments/:id/rounds/:category_id/create", get(crate::tournaments::rounds::manage::create::create_new_round_of_specific_category_page).post(crate::tournaments::rounds::manage::create::do_create_new_round_of_specific_category))
         .route("/tournaments/:id/rounds/:round_seq", get(crate::tournaments::rounds::manage::view::view_tournament_rounds_page))

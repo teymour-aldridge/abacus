@@ -28,6 +28,7 @@ pub type StandardResponse = Result<SuccessResponse, FailureResponse>;
 
 // StandardResponse is Result, which implements IntoResponse if T and E do.
 
+#[derive(Debug)]
 pub enum SuccessResponse {
     Success(Rendered<String>),
     SeeOther(Box<Redirect>),

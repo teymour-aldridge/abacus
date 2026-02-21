@@ -82,7 +82,7 @@ pub fn aggregate_ballot_set(
 
             insert_two_team_results(ballots, debate, did_prop_win, conn);
 
-            if !is_elim && tournament.current_round_uses_speaks(conn) {
+            if !is_elim && tournament.current_round_requires_speaks(conn) {
                 let speaker_points = compute_averaged_speaker_scores(
                     ballots,
                     &ballots[0].metadata.tournament_id,
@@ -126,7 +126,7 @@ fn aggregate_consensus_prelim(
         .execute(conn)
         .unwrap();
 
-    if tournament.current_round_uses_speaks(conn) {
+    if tournament.current_round_requires_speaks(conn) {
         let speaker_points: Vec<_> = canonical
             .scores
             .iter()

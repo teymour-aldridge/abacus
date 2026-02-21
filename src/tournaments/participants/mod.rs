@@ -10,7 +10,7 @@ use crate::{
         tournament_speakers, tournament_team_speakers, tournament_teams,
     },
     tournaments::teams::Team,
-    util_resp::FailureResponse,
+    util_resp::{FailureResponse, err_not_found},
 };
 
 pub mod manage;
@@ -81,6 +81,25 @@ pub struct Judge {
     pub institution_id: Option<String>,
     pub private_url: String,
     pub number: i64,
+}
+
+impl Judge {
+    pub fn of_private_url(
+        private_url: &str,
+        tournament_id: &str,
+        conn: &mut impl LoadConnection<Backend = Sqlite>,
+    ) -> Result<Judge, FailureResponse> {
+        tournament_judges::table
+            .filter(
+                tournament_judges::private_url
+                    .eq(&private_url)
+                    .and(tournament_judges::tournament_id.eq(&tournament_id)),
+            )
+            .first::<Judge>(&mut *conn)
+            .optional()
+            .unwrap()
+            .ok_or(err_not_found().unwrap_err())
+    }
 }
 
 #[derive(Queryable, QueryableByName, Serialize, Deserialize, Clone, Debug)]

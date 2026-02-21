@@ -1,3 +1,8 @@
+//! Ballot management is probably the most painful part of this application.
+//! We handle a diverse array of potential formats. The cartesian product of
+//! configuration options quickly leads to combinatorial explosion, so we try
+//! to handle each format individually.
+
 use std::cmp::Reverse;
 
 use chrono::NaiveDateTime;
@@ -19,8 +24,7 @@ use crate::{
 };
 
 pub mod aggregate;
-pub mod common_ballot_html;
-pub mod form_components;
+pub mod form;
 pub mod manage;
 pub mod public;
 

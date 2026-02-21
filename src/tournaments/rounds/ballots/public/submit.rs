@@ -4,13 +4,14 @@ use axum_extra::extract::Form;
 use chrono::Utc;
 use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
 use hypertext::{Renderable, maud, prelude::*};
+use tracing::error;
 use uuid::Uuid;
 
 use crate::{
     auth::User,
     schema::{
         tournament_ballots, tournament_debate_judges, tournament_debates,
-        tournament_judges, tournament_round_motions, tournament_rounds,
+        tournament_rounds,
     },
     state::Conn,
     template::Page,
@@ -18,10 +19,10 @@ use crate::{
         Tournament,
         participants::{Judge, TournamentParticipants},
         rounds::{
-            Motion, Round,
+            Round,
             ballots::{
                 BallotMetadata, BallotRepr, BallotScore, BallotTeamRank,
-                common_ballot_html::BallotFormFields, update_debate_status,
+                form::fields_of_single_ballot_form, update_debate_status,
             },
             draws::{Debate, DebateRepr},
         },
@@ -33,7 +34,7 @@ use crate::{
     widgets::alert::ErrorAlert,
 };
 
-use super::super::manage::edit::SingleBallot;
+use super::super::manage::edit::BallotForm;
 
 /// Compute how many teams advance in an elimination round.
 ///
@@ -55,6 +56,8 @@ pub fn num_advancing_for_elim_round(
     }
 }
 
+/// Page judges use to submit ballots. They are directed here from their private
+/// URL page.
 pub async fn submit_ballot_page(
     Path((tournament_id, private_url, round_id)): Path<(
         String,
@@ -65,85 +68,37 @@ pub async fn submit_ballot_page(
     mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
-
-    let judge = match tournament_judges::table
-        .filter(
-            tournament_judges::private_url
-                .eq(&private_url)
-                .and(tournament_judges::tournament_id.eq(&tournament_id)),
-        )
-        .first::<Judge>(&mut *conn)
-        .optional()
-        .unwrap()
-    {
-        Some(judge) => judge,
-        None => return err_not_found(),
-    };
-
+    let judge =
+        Judge::of_private_url(&private_url, &tournament.id, &mut *conn)?;
     let round = Round::fetch(&round_id, &mut *conn)?;
 
-    if round.completed {
-        let current_rounds = Round::current_rounds(&tournament_id, &mut *conn);
-        return bad_request(
-            Page::new()
-                .tournament(tournament.clone())
-                .user_opt(user)
-                .current_rounds(current_rounds)
-                .body(maud! {
-                    ErrorAlert msg = "Error: this round has been completed. Ballots can no longer be submitted.";
-                })
-                .render(),
-        );
-    }
+    check_round_released(
+        &tournament_id,
+        user.clone(),
+        &mut *conn,
+        &tournament,
+        &round,
+    )?;
 
-    if round.draw_status != "released_full" {
-        let current_rounds = Round::current_rounds(&tournament_id, &mut *conn);
-        return bad_request(
-            Page::new()
-                .tournament(tournament.clone())
-                .user_opt(user)
-                .current_rounds(current_rounds)
-                .body(maud! {
-                    ErrorAlert msg = "Error: draw not released.";
-                })
-                .render(),
-        );
-    }
+    check_round_not_completed(
+        &tournament_id,
+        user.clone(),
+        &mut *conn,
+        &tournament,
+        &round,
+    )?;
 
     let debate = debate_of_judge_in_round(&judge.id, &round.id, &mut *conn)?;
     let debate_repr = DebateRepr::fetch(&debate.id, &mut *conn);
 
-    let is_superuser = if let Some(ref user) = user {
-        tournament
-            .check_user_is_superuser(&user.id, &mut *conn)
-            .is_ok()
-    } else {
-        false
-    };
-
-    let mut motions_query = tournament_round_motions::table
-        .filter(tournament_round_motions::round_id.eq(&round.id))
-        .into_boxed();
-
-    if !is_superuser {
-        motions_query = motions_query
-            .filter(tournament_round_motions::published_at.is_not_null());
-    }
-
-    let motions: Vec<Motion> =
-        motions_query.load::<Motion>(&mut *conn).unwrap();
-
-    let num_advancing = if round.is_elim() {
-        Some(num_advancing_for_elim_round(
-            &tournament,
-            &round,
-            &mut *conn,
-        ))
-    } else {
-        None
-    };
-
     let current_rounds = Round::current_rounds(&tournament_id, &mut *conn);
+
+    let ballot_form = fields_of_single_ballot_form(
+        &tournament,
+        &debate_repr,
+        None,
+        &mut *conn,
+    );
 
     success(
         Page::new()
@@ -160,15 +115,7 @@ pub async fn submit_ballot_page(
                     }
 
                     form method="post" {
-                        (BallotFormFields {
-                            tournament: &tournament,
-                            debate: &debate_repr,
-                            round: &round,
-                            motions: &motions,
-                            current_values: None,
-                            field_prefix: "",
-                            num_advancing,
-                        })
+                        (ballot_form)
 
                         button type="submit" class="btn btn-dark btn-lg" {
                             "Submit Ballot"
@@ -180,50 +127,39 @@ pub async fn submit_ballot_page(
     )
 }
 
-pub async fn do_submit_ballot(
-    Path((tournament_id, private_url, round_id)): Path<(
-        String,
-        String,
-        String,
-    )>,
+fn check_round_not_completed(
+    tournament_id: &String,
     user: Option<User<true>>,
-    mut conn: Conn<true>,
-    Form(form): Form<SingleBallot>,
-) -> StandardResponse {
-    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
-
-    let judge = match tournament_judges::table
-        .filter(
-            tournament_judges::private_url
-                .eq(&private_url)
-                .and(tournament_judges::tournament_id.eq(&tournament_id)),
-        )
-        .first::<Judge>(&mut *conn)
-        .optional()
-        .unwrap()
-    {
-        Some(judge) => judge,
-        None => return err_not_found(),
-    };
-
-    let current_rounds = Round::current_rounds(&tournament_id, &mut *conn);
-    let round = Round::fetch(&round_id, &mut *conn)?;
-
+    conn: &mut impl LoadConnection<Backend = Sqlite>,
+    tournament: &Tournament,
+    round: &Round,
+) -> Result<(), FailureResponse> {
     if round.completed {
-        return bad_request(
+        let current_rounds = Round::current_rounds(tournament_id, conn);
+        return Err(bad_request(
             Page::new()
                 .tournament(tournament.clone())
-                .user_opt(user)
+                .user_opt(user.clone())
                 .current_rounds(current_rounds)
                 .body(maud! {
                     ErrorAlert msg = "Error: this round has been completed. Ballots can no longer be submitted.";
                 })
                 .render(),
-        );
+        ).unwrap_err());
     }
+    Ok(())
+}
 
+fn check_round_released(
+    tournament_id: &String,
+    user: Option<User<true>>,
+    conn: &mut impl LoadConnection<Backend = Sqlite>,
+    tournament: &Tournament,
+    round: &Round,
+) -> Result<(), FailureResponse> {
     if round.draw_status != "released_full" {
-        return bad_request(
+        let current_rounds = Round::current_rounds(tournament_id, conn);
+        return Err(bad_request(
             Page::new()
                 .tournament(tournament.clone())
                 .user_opt(user)
@@ -232,13 +168,53 @@ pub async fn do_submit_ballot(
                     ErrorAlert msg = "Error: draw not released.";
                 })
                 .render(),
-        );
+        )
+        .unwrap_err());
     }
+    Ok(())
+}
+
+/// Receives ballots, validates them, and then appends them to the database.
+///
+// TODO: it would be nice to display the errors inline. However, this is more
+// programming effort, so currently we collate a list of problems and then
+// display a list of problems at the top of the page.
+pub async fn do_submit_ballot(
+    Path((tournament_id, private_url, round_id)): Path<(
+        String,
+        String,
+        String,
+    )>,
+    user: Option<User<true>>,
+    mut conn: Conn<true>,
+    Form(form): Form<BallotForm>,
+) -> StandardResponse {
+    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
+    let judge =
+        Judge::of_private_url(&private_url, &tournament_id, &mut *conn)?;
+
+    let current_rounds = Round::current_rounds(&tournament_id, &mut *conn);
+    let round = Round::fetch(&round_id, &mut *conn)?;
+
+    check_round_released(
+        &tournament_id,
+        user.clone(),
+        &mut *conn,
+        &tournament,
+        &round,
+    )?;
+    check_round_not_completed(
+        &tournament_id,
+        user.clone(),
+        &mut *conn,
+        &tournament,
+        &round,
+    )?;
 
     let debate = debate_of_judge_in_round(&judge.id, &round.id, &mut *conn)?;
     let debate_repr = DebateRepr::fetch(&debate.id, &mut *conn);
 
-    let pre_existing_ballot = tournament_ballots::table
+    let prior = tournament_ballots::table
         .filter(tournament_ballots::tournament_id.eq(&tournament.id))
         .filter(tournament_ballots::judge_id.eq(&judge.id))
         .filter(tournament_ballots::debate_id.eq(&debate.id))
@@ -265,20 +241,33 @@ pub async fn do_submit_ballot(
     let records_scores = tournament.round_requires_speaks(&round);
     let is_elim = round.is_elim();
 
+    let teams_count = (tournament.teams_per_side * 2) as usize;
+    if form.teams.len() != teams_count {
+        return bad_request(
+            Page::new()
+                .tournament(tournament.clone())
+                .user_opt(user)
+                .current_rounds(current_rounds)
+                .body(maud! {
+                    ErrorAlert msg = "Error: data submitted incorrectly formatted (wrong number of teams)";
+                })
+                .render(),
+        );
+    }
+
     // Build speaker scores (only when we record speaker positions)
     let scores = if records_positions {
         let participants =
             TournamentParticipants::load(&tournament.id, &mut *conn);
-        let teams_count = (tournament.teams_per_side * 2) as usize;
+
         let speakers_count = tournament.substantive_speakers as usize
             + (tournament.reply_speakers as usize);
 
-        if form.teams.len() != teams_count
-            || form
-                .teams
-                .iter()
-                .any(|team| team.speakers.len() != speakers_count)
-        {
+        let all_teams_have_expected_number_of_speakers = form
+            .teams
+            .iter()
+            .any(|team| team.speakers.len() == speakers_count);
+        if !all_teams_have_expected_number_of_speakers {
             return bad_request(
                 Page::new()
                     .tournament(tournament.clone())
@@ -295,7 +284,7 @@ pub async fn do_submit_ballot(
         for (i, submitted_team) in form.teams.iter().enumerate() {
             let side = i % 2;
             let seq = i / 2;
-            let expected_team_id = &debate_repr
+            let id_of_team_at_this_position = &debate_repr
                 .team_of_side_and_seq(side as i64, seq as i64)
                 .team_id;
 
@@ -304,6 +293,13 @@ pub async fn do_submit_ballot(
             {
                 let score = if records_scores {
                     if let Some(score_val) = submitted_speaker.score {
+                        if j > tournament.substantive_speakers as usize {
+                            error!(
+                                "Expected j={} but actually j={j}",
+                                tournament.substantive_speakers
+                            );
+                        }
+
                         if let Err(e) = tournament.check_score_valid(
                             rust_decimal::Decimal::from_f32_retain(score_val)
                                 .unwrap(),
@@ -337,7 +333,7 @@ pub async fn do_submit_ballot(
                     id: Uuid::now_v7().to_string(),
                     tournament_id: tournament_id.clone(),
                     ballot_id: new_ballot_id.clone(),
-                    team_id: expected_team_id.clone(),
+                    team_id: id_of_team_at_this_position.clone(),
                     speaker_id: submitted_speaker.id.clone(),
                     speaker_position: j as i64,
                     score,
@@ -353,7 +349,7 @@ pub async fn do_submit_ballot(
     let team_ranks = if is_elim {
         let num_advancing =
             num_advancing_for_elim_round(&tournament, &round, &mut *conn);
-        let advancing = form.all_advancing_team_ids();
+        let advancing = form.all_advancing_team_ids(&debate_repr);
 
         // Validate count
         if advancing.len() != num_advancing {
@@ -396,7 +392,7 @@ pub async fn do_submit_ballot(
         judge_id: judge.id.clone(),
         submitted_at: Utc::now().naive_utc(),
         motion_id: form.motion_id,
-        version: pre_existing_ballot.map(|b| b.version + 1).unwrap_or(0),
+        version: prior.map(|b| b.version + 1).unwrap_or(0),
         change: None,
         editor_id: None,
     };

@@ -154,8 +154,12 @@ pub async fn admin_ballot_of_seq_overview(
                         tbody {
                             @for (debate, ballots) in ballot_sets.iter() {
                                 @let num_judges = debate.judges_of_debate.len();
-                                @let ballot_problems = BallotRepr::problems_of_set(
-                                    ballots, &tournament, debate);
+                                @let ballot_problems =
+                                    BallotRepr::problems_of_set(
+                                        ballots,
+                                        &tournament,
+                                        debate
+                                    );
 
                                 @if num_judges == 0 {
                                     tr class="border-bottom" {

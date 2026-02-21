@@ -135,7 +135,17 @@ impl Tournament {
         }
     }
 
-    pub fn current_round_uses_speaks(
+    pub fn current_round_requires_speaker_order(
+        &self,
+        conn: &mut impl LoadConnection<Backend = Sqlite>,
+    ) -> bool {
+        match self.current_round_type(conn) {
+            RoundKind::Elim => self.require_elim_speaker_order,
+            RoundKind::Prelim => self.require_prelim_speaker_order,
+        }
+    }
+
+    pub fn current_round_requires_speaks(
         &self,
         conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> bool {

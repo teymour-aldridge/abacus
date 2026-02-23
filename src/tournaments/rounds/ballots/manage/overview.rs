@@ -58,7 +58,7 @@ pub async fn admin_ballot_of_seq_overview(
         .iter()
         .map(|debate| {
             let debate_repr = DebateRepr::fetch(&debate.id, &mut *conn);
-            let ballots = debate_repr.ballots(&mut *conn);
+            let ballots = debate_repr.latest_ballots(&mut *conn);
             (debate_repr, ballots)
         })
         .collect_vec();

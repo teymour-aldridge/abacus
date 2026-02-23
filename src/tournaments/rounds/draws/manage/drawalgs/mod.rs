@@ -280,6 +280,7 @@ pub fn do_draw(
                         tournament_debates::tournament_id.eq(&tournament.id),
                         tournament_debates::round_id.eq(&round.id),
                         tournament_debates::room_id.eq(None::<String>),
+                        tournament_debates::status.eq("draft"),
                         tournament_debates::number.eq({
                             let ret = debate_no;
                             debate_no += 1;

@@ -13,7 +13,12 @@
 }
 
 .draw-editor-header {
-    margin-bottom: 1rem;
+    margin-bottom: 0;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background-color: #fff;
+    padding-top: 0.5rem;
 }
 
 .draw-editor-header h4 {
@@ -23,7 +28,15 @@
 }
 
 .unallocated-section {
-    margin-bottom: 1.5rem;
+    margin-bottom: 0;
+    position: sticky;
+    top: 56px;
+    /* below the header */
+    z-index: 19;
+    background-color: #fff;
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
 }
 
 .unallocated-section h6 {
@@ -34,6 +47,7 @@
 
 .round-section {
     margin-bottom: 2rem;
+    padding-top: 1rem;
 }
 
 .round-section h5 {
@@ -317,7 +331,6 @@
 
 /* Draw editor header improvements */
 .draw-editor-header {
-    margin-bottom: 1.5rem;
     padding-bottom: 1rem;
     border-bottom: 1px solid #e9ecef;
 }

@@ -119,81 +119,35 @@ async fn style_css() -> impl IntoResponse {
 }
 
 async fn draw_editor_js() -> impl IntoResponse {
-    (
-        [(header::CONTENT_TYPE, "application/javascript")],
-        tokio::fs::read_to_string(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/",
-            env!("DRAW_EDITOR_JS_PATH")
-        ))
-        .await
-        .unwrap(),
-    )
+    let content = include_str!(concat!(env!("OUT_DIR"), "/draw_editor.js"));
+    ([(header::CONTENT_TYPE, "application/javascript")], content)
 }
 
 async fn draw_editor_css() -> impl IntoResponse {
-    (
-        [(header::CONTENT_TYPE, "text/css")],
-        tokio::fs::read_to_string(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/",
-            env!("DRAW_EDITOR_CSS_PATH")
-        ))
-        .await
-        .unwrap(),
-    )
+    let content = include_str!(concat!(env!("OUT_DIR"), "/draw_editor.css"));
+    ([(header::CONTENT_TYPE, "text/css")], content)
 }
 
 async fn draw_room_allocator_js() -> impl IntoResponse {
-    (
-        [(header::CONTENT_TYPE, "application/javascript")],
-        tokio::fs::read_to_string(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/",
-            env!("DRAW_ROOM_ALLOCATOR_JS_PATH")
-        ))
-        .await
-        .unwrap(),
-    )
+    let content =
+        include_str!(concat!(env!("OUT_DIR"), "/draw_room_allocator.js"));
+    ([(header::CONTENT_TYPE, "application/javascript")], content)
 }
 
 async fn draw_room_allocator_css() -> impl IntoResponse {
-    (
-        [(header::CONTENT_TYPE, "text/css")],
-        tokio::fs::read_to_string(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/",
-            env!("DRAW_ROOM_ALLOCATOR_CSS_PATH")
-        ))
-        .await
-        .unwrap(),
-    )
+    let content =
+        include_str!(concat!(env!("OUT_DIR"), "/draw_room_allocator.css"));
+    ([(header::CONTENT_TYPE, "text/css")], content)
 }
 
 async fn store_js() -> impl IntoResponse {
-    (
-        [(header::CONTENT_TYPE, "application/javascript")],
-        tokio::fs::read_to_string(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/",
-            env!("STORE_JS_PATH")
-        ))
-        .await
-        .unwrap(),
-    )
+    let content = include_str!(concat!(env!("OUT_DIR"), "/store.js"));
+    ([(header::CONTENT_TYPE, "application/javascript")], content)
 }
 
 async fn store_css() -> impl IntoResponse {
-    (
-        [(header::CONTENT_TYPE, "text/css")],
-        tokio::fs::read_to_string(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/",
-            env!("STORE_CSS_PATH")
-        ))
-        .await
-        .unwrap(),
-    )
+    let content = include_str!(concat!(env!("OUT_DIR"), "/store.css"));
+    ([(header::CONTENT_TYPE, "text/css")], content)
 }
 
 pub fn create_app(pool: DbPool) -> Router {
@@ -368,6 +322,8 @@ pub fn create_app(pool: DbPool) -> Router {
         // Ballots
         .route("/tournaments/:id/rounds/:round_seq/ballots", get(crate::tournaments::rounds::ballots::manage::overview::admin_ballot_of_seq_overview))
         .route("/tournaments/:id/debates/:debate_id/ballots", get(crate::tournaments::rounds::ballots::manage::view_ballot_set::view_ballot_set_page))
+        .route("/tournaments/:id/debates/:debate_id/judges/:judge_id/edit", get(crate::tournaments::rounds::ballots::manage::edit::edit_ballot_page).post(crate::tournaments::rounds::ballots::manage::edit::do_edit_ballot))
+        .route("/tournaments/:id/debates/:debate_id/ballots/:ballot_id/view", get(crate::tournaments::rounds::ballots::manage::view_ballot_set::view_single_ballot_page))
         .route("/tournaments/:id/privateurls/:private_url", get(crate::tournaments::privateurls::view::private_url_page))
 
         .route(

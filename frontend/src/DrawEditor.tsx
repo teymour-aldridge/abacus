@@ -103,15 +103,18 @@ function DrawEditor() {
     const tournamentId = getTournamentId();
     const roundIds = getRoundIds();
 
-    const formData = new FormData();
-    formData.append("judge_id", judgeId);
-    formData.append("to_debate_id", toDebateId || "");
-    formData.append("role", role);
-    roundIds.forEach((id) => formData.append("rounds", id));
+    const body = new URLSearchParams();
+    body.append("judge_id", judgeId);
+    body.append("to_debate_id", toDebateId || "");
+    body.append("role", role);
+    roundIds.forEach((id) => body.append("rounds", id));
 
     await fetch(`/tournaments/${tournamentId}/rounds/draws/edit/move`, {
       method: "POST",
-      body: formData,
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: body.toString(),
     });
   };
 
@@ -120,14 +123,17 @@ function DrawEditor() {
     const tournamentId = getTournamentId();
     const roundIds = getRoundIds();
 
-    const formData = new FormData();
-    formData.append("team1_id", team1Id);
-    formData.append("team2_id", team2Id);
-    roundIds.forEach((id) => formData.append("rounds", id));
+    const body = new URLSearchParams();
+    body.append("team1_id", team1Id);
+    body.append("team2_id", team2Id);
+    roundIds.forEach((id) => body.append("rounds", id));
 
     await fetch(`/tournaments/${tournamentId}/rounds/draws/edit/move_team`, {
       method: "POST",
-      body: formData,
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: body.toString(),
     });
   };
 

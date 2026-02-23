@@ -76,8 +76,20 @@ fn main() {
         panic!("Failed to compile sass");
     }
 
-    println!("cargo:rerun-if-changed=assets/scss/main.scss");
-    println!("cargo:rerun-if-changed=assets/scss/custom.scss");
+    println!("cargo:rerun-if-changed=assets/scss");
+
+    // Copy frontend build outputs into OUT_DIR so they can be embedded with include_str!
+    let frontend_dist = Path::new("static/dist");
+    let out_dir_path = Path::new(&out_dir);
+
+    let files_to_copy = [
+        ("draw-editor.js", "draw_editor.js"),
+        ("store.css", "draw_editor.css"),
+        ("draw-room-allocator.js", "draw_room_allocator.js"),
+        ("store.css", "draw_room_allocator.css"),
+        ("store.js", "store.js"),
+        ("store.css", "store.css"),
+    ];
 
     let status = Command::new("npm")
         .arg("run")
@@ -90,27 +102,17 @@ fn main() {
     if !status.success() {
         panic!("Failed to compile frontend");
     }
-    println!("cargo:rerun-if-changed=frontend/src/DrawEditor.tsx");
-    println!("cargo:rerun-if-changed=frontend/src/DrawRoomAllocator.tsx");
-    println!("cargo:rerun-if-changed=frontend/src/index.tsx");
-    println!("cargo:rerun-if-changed=frontend/src/room_allocator.tsx");
+
+    println!("cargo:rerun-if-changed=frontend/src");
     println!("cargo:rerun-if-changed=frontend/vite.config.ts");
 
+    for (src_name, dst_name) in &files_to_copy {
+        let src = frontend_dist.join(src_name);
+        let dst = out_dir_path.join(dst_name);
+        std::fs::copy(&src, &dst).unwrap_or_else(|e| {
+            panic!("Failed to copy {:?} to {:?}: {}", src, dst, e)
+        });
+    }
+
     lalrpop::process_root().unwrap();
-
-    println!("cargo:rustc-env=DRAW_EDITOR_JS_PATH=static/dist/draw-editor.js");
-
-    println!("cargo:rustc-env=DRAW_EDITOR_CSS_PATH=static/dist/style.css");
-
-    println!(
-        "cargo:rustc-env=DRAW_ROOM_ALLOCATOR_JS_PATH=static/dist/draw-room-allocator.js"
-    );
-
-    println!(
-        "cargo:rustc-env=DRAW_ROOM_ALLOCATOR_CSS_PATH=static/dist/store.css"
-    );
-
-    println!("cargo:rustc-env=STORE_JS_PATH=static/dist/store.js");
-
-    println!("cargo:rustc-env=STORE_CSS_PATH=static/dist/store.css");
 }

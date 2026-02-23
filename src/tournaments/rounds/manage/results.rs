@@ -182,6 +182,57 @@ pub async fn set_round_completed(
             .execute(&mut *conn)
             .unwrap();
     } else {
+        // Enforce invariant: can only complete if all non-trainee judges have submitted ballots
+        // and there are no conflicts.
+        let draw = crate::tournaments::rounds::draws::RoundDrawRepr::of_round(
+            round.clone(),
+            &mut *conn,
+        );
+        for debate in draw.debates {
+            let ballots = debate.latest_ballots(&mut *conn);
+            let non_trainee_judges: Vec<_> = debate
+                .judges_of_debate
+                .iter()
+                .filter(|j| j.status != "T")
+                .collect();
+
+            let all_non_trainees_submitted =
+                non_trainee_judges.iter().all(|judge| {
+                    ballots
+                        .iter()
+                        .any(|b| b.metadata.judge_id == judge.judge_id)
+                });
+
+            if !all_non_trainees_submitted {
+                return bad_request(
+                    Page::new()
+                        .tournament(tournament.clone())
+                        .user(user)
+                        .body(maud! {
+                            (crate::widgets::alert::ErrorAlert { msg: "Cannot mark round as complete: missing ballots for debate {}" })
+                        })
+                        .render(),
+                );
+            }
+
+            let problems = crate::tournaments::rounds::ballots::BallotRepr::problems_of_set(
+                &ballots,
+                &tournament,
+                &debate,
+            );
+            if !problems.is_empty() {
+                return bad_request(
+                    Page::new()
+                        .tournament(tournament.clone())
+                        .user(user)
+                        .body(maud! {
+                            (crate::widgets::alert::ErrorAlert { msg: "Cannot mark round as complete: conflicting ballots for debate {}" })
+                        })
+                        .render(),
+                );
+            }
+        }
+
         diesel::update(tournament_rounds::table.find(&round.id))
             .set(tournament_rounds::completed.eq(true))
             .execute(&mut *conn)

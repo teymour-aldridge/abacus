@@ -85,3 +85,8 @@ impl From<diesel::result::Error> for FailureResponse {
         }
     }
 }
+
+pub fn bad_request_from_string(msg: String) -> FailureResponse {
+    use hypertext::{Renderable, maud, prelude::*};
+    FailureResponse::BadRequest(maud! { p { (msg) } }.render())
+}

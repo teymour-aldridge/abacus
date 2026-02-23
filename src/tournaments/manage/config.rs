@@ -18,6 +18,12 @@ use crate::{
 };
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+/// This struct is used to marshall the tournament configuration to and from
+/// the TOML format the user supplies.
+//
+// TODO: either we need to build default presets (e.g. a BP preset, WSDC preset)
+// and provide a pane where these can be selected, or build a graphical
+// interface for configuring tournament options
 pub struct TournamentConfig {
     pub team_tab_public: bool,
     pub speaker_tab_public: bool,
@@ -29,8 +35,12 @@ pub struct TournamentConfig {
     pub reply_speakers: bool,
     pub reply_must_speak: bool,
     pub max_substantive_speech_index_for_reply: Option<i64>,
-    pub substantive_speech_min_speak: f32,
-    pub substantive_speech_max_speak: f32,
+    pub require_prelim_substantive_speaks: bool,
+    pub require_prelim_speaker_order: bool,
+    pub require_elim_substantive_speaks: bool,
+    pub require_elim_speaker_order: bool,
+    pub substantive_speech_min_speak: Option<f32>,
+    pub substantive_speech_max_speak: Option<f32>,
     pub substantive_speech_step: f32,
     pub reply_speech_min_speak: Option<f32>,
     pub reply_speech_max_speak: Option<f32>,
@@ -71,17 +81,19 @@ pub fn config_of_tournament(tournament: &Tournament) -> TournamentConfig {
         speaker_standings_metrics: tournament.speaker_standings_metrics.clone(),
         exclude_from_speaker_standings_after: tournament
             .exclude_from_speaker_standings_after,
-        substantive_speech_min_speak: tournament
-            .substantive_speech_min_speak
-            .unwrap_or(0.0),
-        substantive_speech_max_speak: tournament
-            .substantive_speech_max_speak
-            .unwrap_or(100.0),
+        substantive_speech_min_speak: tournament.substantive_speech_min_speak,
+        substantive_speech_max_speak: tournament.substantive_speech_max_speak,
         substantive_speech_step: tournament
             .substantive_speech_step
             .unwrap_or(0.5),
         reply_speech_min_speak: tournament.reply_speech_min_speak,
         reply_speech_max_speak: tournament.reply_speech_max_speak,
+        require_prelim_substantive_speaks: tournament
+            .require_prelim_substantive_speaks,
+        require_prelim_speaker_order: tournament.require_prelim_speaker_order,
+        require_elim_substantive_speaks: tournament
+            .require_elim_substantive_speaks,
+        require_elim_speaker_order: tournament.require_elim_speaker_order,
     }
 }
 
@@ -202,6 +214,24 @@ pub async fn update_tournament_configuration(
             .eq(new_config.speaker_standings_metrics),
         tournaments::exclude_from_speaker_standings_after
             .eq(new_config.exclude_from_speaker_standings_after),
+        tournaments::substantive_speech_min_speak
+            .eq(new_config.substantive_speech_min_speak),
+        tournaments::substantive_speech_max_speak
+            .eq(new_config.substantive_speech_max_speak),
+        tournaments::substantive_speech_step
+            .eq(Some(new_config.substantive_speech_step)),
+        tournaments::reply_speech_min_speak
+            .eq(new_config.reply_speech_min_speak),
+        tournaments::reply_speech_max_speak
+            .eq(new_config.reply_speech_max_speak),
+        tournaments::require_prelim_substantive_speaks
+            .eq(new_config.require_prelim_substantive_speaks),
+        tournaments::require_prelim_speaker_order
+            .eq(new_config.require_prelim_speaker_order),
+        tournaments::require_elim_substantive_speaks
+            .eq(new_config.require_elim_substantive_speaks),
+        tournaments::require_elim_speaker_order
+            .eq(new_config.require_elim_speaker_order),
     ))
     .execute(&mut *conn)
     .unwrap();

@@ -237,9 +237,31 @@ impl DebateRepr {
         })
     }
 
-    /// Retrieve all the ballots that have been submitted for this debate.
+    /// Retrieve the most recent ballot submitted by each judge for this debate.
+    // TODO: select latest using SQL rather than ad-hoc Rust impl of what should be
+    //       query logic
     #[tracing::instrument(skip(conn))]
-    pub fn ballots(
+    pub fn latest_ballots(
+        &self,
+        conn: &mut impl LoadConnection<Backend = Sqlite>,
+    ) -> Vec<BallotRepr> {
+        let all_ballots = self.ballot_history(conn);
+
+        let mut latest = HashMap::new();
+        for ballot in all_ballots {
+            let judge_id = &ballot.metadata.judge_id;
+            // Since they are ordered by submitted_at desc, the first one we see is the latest
+            if !latest.contains_key(judge_id) {
+                latest.insert(judge_id.clone(), ballot);
+            }
+        }
+        latest.into_values().collect()
+    }
+
+    /// Retrieve all the ballots that have been submitted for this debate, including history.
+    /// Ordered by submitted_at descending (newest first).
+    #[tracing::instrument(skip(conn))]
+    pub fn ballot_history(
         &self,
         conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Vec<BallotRepr> {

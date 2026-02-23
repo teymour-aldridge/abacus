@@ -376,7 +376,7 @@ pub fn update_debate_status(
     tournament: &Tournament,
     conn: &mut impl LoadConnection<Backend = Sqlite>,
 ) {
-    let ballots = debate.ballots(conn);
+    let ballots = debate.latest_ballots(conn);
 
     let non_trainee_judges: Vec<_> = debate
         .judges_of_debate
@@ -448,4 +448,311 @@ pub struct BallotScore {
     pub speaker_id: String,
     pub speaker_position: i64,
     pub score: Option<f32>,
+}
+
+use crate::tournaments::participants::TournamentParticipants;
+use uuid::Uuid;
+
+pub struct BallotTeamSpeakersBuilder<'a> {
+    tournament: &'a Tournament,
+    participants: &'a TournamentParticipants,
+    records_scores: bool,
+    records_positions: bool,
+    expected_speakers: usize,
+
+    scores: Vec<(String, Option<f32>)>,
+}
+
+impl<'a> BallotTeamSpeakersBuilder<'a> {
+    pub fn new(
+        tournament: &'a Tournament,
+        participants: &'a TournamentParticipants,
+        records_scores: bool,
+        records_positions: bool,
+    ) -> Self {
+        let expected_speakers = tournament.substantive_speakers as usize
+            + if tournament.reply_speakers { 1 } else { 0 };
+        Self {
+            tournament,
+            participants,
+            records_scores,
+            records_positions,
+            expected_speakers,
+            scores: Vec::new(),
+        }
+    }
+
+    pub fn add_speaker(
+        mut self,
+        speaker_id: &str,
+        score: Option<f32>,
+    ) -> Result<Self, String> {
+        if !self.records_positions {
+            return Err(
+                "Error: speakers should not be submitted for this round type"
+                    .into(),
+            );
+        }
+
+        let position = self.scores.len();
+        if position >= self.expected_speakers {
+            return Err("Error: too many speakers added".into());
+        }
+
+        let score = if self.records_scores {
+            if let Some(score_val) = score {
+                let speaker_name = self
+                    .participants
+                    .speakers
+                    .get(speaker_id)
+                    .map(|s| s.name.clone())
+                    .unwrap_or_default();
+
+                let dec = rust_decimal::Decimal::from_f32_retain(score_val)
+                    .ok_or("Invalid score")?;
+
+                self.tournament
+                    .check_score_valid(
+                        dec,
+                        position
+                            >= self.tournament.substantive_speakers as usize,
+                        speaker_name,
+                    )
+                    .map_err(|e| e)?;
+            }
+            score
+        } else {
+            None
+        };
+
+        self.scores.push((speaker_id.to_string(), score));
+        Ok(self)
+    }
+
+    pub fn build(self) -> Result<Vec<(String, Option<f32>)>, String> {
+        if self.records_positions && self.scores.len() != self.expected_speakers
+        {
+            return Err("Error: missing speaker information".into());
+        }
+        Ok(self.scores)
+    }
+}
+
+pub struct BallotBuilder<'a> {
+    tournament: &'a Tournament,
+    debate: &'a DebateRepr,
+    participants: &'a TournamentParticipants,
+    metadata: BallotMetadata,
+
+    records_positions: bool,
+    records_scores: bool,
+    is_elim: bool,
+    num_advancing: usize,
+
+    scores: Vec<BallotScore>,
+    advancing_team_ids: Vec<String>,
+    teams_added: usize,
+}
+
+impl<'a> BallotBuilder<'a> {
+    pub fn new(
+        tournament: &'a Tournament,
+        debate: &'a DebateRepr,
+        round: &crate::tournaments::rounds::Round,
+        participants: &'a TournamentParticipants,
+        mut metadata: BallotMetadata,
+        expected_version: i64,
+        prior_version: i64,
+        conn: &mut impl LoadConnection<Backend = Sqlite>,
+    ) -> Result<Self, String> {
+        if expected_version != prior_version {
+            return Err("Error: The ballot has been modified since you started editing. Please reload the page to see the latest version.".into());
+        }
+        if !debate.motions.contains_key(&metadata.motion_id) {
+            return Err("Error: invalid motion".into());
+        }
+
+        metadata.version = prior_version + 1;
+
+        let num_advancing =
+            num_advancing_for_elim_round(tournament, round, conn);
+
+        Ok(Self {
+            tournament,
+            debate,
+            participants,
+            metadata,
+            records_positions: tournament.round_requires_speaker_order(round),
+            records_scores: tournament.round_requires_speaks(round),
+            is_elim: round.is_elim(),
+            num_advancing,
+            scores: Vec::new(),
+            advancing_team_ids: Vec::new(),
+            teams_added: 0,
+        })
+    }
+
+    pub fn team_speakers_builder(&self) -> BallotTeamSpeakersBuilder<'a> {
+        BallotTeamSpeakersBuilder::new(
+            self.tournament,
+            self.participants,
+            self.records_scores,
+            self.records_positions,
+        )
+    }
+
+    pub fn add_team(
+        &mut self,
+        side: usize,
+        seq: usize,
+        speakers: Vec<(String, Option<f32>)>,
+        points: Option<usize>,
+    ) -> Result<(), String> {
+        let dt = self.debate.team_of_side_and_seq(side as i64, seq as i64);
+
+        if !self.records_positions && !speakers.is_empty() {
+            return Err(
+                "Error: speakers should not be submitted for this round type"
+                    .into(),
+            );
+        }
+
+        for (j, (speaker_id, score)) in speakers.into_iter().enumerate() {
+            self.scores.push(BallotScore {
+                id: Uuid::now_v7().to_string(),
+                tournament_id: self.tournament.id.clone(),
+                ballot_id: self.metadata.id.clone(),
+                team_id: dt.team_id.clone(),
+                speaker_id,
+                speaker_position: j as i64,
+                score,
+            });
+        }
+
+        if self.is_elim {
+            if points == Some(1) {
+                self.advancing_team_ids.push(dt.team_id.clone());
+            }
+        }
+
+        self.teams_added += 1;
+        Ok(())
+    }
+
+    pub fn build(self) -> Result<BallotRepr, String> {
+        let expected_teams = (self.tournament.teams_per_side * 2) as usize;
+        if self.teams_added != expected_teams {
+            return Err("Error: incorrect number of teams submitted".into());
+        }
+
+        let team_ranks = if self.is_elim {
+            if self.advancing_team_ids.len() != self.num_advancing {
+                return Err(format!(
+                    "Error: expected {} advancing team(s), but {} were selected",
+                    self.num_advancing,
+                    self.advancing_team_ids.len()
+                ));
+            }
+            build_team_ranks_from_advancing(
+                &self.advancing_team_ids,
+                &self.metadata.id,
+                &self.tournament.id,
+                self.debate,
+            )
+        } else {
+            build_team_ranks_from_scores(
+                &self.scores,
+                &self.metadata.id,
+                &self.tournament.id,
+                self.debate,
+                self.tournament,
+            )
+        };
+
+        Ok(BallotRepr::new_prelim(
+            self.metadata,
+            self.scores,
+            team_ranks,
+        ))
+    }
+}
+
+fn num_advancing_for_elim_round(
+    tournament: &Tournament,
+    round: &crate::tournaments::rounds::Round,
+    conn: &mut impl LoadConnection<Backend = Sqlite>,
+) -> usize {
+    let total_teams = (tournament.teams_per_side * 2) as usize;
+    if total_teams == 2 {
+        1
+    } else if round.is_final_of_break_category(conn) {
+        1
+    } else {
+        total_teams / 2
+    }
+}
+
+/// Build team rank entries from speaker scores.
+///
+/// Teams receive one point for each team that they beat.
+fn build_team_ranks_from_scores(
+    scores: &[BallotScore],
+    ballot_id: &str,
+    tournament_id: &str,
+    debate: &DebateRepr,
+    tournament: &Tournament,
+) -> Vec<BallotTeamRank> {
+    let n_teams = (tournament.teams_per_side * 2) as usize;
+
+    let mut team_totals: Vec<(String, f64)> = Vec::new();
+    for dt in &debate.teams_of_debate {
+        let total: f64 = scores
+            .iter()
+            .filter(|s| s.team_id == dt.team_id)
+            .filter_map(|s| s.score.map(|v| v as f64))
+            .sum();
+        team_totals.push((dt.team_id.clone(), total));
+    }
+
+    team_totals.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    // Assign points: in a 2-team format, winner=1, loser=0.
+    // In a 4-team format, 1st=3, 2nd=2, 3rd=1, 4th=0.
+    team_totals
+        .iter()
+        .enumerate()
+        .map(|(rank, (team_id, _))| BallotTeamRank {
+            id: Uuid::now_v7().to_string(),
+            tournament_id: tournament_id.to_string(),
+            ballot_id: ballot_id.to_string(),
+            team_id: team_id.clone(),
+            points: (n_teams - 1 - rank) as i64,
+        })
+        .collect()
+}
+
+/// For advancing rounds we adopt the convention that advancing teams receive
+/// one point and that eliminated teams receive zero points.
+fn build_team_ranks_from_advancing(
+    advancing_team_ids: &[String],
+    ballot_id: &str,
+    tournament_id: &str,
+    debate: &DebateRepr,
+) -> Vec<BallotTeamRank> {
+    debate
+        .teams_of_debate
+        .iter()
+        .map(|dt| {
+            let is_advancing = advancing_team_ids.contains(&dt.team_id);
+            BallotTeamRank {
+                id: Uuid::now_v7().to_string(),
+                tournament_id: tournament_id.to_string(),
+                ballot_id: ballot_id.to_string(),
+                team_id: dt.team_id.clone(),
+                points: is_advancing as i64,
+            }
+        })
+        .collect()
 }

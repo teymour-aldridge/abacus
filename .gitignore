@@ -15,3 +15,5 @@ static/
 
 .DS_Store
 fuzz/Cargo.lock
+
+.sass-cache

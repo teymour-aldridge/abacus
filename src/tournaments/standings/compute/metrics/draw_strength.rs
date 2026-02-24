@@ -3,9 +3,7 @@ use std::collections::HashMap;
 use diesel::prelude::*;
 use rust_decimal::prelude::ToPrimitive;
 
-use crate::schema::{
-    tournament_debate_teams, tournament_debates, tournament_rounds,
-};
+use crate::schema::{debates, rounds, teams_of_debate};
 
 pub fn draw_strength_of_teams(
     (tid, team_points): (&str, HashMap<String, rust_decimal::Decimal>),
@@ -13,24 +11,17 @@ pub fn draw_strength_of_teams(
         Backend = diesel::sqlite::Sqlite,
     >,
 ) -> HashMap<String, i64> {
-    let teams_of_debate: Vec<(String, String)> =
-        tournament_debates::table
-            .inner_join(
-                tournament_rounds::table
-                    .on(tournament_rounds::id.eq(tournament_debates::round_id)),
-            )
-            .filter(
-                tournament_rounds::completed
-                    .eq(true)
-                    .and(tournament_rounds::kind.eq("P")),
-            )
-            .filter(tournament_rounds::tournament_id.eq(tid))
-            .inner_join(tournament_debate_teams::table.on(
-                tournament_debate_teams::debate_id.eq(tournament_debates::id),
-            ))
-            .select((tournament_debates::id, tournament_debate_teams::team_id))
-            .load::<(String, String)>(conn)
-            .unwrap();
+    let teams_of_debate: Vec<(String, String)> = debates::table
+        .inner_join(rounds::table.on(rounds::id.eq(debates::round_id)))
+        .filter(rounds::completed.eq(true).and(rounds::kind.eq("P")))
+        .filter(rounds::tournament_id.eq(tid))
+        .inner_join(
+            teams_of_debate::table
+                .on(teams_of_debate::debate_id.eq(debates::id)),
+        )
+        .select((debates::id, teams_of_debate::team_id))
+        .load::<(String, String)>(conn)
+        .unwrap();
     let teams_of_debate = teams_of_debate.into_iter().fold(
         HashMap::new(),
         |mut map, (debate, team)| {

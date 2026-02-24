@@ -11,7 +11,7 @@ use uuid::Uuid;
 use crate::{
     auth::User,
     msg::{Msg, MsgContents},
-    schema::{tournament_institutions, tournament_teams},
+    schema::{institutions, teams},
     state::Conn,
     template::Page,
     tournaments::{
@@ -39,8 +39,8 @@ pub async fn create_teams_page(
         &mut *conn,
     )?;
 
-    let institutions = tournament_institutions::table
-        .filter(tournament_institutions::tournament_id.eq(&tournament.id))
+    let institutions = institutions::table
+        .filter(institutions::tournament_id.eq(&tournament.id))
         .load::<Institution>(&mut *conn)
         .unwrap();
     let institution_selector =
@@ -106,8 +106,8 @@ pub async fn do_create_team(
 
     let inst = match id {
         Some(inst) => {
-            match tournament_institutions::table
-                .filter(tournament_institutions::id.eq(inst))
+            match institutions::table
+                .filter(institutions::id.eq(inst))
                 .first::<Institution>(&mut *conn)
                 .optional()
                 .unwrap()
@@ -132,12 +132,12 @@ pub async fn do_create_team(
     };
 
     let exists = diesel::dsl::select(diesel::dsl::exists(
-        tournament_teams::table.filter(
-            tournament_teams::tournament_id
+        teams::table.filter(
+            teams::tournament_id
                 .eq(&tid)
-                .and(tournament_teams::name.eq(&form.name))
+                .and(teams::name.eq(&form.name))
                 .and(
-                    tournament_teams::institution_id
+                    teams::institution_id
                         .eq(inst.as_ref().map(|inst| inst.id.clone())),
                 ),
         ),
@@ -162,10 +162,10 @@ pub async fn do_create_team(
 
     tracing::trace!("Team does not exist, proceeding to create");
 
-    let next_number = tournament_teams::table
-        .filter(tournament_teams::tournament_id.eq(&tid))
-        .order_by(tournament_teams::number.desc())
-        .select(tournament_teams::number)
+    let next_number = teams::table
+        .filter(teams::tournament_id.eq(&tid))
+        .order_by(teams::number.desc())
+        .select(teams::number)
         .first::<i64>(&mut *conn)
         .optional()
         .unwrap()
@@ -173,14 +173,13 @@ pub async fn do_create_team(
         + 1;
 
     let id = Uuid::now_v7().to_string();
-    let n = diesel::insert_into(tournament_teams::table)
+    let n = diesel::insert_into(teams::table)
         .values((
-            (tournament_teams::id.eq(&id)),
-            tournament_teams::tournament_id.eq(&tid),
-            tournament_teams::name.eq(&form.name),
-            tournament_teams::institution_id
-                .eq(inst.as_ref().map(|inst| inst.id.clone())),
-            tournament_teams::number.eq(next_number),
+            (teams::id.eq(&id)),
+            teams::tournament_id.eq(&tid),
+            teams::name.eq(&form.name),
+            teams::institution_id.eq(inst.as_ref().map(|inst| inst.id.clone())),
+            teams::number.eq(next_number),
         ))
         .execute(&mut *conn)
         .unwrap();

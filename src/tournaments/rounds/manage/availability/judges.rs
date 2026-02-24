@@ -26,10 +26,7 @@ use crate::tournaments::rounds::TournamentRounds;
 use crate::util_resp::{see_other_ok, success};
 use crate::{
     auth::User,
-    schema::{
-        tournament_judge_availability, tournament_judge_stated_eligibility,
-        tournament_judges, tournament_rounds,
-    },
+    schema::{judge_availability, judge_stated_eligibility, judges, rounds},
     state::Conn,
     tournaments::{
         Tournament,
@@ -133,59 +130,45 @@ pub async fn view_judge_availability(
         return err_not_found();
     }
 
-    let judges_of_tournament = tournament_judges::table
-        .filter(tournament_judges::tournament_id.eq(&tournament_id));
+    let judges_of_tournament =
+        judges::table.filter(judges::tournament_id.eq(&tournament_id));
 
-    let tournament_judges = judges_of_tournament
-        .order_by(tournament_judges::id.asc())
+    let judges = judges_of_tournament
+        .order_by(judges::id.asc())
         .load::<Judge>(&mut *conn)
         .unwrap();
 
     let judge_availability = judges_of_tournament
         .inner_join(
-            tournament_rounds::table.on(tournament_rounds::tournament_id
+            rounds::table.on(rounds::tournament_id
                 .eq(tournament_id.clone())
-                .and(tournament_rounds::seq.eq(round_seq))),
+                .and(rounds::seq.eq(round_seq))),
         )
         .left_outer_join(
-            tournament_judge_availability::table.on(
-                tournament_judge_availability::judge_id
-                    .eq(tournament_judges::id)
-                    .and(
-                        tournament_judge_availability::round_id
-                            .eq(tournament_rounds::id),
-                    ),
-            ),
+            judge_availability::table.on(judge_availability::judge_id
+                .eq(judges::id)
+                .and(judge_availability::round_id.eq(rounds::id))),
         )
         .left_outer_join(
-            tournament_judge_stated_eligibility::table.on(
-                tournament_judge_stated_eligibility::judge_id
-                    .eq(tournament_judges::id)
-                    .and(
-                        tournament_judge_stated_eligibility::round_id
-                            .eq(tournament_rounds::id),
-                    ),
+            judge_stated_eligibility::table.on(
+                judge_stated_eligibility::judge_id
+                    .eq(judges::id)
+                    .and(judge_stated_eligibility::round_id.eq(rounds::id)),
             ),
         )
         .select((
-            tournament_judges::id,
-            tournament_rounds::id,
+            judges::id,
+            rounds::id,
             case_when(
-                tournament_judge_stated_eligibility::available
-                    .nullable()
-                    .is_not_null(),
-                tournament_judge_stated_eligibility::available
+                judge_stated_eligibility::available.nullable().is_not_null(),
+                judge_stated_eligibility::available
                     .nullable()
                     .assume_not_null(),
             )
             .otherwise(false),
             case_when(
-                tournament_judge_availability::available
-                    .nullable()
-                    .is_not_null(),
-                tournament_judge_availability::available
-                    .nullable()
-                    .assume_not_null(),
+                judge_availability::available.nullable().is_not_null(),
+                judge_availability::available.nullable().assume_not_null(),
             )
             .otherwise(false),
         ))
@@ -200,7 +183,7 @@ pub async fn view_judge_availability(
     let tournament_id_clone = tournament_id.clone();
     let table = JudgeAvailabilityTable {
         tournament_id: &tournament_id_clone,
-        judges: &tournament_judges,
+        judges: &judges,
         rounds: &current_rounds.clone(),
         judge_availability: &judge_availability,
     };
@@ -279,10 +262,10 @@ pub async fn judge_availability_updates(
     }
 
     let rounds_exist = diesel::dsl::select(diesel::dsl::exists(
-        tournament_rounds::table.filter(
-            tournament_rounds::tournament_id
+        rounds::table.filter(
+            rounds::tournament_id
                 .eq(tournament_id.to_string())
-                .and(tournament_rounds::seq.eq(round_seq)),
+                .and(rounds::seq.eq(round_seq)),
         ),
     ))
     .get_result::<bool>(&mut conn)
@@ -325,59 +308,63 @@ async fn handle_socket(
                     let table_html = spawn_blocking(move || {
                         let mut conn = pool1.get().unwrap();
 
-                        let rounds = Round::of_seq(round_seq, &tournament.id, &mut *conn);
+                        let rounds = Round::of_seq(
+                            round_seq,
+                            &tournament.id,
+                            &mut *conn,
+                        );
 
-                        let judges_of_tournament = tournament_judges::table
-                            .filter(tournament_judges::tournament_id.eq(&tournament_id));
+                        let judges_of_tournament = judges::table
+                            .filter(judges::tournament_id.eq(&tournament_id));
 
-                        let tournament_judges = judges_of_tournament
-                            .order_by(tournament_judges::id.asc())
+                        let judges = judges_of_tournament
+                            .order_by(judges::id.asc())
                             .load::<Judge>(&mut *conn)
                             .unwrap();
 
                         let judge_availability = judges_of_tournament
                             .inner_join(
-                                tournament_rounds::table.on(tournament_rounds::tournament_id
+                                rounds::table.on(rounds::tournament_id
                                     .eq(tournament_id.clone())
-                                    .and(tournament_rounds::seq.eq(round_seq))),
+                                    .and(rounds::seq.eq(round_seq))),
                             )
                             .left_outer_join(
-                                tournament_judge_availability::table.on(
-                                    tournament_judge_availability::judge_id
-                                        .eq(tournament_judges::id)
+                                judge_availability::table.on(
+                                    judge_availability::judge_id
+                                        .eq(judges::id)
                                         .and(
-                                            tournament_judge_availability::round_id
-                                                .eq(tournament_rounds::id),
+                                            judge_availability::round_id
+                                                .eq(rounds::id),
                                         ),
                                 ),
                             )
                             .left_outer_join(
-                                tournament_judge_stated_eligibility::table.on(
-                                    tournament_judge_stated_eligibility::judge_id
-                                        .eq(tournament_judges::id)
+                                judge_stated_eligibility::table.on(
+                                    judge_stated_eligibility::judge_id
+                                        .eq(judges::id)
                                         .and(
-                                            tournament_judge_stated_eligibility::round_id
-                                                .eq(tournament_rounds::id),
+                                            judge_stated_eligibility::round_id
+                                                .eq(rounds::id),
                                         ),
                                 ),
                             )
                             .select((
-                                tournament_judges::id,
-                                tournament_rounds::id,
+                                judges::id,
+                                rounds::id,
                                 case_when(
-                                    tournament_judge_stated_eligibility::available
+                                    judge_stated_eligibility::available
                                         .nullable()
                                         .is_null(),
-                                    tournament_judge_stated_eligibility::available
+                                    judge_stated_eligibility::available
                                         .nullable()
                                         .assume_not_null(),
                                 )
                                 .otherwise(false),
                                 case_when(
-                                    tournament_judge_availability::available
+                                    judge_availability::available
                                         .nullable()
                                         .is_null(),
-                                    tournament_judge_availability::available
+                                    judge_availability::available
                                         .nullable()
                                         .assume_not_null(),
                                 )
@@ -393,7 +380,7 @@ async fn handle_socket(
 
                         let table = JudgeAvailabilityTable {
                             tournament_id: &tournament_id,
-                            judges: &tournament_judges,
+                            judges: &judges,
                             rounds: &rounds.clone(),
                             judge_availability: &judge_availability,
                         };
@@ -445,11 +432,11 @@ pub async fn update_judge_availability(
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
-    let round = match tournament_rounds::table
+    let round = match rounds::table
         .filter(
-            tournament_rounds::tournament_id
+            rounds::tournament_id
                 .eq(&tournament.id)
-                .and(tournament_rounds::id.eq(&round_id)),
+                .and(rounds::id.eq(&round_id)),
         )
         .first::<Round>(&mut *conn)
         .optional()
@@ -477,11 +464,11 @@ pub async fn update_judge_availability(
         );
     }
 
-    let judge = match tournament_judges::table
+    let judge = match judges::table
         .filter(
-            tournament_judges::id
+            judges::id
                 .eq(&form.judge)
-                .and(tournament_judges::tournament_id.eq(&tournament.id)),
+                .and(judges::tournament_id.eq(&tournament.id)),
         )
         .first::<Judge>(&mut *conn)
         .optional()
@@ -491,45 +478,42 @@ pub async fn update_judge_availability(
         None => return err_not_found(),
     };
 
-    let n = diesel::insert_into(tournament_judge_availability::table)
+    let n = diesel::insert_into(judge_availability::table)
         .values((
-            tournament_judge_availability::id.eq(Uuid::now_v7().to_string()),
-            tournament_judge_availability::round_id.eq(&round.id),
-            tournament_judge_availability::judge_id.eq(&judge.id),
-            tournament_judge_availability::available.eq(!available),
+            judge_availability::id.eq(Uuid::now_v7().to_string()),
+            judge_availability::round_id.eq(&round.id),
+            judge_availability::judge_id.eq(&judge.id),
+            judge_availability::available.eq(!available),
         ))
         .on_conflict((
-            tournament_judge_availability::round_id,
-            tournament_judge_availability::judge_id,
+            judge_availability::round_id,
+            judge_availability::judge_id,
         ))
         .do_update()
-        .set(tournament_judge_availability::available.eq(!available))
+        .set(judge_availability::available.eq(!available))
         .execute(&mut *conn)
         .unwrap();
     assert_eq!(n, 1);
 
     diesel::update(
-        tournament_judge_availability::table.filter(
-            tournament_judge_availability::judge_id.eq(&judge.id).and(
+        judge_availability::table.filter(
+            judge_availability::judge_id.eq(&judge.id).and(
                 diesel::dsl::exists(
-                    tournament_rounds::table.filter(
-                        tournament_rounds::tournament_id
+                    rounds::table.filter(
+                        rounds::tournament_id
                             .eq(&tournament.id)
                             .and(
-                                tournament_rounds::seq
+                                rounds::seq
                                     .eq(round.seq)
-                                    .and(tournament_rounds::id.ne(&round.id)),
+                                    .and(rounds::id.ne(&round.id)),
                             )
-                            .and(
-                                tournament_judge_availability::round_id
-                                    .eq(tournament_rounds::id),
-                            ),
+                            .and(judge_availability::round_id.eq(rounds::id)),
                     ),
                 ),
             ),
         ),
     )
-    .set(tournament_judge_availability::available.eq(false))
+    .set(judge_availability::available.eq(false))
     .execute(&mut *conn)
     .unwrap();
 
@@ -568,57 +552,52 @@ pub async fn update_judge_availability_for_all(
                 TournamentParticipants::load(&tournament.id, &mut *conn);
 
             for (_, judge) in participants.judges {
-                let n =
-                    diesel::insert_into(tournament_judge_availability::table)
-                        .values((
-                            tournament_judge_availability::id
-                                .eq(Uuid::now_v7().to_string()),
-                            tournament_judge_availability::round_id
-                                .eq(&round.id),
-                            tournament_judge_availability::judge_id
-                                .eq(&judge.id),
-                            tournament_judge_availability::available.eq(true),
-                            tournament_judge_availability::tournament_id
-                                .eq(tournament.id.clone()),
-                        ))
-                        .on_conflict((
-                            tournament_judge_availability::round_id,
-                            tournament_judge_availability::judge_id,
-                        ))
-                        .do_update()
-                        .set(tournament_judge_availability::available.eq(true))
-                        .execute(&mut *conn)
-                        .unwrap();
+                let n = diesel::insert_into(judge_availability::table)
+                    .values((
+                        judge_availability::id.eq(Uuid::now_v7().to_string()),
+                        judge_availability::round_id.eq(&round.id),
+                        judge_availability::judge_id.eq(&judge.id),
+                        judge_availability::available.eq(true),
+                        judge_availability::tournament_id
+                            .eq(tournament.id.clone()),
+                    ))
+                    .on_conflict((
+                        judge_availability::round_id,
+                        judge_availability::judge_id,
+                    ))
+                    .do_update()
+                    .set(judge_availability::available.eq(true))
+                    .execute(&mut *conn)
+                    .unwrap();
                 assert_eq!(n, 1);
             }
 
             diesel::update(
-                tournament_judge_availability::table.filter(
-                    tournament_judge_availability::round_id.eq_any(
-                        tournament_rounds::table
+                judge_availability::table.filter(
+                    judge_availability::round_id.eq_any(
+                        rounds::table
                             .filter(
-                                tournament_rounds::tournament_id
+                                rounds::tournament_id
                                     .eq(&round.tournament_id)
-                                    .and(tournament_rounds::seq.eq(round.seq))
+                                    .and(rounds::seq.eq(round.seq))
                                     // don't want to mark unavailable for
                                     // current round
-                                    .and(tournament_rounds::id.ne(&round.id)),
+                                    .and(rounds::id.ne(&round.id)),
                             )
-                            .select(tournament_rounds::id),
+                            .select(rounds::id),
                     ),
                 ),
             )
-            .set(tournament_judge_availability::available.eq(false))
+            .set(judge_availability::available.eq(false))
             .execute(&mut *conn)
             .unwrap();
         }
         "out" => {
             diesel::update(
-                tournament_judge_availability::table.filter(
-                    tournament_judge_availability::round_id.eq(&round.id),
-                ),
+                judge_availability::table
+                    .filter(judge_availability::round_id.eq(&round.id)),
             )
-            .set(tournament_judge_availability::available.eq(false))
+            .set(judge_availability::available.eq(false))
             .execute(&mut *conn)
             .unwrap();
         }

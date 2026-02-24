@@ -5,7 +5,7 @@ use serde::Deserialize;
 
 use crate::{
     auth::User,
-    schema::tournament_rounds,
+    schema::rounds,
     state::Conn,
     template::Page,
     tournaments::{
@@ -28,9 +28,9 @@ pub async fn edit_round_page(
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
-    let round = match tournament_rounds::table
-        .filter(tournament_rounds::tournament_id.eq(&tid))
-        .filter(tournament_rounds::id.eq(&rid))
+    let round = match rounds::table
+        .filter(rounds::tournament_id.eq(&tid))
+        .filter(rounds::id.eq(&rid))
         .first::<Round>(&mut *conn)
         .optional()
         .unwrap()
@@ -117,9 +117,9 @@ pub async fn do_edit_round(
         );
     }
 
-    let round = match tournament_rounds::table
-        .filter(tournament_rounds::tournament_id.eq(&tid))
-        .filter(tournament_rounds::id.eq(&rid))
+    let round = match rounds::table
+        .filter(rounds::tournament_id.eq(&tid))
+        .filter(rounds::id.eq(&rid))
         .first::<Round>(&mut *conn)
         .optional()
         .unwrap()
@@ -128,9 +128,9 @@ pub async fn do_edit_round(
         None => return err_not_found(),
     };
 
-    let max = tournament_rounds::table
-        .filter(tournament_rounds::tournament_id.eq(&tid))
-        .select(diesel::dsl::max(tournament_rounds::seq))
+    let max = rounds::table
+        .filter(rounds::tournament_id.eq(&tid))
+        .select(diesel::dsl::max(rounds::seq))
         .get_result::<Option<i64>>(&mut *conn)
         .unwrap()
         .unwrap_or(1i64);
@@ -155,15 +155,13 @@ pub async fn do_edit_round(
         ));
     }
 
-    let n = diesel::update(
-        tournament_rounds::table.filter(tournament_rounds::id.eq(round.id)),
-    )
-    .set((
-        tournament_rounds::name.eq(&form.name),
-        tournament_rounds::seq.eq(&(form.seq as i64)),
-    ))
-    .execute(&mut *conn)
-    .unwrap();
+    let n = diesel::update(rounds::table.filter(rounds::id.eq(round.id)))
+        .set((
+            rounds::name.eq(&form.name),
+            rounds::seq.eq(&(form.seq as i64)),
+        ))
+        .execute(&mut *conn)
+        .unwrap();
     assert_eq!(n, 1);
 
     take_snapshot(&tid, &mut *conn);

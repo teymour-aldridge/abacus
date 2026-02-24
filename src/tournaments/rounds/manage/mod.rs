@@ -7,7 +7,7 @@ use itertools::Itertools;
 
 use crate::{
     auth::User,
-    schema::tournament_break_categories,
+    schema::break_categories,
     state::Conn,
     template::{ActiveNav, Page},
     tournaments::{
@@ -43,8 +43,8 @@ pub async fn manage_rounds_page(
     let rounds = TournamentRounds::fetch(&tid, &mut *conn)
         .expect("failed to retrieve rounds");
     let categories2rounds = rounds.categories();
-    let categories = tournament_break_categories::table
-        .filter(tournament_break_categories::tournament_id.eq(&tid))
+    let categories = break_categories::table
+        .filter(break_categories::tournament_id.eq(&tid))
         .load::<BreakCategory>(&mut *conn)
         .unwrap()
         .into_iter()

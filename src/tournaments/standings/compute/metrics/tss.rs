@@ -2,9 +2,9 @@ use std::collections::HashMap;
 
 use crate::{
     schema::{
-        tournament_debate_speaker_results, tournament_debates,
-        tournament_rounds::{self},
-        tournament_teams,
+        agg_speaker_results_of_debate, debates,
+        rounds::{self},
+        teams,
     },
     tournaments::standings::compute::metrics::completed_preliminary_rounds,
 };
@@ -16,31 +16,24 @@ pub fn total_speaker_score_of_team(
         Backend = diesel::sqlite::Sqlite,
     >,
 ) -> HashMap<String, rust_decimal::Decimal> {
-    tournament_teams::table
-        .filter(tournament_teams::tournament_id.eq(tid))
+    teams::table
+        .filter(teams::tournament_id.eq(tid))
         // for all completed preliminary rounds
         .inner_join(completed_preliminary_rounds())
+        .inner_join(debates::table.on(debates::round_id.eq(rounds::id)))
         .inner_join(
-            tournament_debates::table
-                .on(tournament_debates::round_id.eq(tournament_rounds::id)),
-        )
-        .inner_join(
-            tournament_debate_speaker_results::table.on(
-                tournament_debate_speaker_results::debate_id
-                    .eq(tournament_debates::id)
-                    .and(
-                        tournament_debate_speaker_results::team_id
-                            .eq(tournament_teams::id),
-                    ),
+            agg_speaker_results_of_debate::table.on(
+                agg_speaker_results_of_debate::debate_id
+                    .eq(debates::id)
+                    .and(agg_speaker_results_of_debate::team_id.eq(teams::id)),
             ),
         )
-        .group_by(tournament_teams::id)
+        .group_by(teams::id)
         .select((
-            tournament_teams::id,
+            teams::id,
             dsl::case_when(
-                dsl::sum(tournament_debate_speaker_results::score)
-                    .is_not_null(),
-                dsl::sum(tournament_debate_speaker_results::score)
+                dsl::sum(agg_speaker_results_of_debate::score).is_not_null(),
+                dsl::sum(agg_speaker_results_of_debate::score)
                     .assume_not_null(),
             )
             .otherwise(0.0),

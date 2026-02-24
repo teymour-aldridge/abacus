@@ -1,8 +1,6 @@
 use crate::{
     auth::User,
-    schema::{
-        rooms_of_room_categories, tournament_room_categories, tournament_rooms,
-    },
+    schema::{room_categories, rooms, rooms_of_category},
     state::Conn,
     template::Page,
     tournaments::{
@@ -48,14 +46,14 @@ pub async fn manage_rooms_page(
     let current_rounds =
         crate::tournaments::rounds::Round::current_rounds(&tid, &mut *conn);
 
-    let rooms = tournament_rooms::table
-        .filter(tournament_rooms::tournament_id.eq(&tid))
-        .order_by(tournament_rooms::priority.asc())
+    let rooms = rooms::table
+        .filter(rooms::tournament_id.eq(&tid))
+        .order_by(rooms::priority.asc())
         .load::<Room>(&mut *conn)
         .unwrap();
 
-    let categories = tournament_room_categories::table
-        .filter(tournament_room_categories::tournament_id.eq(&tid))
+    let categories = room_categories::table
+        .filter(room_categories::tournament_id.eq(&tid))
         .load::<RoomCategory>(&mut *conn)
         .unwrap();
 
@@ -63,8 +61,8 @@ pub async fn manage_rooms_page(
     let category_ids: Vec<String> =
         categories.iter().map(|c| c.id.clone()).collect();
 
-    let links = rooms_of_room_categories::table
-        .filter(rooms_of_room_categories::category_id.eq_any(&category_ids))
+    let links = rooms_of_category::table
+        .filter(rooms_of_category::category_id.eq_any(&category_ids))
         .load::<RoomsOfRoomCategory>(&mut *conn)
         .unwrap();
 
@@ -262,10 +260,10 @@ pub async fn create_room(
         name: form.name,
         url: None,
         priority: form.priority,
-        number: tournament_rooms::table
-            .filter(tournament_rooms::tournament_id.eq(&tournament.id))
-            .order_by(tournament_rooms::number.desc())
-            .select(tournament_rooms::number)
+        number: rooms::table
+            .filter(rooms::tournament_id.eq(&tournament.id))
+            .order_by(rooms::number.desc())
+            .select(rooms::number)
             .first(&mut *conn)
             .optional()
             .unwrap()
@@ -273,7 +271,7 @@ pub async fn create_room(
             .unwrap_or(0),
     };
 
-    diesel::insert_into(tournament_rooms::table)
+    diesel::insert_into(rooms::table)
         .values(&new_room)
         .execute(&mut *conn)
         .map_err(FailureResponse::from)?;
@@ -289,11 +287,9 @@ pub async fn delete_room(
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
-    diesel::delete(
-        tournament_rooms::table.filter(tournament_rooms::id.eq(room_id)),
-    )
-    .execute(&mut *conn)
-    .map_err(FailureResponse::from)?;
+    diesel::delete(rooms::table.filter(rooms::id.eq(room_id)))
+        .execute(&mut *conn)
+        .map_err(FailureResponse::from)?;
 
     see_other_ok(Redirect::to(&format!("/tournaments/{}/rooms", tid)))
 }
@@ -315,7 +311,7 @@ pub async fn create_category(
         description: form.description,
     };
 
-    diesel::insert_into(tournament_room_categories::table)
+    diesel::insert_into(room_categories::table)
         .values(&new_cat)
         .execute(&mut *conn)
         .map_err(FailureResponse::from)?;
@@ -332,8 +328,7 @@ pub async fn delete_category(
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
     diesel::delete(
-        tournament_room_categories::table
-            .filter(tournament_room_categories::id.eq(cat_id)),
+        room_categories::table.filter(room_categories::id.eq(cat_id)),
     )
     .execute(&mut *conn)
     .map_err(FailureResponse::from)?;
@@ -353,9 +348,9 @@ pub async fn add_room_to_category(
     use crate::tournaments::rooms::RoomsOfRoomCategory;
 
     // Check if relation already exists to avoid unique constraint error
-    let exists = rooms_of_room_categories::table
-        .filter(rooms_of_room_categories::category_id.eq(&cat_id))
-        .filter(rooms_of_room_categories::room_id.eq(&form.room_id))
+    let exists = rooms_of_category::table
+        .filter(rooms_of_category::category_id.eq(&cat_id))
+        .filter(rooms_of_category::room_id.eq(&form.room_id))
         .first::<RoomsOfRoomCategory>(&mut *conn)
         .optional()
         .map_err(FailureResponse::from)?;
@@ -367,7 +362,7 @@ pub async fn add_room_to_category(
             room_id: form.room_id,
         };
 
-        diesel::insert_into(rooms_of_room_categories::table)
+        diesel::insert_into(rooms_of_category::table)
             .values(&new_rel)
             .execute(&mut *conn)
             .map_err(FailureResponse::from)?;
@@ -386,9 +381,9 @@ pub async fn remove_room_from_category(
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
     diesel::delete(
-        rooms_of_room_categories::table
-            .filter(rooms_of_room_categories::category_id.eq(&cat_id))
-            .filter(rooms_of_room_categories::room_id.eq(&form.room_id)),
+        rooms_of_category::table
+            .filter(rooms_of_category::category_id.eq(&cat_id))
+            .filter(rooms_of_category::room_id.eq(&form.room_id)),
     )
     .execute(&mut *conn)
     .map_err(FailureResponse::from)?;

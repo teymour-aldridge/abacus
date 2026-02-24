@@ -2,10 +2,8 @@ use std::fs::File;
 
 use abacus::MIGRATIONS;
 use abacus::schema::{
-    tournament_break_categories, tournament_institutions, tournament_judges,
-    tournament_members, tournament_rooms, tournament_round_motions,
-    tournament_rounds, tournament_speakers, tournament_team_speakers,
-    tournament_teams, tournaments, users,
+    break_categories, institutions, judges, motions_of_round, org, rooms,
+    rounds, speakers, speakers_of_team, teams, tournaments, users,
 };
 use abacus::tournaments::config::{
     PullupMetric, RankableTeamMetric, SpeakerMetric,
@@ -139,12 +137,12 @@ fn main() {
         .execute(&mut conn)
         .unwrap();
 
-    diesel::insert_into(tournament_members::table)
+    diesel::insert_into(org::table)
         .values((
-            tournament_members::id.eq(Uuid::now_v7().to_string()),
-            tournament_members::user_id.eq(user_id),
-            tournament_members::tournament_id.eq(&tournament_id),
-            tournament_members::is_superuser.eq(true),
+            org::id.eq(Uuid::now_v7().to_string()),
+            org::user_id.eq(user_id),
+            org::tournament_id.eq(&tournament_id),
+            org::is_superuser.eq(true),
         ))
         .execute(&mut conn)
         .unwrap();
@@ -160,19 +158,17 @@ fn main() {
 
             let team_id = Uuid::now_v7().to_string();
 
-            diesel::insert_into(tournament_teams::table)
+            diesel::insert_into(teams::table)
                 .values((
-                    tournament_teams::id.eq(&team_id),
-                    tournament_teams::tournament_id.eq(&tournament_id),
-                    tournament_teams::name.eq(&team.full_name),
-                    tournament_teams::institution_id.eq(
-                        get_or_create_institution(
-                            &mut conn,
-                            &tournament_id,
-                            &team.institution,
-                        ),
-                    ),
-                    tournament_teams::number.eq(i as i64),
+                    teams::id.eq(&team_id),
+                    teams::tournament_id.eq(&tournament_id),
+                    teams::name.eq(&team.full_name),
+                    teams::institution_id.eq(get_or_create_institution(
+                        &mut conn,
+                        &tournament_id,
+                        &team.institution,
+                    )),
+                    teams::number.eq(i as i64),
                 ))
                 .execute(&mut conn)
                 .unwrap();
@@ -180,24 +176,22 @@ fn main() {
             for speaker in team.speakers {
                 let speaker_id = Uuid::now_v7().to_string();
 
-                diesel::insert_into(tournament_speakers::table)
+                diesel::insert_into(speakers::table)
                     .values((
-                        tournament_speakers::id.eq(&speaker_id),
-                        tournament_speakers::tournament_id.eq(&tournament_id),
-                        tournament_speakers::name.eq(&speaker.name),
-                        tournament_speakers::email.eq(&speaker.email.unwrap()),
-                        tournament_speakers::private_url
-                            .eq(Uuid::new_v4().to_string()),
+                        speakers::id.eq(&speaker_id),
+                        speakers::tournament_id.eq(&tournament_id),
+                        speakers::name.eq(&speaker.name),
+                        speakers::email.eq(&speaker.email.unwrap()),
+                        speakers::private_url.eq(Uuid::new_v4().to_string()),
                     ))
                     .execute(&mut conn)
                     .unwrap();
 
-                diesel::insert_into(tournament_team_speakers::table)
+                diesel::insert_into(speakers_of_team::table)
                     .values((
-                        tournament_team_speakers::id
-                            .eq(Uuid::now_v7().to_string()),
-                        tournament_team_speakers::team_id.eq(&team_id),
-                        tournament_team_speakers::speaker_id.eq(&speaker_id),
+                        speakers_of_team::id.eq(Uuid::now_v7().to_string()),
+                        speakers_of_team::team_id.eq(&team_id),
+                        speakers_of_team::speaker_id.eq(&speaker_id),
                     ))
                     .execute(&mut conn)
                     .unwrap();
@@ -214,25 +208,22 @@ fn main() {
             let team = result.unwrap();
             let judge: JudgeRow = team.deserialize(Some(&headers)).unwrap();
 
-            diesel::insert_into(tournament_judges::table)
+            diesel::insert_into(judges::table)
                 .values((
-                    tournament_judges::id.eq(Uuid::now_v7().to_string()),
-                    tournament_judges::tournament_id.eq(&tournament_id),
-                    tournament_judges::name.eq(judge.name),
-                    tournament_judges::email.eq(judge
+                    judges::id.eq(Uuid::now_v7().to_string()),
+                    judges::tournament_id.eq(&tournament_id),
+                    judges::name.eq(judge.name),
+                    judges::email.eq(judge
                         .email
                         // todo: allow missing emails for judges
                         .expect("todo: allow missing emails for judges")),
-                    tournament_judges::institution_id.eq(
-                        get_or_create_institution(
-                            &mut conn,
-                            &tournament_id,
-                            &judge.institution,
-                        ),
-                    ),
-                    tournament_judges::private_url
-                        .eq(Uuid::new_v4().to_string()),
-                    tournament_judges::number.eq(i as i64),
+                    judges::institution_id.eq(get_or_create_institution(
+                        &mut conn,
+                        &tournament_id,
+                        &judge.institution,
+                    )),
+                    judges::private_url.eq(Uuid::new_v4().to_string()),
+                    judges::number.eq(i as i64),
                 ))
                 .execute(&mut conn)
                 .unwrap();
@@ -248,13 +239,13 @@ fn main() {
             let room_rec = result.unwrap();
             let room: RoomRow = room_rec.deserialize(Some(&headers)).unwrap();
 
-            diesel::insert_into(tournament_rooms::table)
+            diesel::insert_into(rooms::table)
                 .values((
-                    tournament_rooms::id.eq(Uuid::now_v7().to_string()),
-                    tournament_rooms::tournament_id.eq(&tournament_id),
-                    tournament_rooms::name.eq(room.name),
-                    tournament_rooms::priority.eq(room.priority),
-                    tournament_rooms::number.eq(i as i64),
+                    rooms::id.eq(Uuid::now_v7().to_string()),
+                    rooms::tournament_id.eq(&tournament_id),
+                    rooms::name.eq(room.name),
+                    rooms::priority.eq(room.priority),
+                    rooms::number.eq(i as i64),
                 ))
                 .execute(&mut conn)
                 .unwrap();
@@ -263,12 +254,12 @@ fn main() {
 
     if args.rounds {
         let open = Uuid::now_v7().to_string();
-        diesel::insert_into(tournament_break_categories::table)
+        diesel::insert_into(break_categories::table)
             .values((
-                tournament_break_categories::id.eq(&open),
-                tournament_break_categories::tournament_id.eq(&tournament_id),
-                tournament_break_categories::name.eq("Open"),
-                tournament_break_categories::priority.eq(0),
+                break_categories::id.eq(&open),
+                break_categories::tournament_id.eq(&tournament_id),
+                break_categories::name.eq("Open"),
+                break_categories::priority.eq(0),
             ))
             .execute(&mut conn)
             .unwrap();
@@ -348,29 +339,28 @@ fn main() {
 
         for round in rounds {
             let round_id = Uuid::now_v7().to_string();
-            diesel::insert_into(tournament_rounds::table)
+            diesel::insert_into(rounds::table)
                 .values((
-                    tournament_rounds::id.eq(&round_id),
-                    tournament_rounds::tournament_id.eq(&tournament_id),
-                    tournament_rounds::seq.eq(round.0),
-                    tournament_rounds::name.eq(round.1),
-                    tournament_rounds::kind.eq(round.2),
-                    tournament_rounds::break_category.eq(round.3),
-                    tournament_rounds::completed.eq(false),
-                    tournament_rounds::draw_status.eq("none"),
-                    tournament_rounds::draw_released_at
-                        .eq(None::<NaiveDateTime>),
+                    rounds::id.eq(&round_id),
+                    rounds::tournament_id.eq(&tournament_id),
+                    rounds::seq.eq(round.0),
+                    rounds::name.eq(round.1),
+                    rounds::kind.eq(round.2),
+                    rounds::break_category.eq(round.3),
+                    rounds::completed.eq(false),
+                    rounds::draw_status.eq("none"),
+                    rounds::draw_released_at.eq(None::<NaiveDateTime>),
                 ))
                 .execute(&mut conn)
                 .unwrap();
 
-            diesel::insert_into(tournament_round_motions::table)
+            diesel::insert_into(motions_of_round::table)
                 .values((
-                    tournament_round_motions::id.eq(Uuid::now_v7().to_string()),
-                    tournament_round_motions::tournament_id.eq(&tournament_id),
-                    tournament_round_motions::round_id.eq(&round_id),
-                    tournament_round_motions::infoslide.eq(None::<String>),
-                    tournament_round_motions::motion.eq(round.4),
+                    motions_of_round::id.eq(Uuid::now_v7().to_string()),
+                    motions_of_round::tournament_id.eq(&tournament_id),
+                    motions_of_round::round_id.eq(&round_id),
+                    motions_of_round::infoslide.eq(None::<String>),
+                    motions_of_round::motion.eq(round.4),
                 ))
                 .execute(&mut conn)
                 .unwrap();
@@ -384,9 +374,9 @@ fn get_or_create_institution(
     inst: &Option<String>,
 ) -> Option<String> {
     if let Some(inst) = inst {
-        match tournament_institutions::table
-            .filter(tournament_institutions::name.eq(&inst))
-            .select(tournament_institutions::id)
+        match institutions::table
+            .filter(institutions::name.eq(&inst))
+            .select(institutions::id)
             .first::<String>(conn)
             .optional()
             .unwrap()
@@ -395,13 +385,12 @@ fn get_or_create_institution(
             None => {
                 let iid = Uuid::now_v7().to_string();
 
-                diesel::insert_into(tournament_institutions::table)
+                diesel::insert_into(institutions::table)
                     .values((
-                        tournament_institutions::id.eq(&iid),
-                        tournament_institutions::tournament_id
-                            .eq(tournament_id),
-                        tournament_institutions::name.eq(&inst),
-                        tournament_institutions::code.eq(&inst),
+                        institutions::id.eq(&iid),
+                        institutions::tournament_id.eq(tournament_id),
+                        institutions::name.eq(&inst),
+                        institutions::code.eq(&inst),
                     ))
                     .execute(conn)
                     .unwrap();

@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use crate::schema::{
-    tournament_debate_team_results, tournament_debates,
-    tournament_rounds::{self},
-    tournament_teams,
+    agg_team_results_of_debate, debates,
+    rounds::{self},
+    teams,
 };
 use diesel::prelude::*;
 use rust_decimal::Decimal;
@@ -15,34 +15,23 @@ pub fn atss(
     >,
 ) -> HashMap<String, rust_decimal::Decimal> {
     let debates_team_appears_in: HashMap<String, i64> =
-        tournament_debates::table
-            .inner_join(
-                tournament_rounds::table
-                    .on(tournament_rounds::id.eq(tournament_debates::round_id)),
-            )
+        debates::table
+            .inner_join(rounds::table.on(rounds::id.eq(debates::round_id)))
             .filter(
-                tournament_rounds::tournament_id
+                rounds::tournament_id
                     .eq(tid)
-                    .and(tournament_rounds::kind.eq("P"))
-                    .and(tournament_rounds::completed.eq(true)),
+                    .and(rounds::kind.eq("P"))
+                    .and(rounds::completed.eq(true)),
             )
-            .inner_join(
-                tournament_teams::table.on(diesel::dsl::exists(
-                    tournament_debate_team_results::table.filter(
-                        tournament_debate_team_results::team_id
-                            .eq(tournament_teams::id)
-                            .and(
-                                tournament_debate_team_results::debate_id
-                                    .eq(tournament_debates::id),
-                            ),
+            .inner_join(teams::table.on(diesel::dsl::exists(
+                agg_team_results_of_debate::table.filter(
+                    agg_team_results_of_debate::team_id.eq(teams::id).and(
+                        agg_team_results_of_debate::debate_id.eq(debates::id),
                     ),
-                )),
-            )
-            .group_by(tournament_teams::id)
-            .select((
-                tournament_teams::id,
-                diesel::dsl::count(tournament_debates::id),
-            ))
+                ),
+            )))
+            .group_by(teams::id)
+            .select((teams::id, diesel::dsl::count(debates::id)))
             .load::<(String, i64)>(conn)
             .unwrap()
             .into_iter()

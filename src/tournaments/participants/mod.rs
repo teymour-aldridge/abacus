@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     schema::{
-        tournament_debate_judges, tournament_institutions, tournament_judges,
-        tournament_speakers, tournament_team_speakers, tournament_teams,
+        institutions, judges, judges_of_debate, speakers, speakers_of_team,
+        teams,
     },
     tournaments::teams::Team,
     util_resp::{FailureResponse, err_not_found},
@@ -27,11 +27,11 @@ impl Participant {
         private_url: &str,
         conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Result<Self, FailureResponse> {
-        let judge = tournament_judges::table
+        let judge = judges::table
             .filter(
-                tournament_judges::tournament_id
+                judges::tournament_id
                     .eq(&tournament_id)
-                    .and(tournament_judges::private_url.eq(&private_url)),
+                    .and(judges::private_url.eq(&private_url)),
             )
             .first::<Judge>(conn)
             .optional()
@@ -41,11 +41,11 @@ impl Participant {
             return Ok(Self::Judge(judge));
         }
 
-        let speaker = tournament_speakers::table
+        let speaker = speakers::table
             .filter(
-                tournament_speakers::tournament_id
+                speakers::tournament_id
                     .eq(&tournament_id)
-                    .and(tournament_speakers::private_url.eq(&private_url)),
+                    .and(speakers::private_url.eq(&private_url)),
             )
             .first::<Speaker>(conn)
             .optional()
@@ -71,7 +71,7 @@ pub struct Speaker {
 
 #[derive(Queryable, QueryableByName, Serialize, Deserialize, Clone, Debug)]
 #[diesel(check_for_backend(Sqlite))]
-#[diesel(table_name = tournament_judges)]
+#[diesel(table_name = judges)]
 pub struct Judge {
     pub id: String,
     pub tournament_id: String,
@@ -89,11 +89,11 @@ impl Judge {
         tournament_id: &str,
         conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Result<Judge, FailureResponse> {
-        tournament_judges::table
+        judges::table
             .filter(
-                tournament_judges::private_url
+                judges::private_url
                     .eq(&private_url)
-                    .and(tournament_judges::tournament_id.eq(&tournament_id)),
+                    .and(judges::tournament_id.eq(&tournament_id)),
             )
             .first::<Judge>(&mut *conn)
             .optional()
@@ -104,7 +104,7 @@ impl Judge {
 
 #[derive(Queryable, QueryableByName, Serialize, Deserialize, Clone, Debug)]
 #[diesel(check_for_backend(Sqlite))]
-#[diesel(table_name = tournament_debate_judges)]
+#[diesel(table_name = judges_of_debate)]
 pub struct DebateJudge {
     pub id: String,
     pub tournament_id: String,
@@ -145,17 +145,17 @@ impl TournamentParticipants {
         tid: &str,
         conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> TournamentParticipants {
-        let teams: IndexMap<String, Team> = tournament_teams::table
-            .filter(tournament_teams::tournament_id.eq(&tid))
-            .order_by(tournament_teams::number.asc())
+        let teams: IndexMap<String, Team> = teams::table
+            .filter(teams::tournament_id.eq(&tid))
+            .order_by(teams::number.asc())
             .load::<Team>(conn)
             .unwrap()
             .into_iter()
             .map(|record| (record.id.clone(), record))
             .collect();
 
-        let speakers = tournament_speakers::table
-            .filter(tournament_speakers::tournament_id.eq(&tid))
+        let speakers = speakers::table
+            .filter(speakers::tournament_id.eq(&tid))
             .load::<Speaker>(conn)
             .unwrap()
             .into_iter()
@@ -163,15 +163,14 @@ impl TournamentParticipants {
             .collect();
 
         let team_speakers = {
-            let list = tournament_team_speakers::table
-                // .inner_join(tournament_teams::table)
+            let list = speakers_of_team::table
+                // .inner_join(teams::table)
                 .filter(diesel::dsl::exists(
-                    tournament_speakers::table
-                        .filter(tournament_speakers::tournament_id.eq(&tid)),
+                    speakers::table.filter(speakers::tournament_id.eq(&tid)),
                 ))
                 .select((
-                    tournament_team_speakers::team_id,
-                    tournament_team_speakers::speaker_id,
+                    speakers_of_team::team_id,
+                    speakers_of_team::speaker_id,
                 ))
                 .load::<(String, String)>(conn)
                 .unwrap();
@@ -194,17 +193,17 @@ impl TournamentParticipants {
             teams
         };
 
-        let judges = tournament_judges::table
-            .filter(tournament_judges::tournament_id.eq(&tid))
-            .order_by(tournament_judges::name.asc())
+        let judges = judges::table
+            .filter(judges::tournament_id.eq(&tid))
+            .order_by(judges::name.asc())
             .load::<Judge>(conn)
             .unwrap()
             .into_iter()
             .map(|j| (j.id.clone(), j))
             .collect();
 
-        let institutions = tournament_institutions::table
-            .filter(tournament_institutions::tournament_id.eq(&tid))
+        let institutions = institutions::table
+            .filter(institutions::tournament_id.eq(&tid))
             .load::<Institution>(conn)
             .unwrap()
             .into_iter()

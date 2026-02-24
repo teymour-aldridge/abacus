@@ -4,10 +4,8 @@ use std::collections::HashSet;
 
 use abacus::{
     schema::{
-        tournament_ballots, tournament_debate_judges, tournament_debates,
-        tournament_judges, tournament_round_motions, tournament_rounds,
-        tournament_speaker_score_entries, tournament_team_availability,
-        tournament_teams, tournaments,
+        ballots, debates, judges, judges_of_debate, motions_of_round, rounds,
+        speaker_scores_of_ballot, team_availability, teams, tournaments,
     },
     tournaments::{
         Tournament,
@@ -62,7 +60,7 @@ fn main() {
         .first::<Tournament>(&mut conn)
         .expect("couldn't get test tournament (with name bp88team) -- have you imported the test data?");
 
-    let all_tournament_rounds =
+    let all_rounds =
         TournamentRounds::fetch(&tournament.id, &mut conn).unwrap();
 
     let rounds_to_simulate_seqs = if let Some(mut r) = args.rounds {
@@ -97,7 +95,7 @@ fn main() {
         None
     };
 
-    for rounds in all_tournament_rounds.prelims_grouped_by_seq() {
+    for rounds in all_rounds.prelims_grouped_by_seq() {
         if let Some(ref target_seqs) = rounds_to_simulate_seqs {
             if rounds.is_empty() {
                 continue;
@@ -127,8 +125,8 @@ fn simulate_concurrent_in_rounds(
         rounds.iter().map(|round| round.name.clone()).join(",")
     );
 
-    let teams = tournament_teams::table
-        .filter(tournament_teams::tournament_id.eq(&tournament.id))
+    let teams = teams::table
+        .filter(teams::tournament_id.eq(&tournament.id))
         .load::<Team>(conn)
         .unwrap();
     tracing::info!(
@@ -141,20 +139,19 @@ fn simulate_concurrent_in_rounds(
 
     for (round, teams) in rounds.iter().zip(chunks.into_iter()) {
         for team in teams {
-            diesel::insert_into(tournament_team_availability::table)
+            diesel::insert_into(team_availability::table)
                 .values((
-                    tournament_team_availability::id
-                        .eq(Uuid::now_v7().to_string()),
-                    tournament_team_availability::round_id.eq(&round.id),
-                    tournament_team_availability::team_id.eq(&team.id),
-                    tournament_team_availability::available.eq(true),
+                    team_availability::id.eq(Uuid::now_v7().to_string()),
+                    team_availability::round_id.eq(&round.id),
+                    team_availability::team_id.eq(&team.id),
+                    team_availability::available.eq(true),
                 ))
                 .on_conflict((
-                    tournament_team_availability::round_id,
-                    tournament_team_availability::team_id,
+                    team_availability::round_id,
+                    team_availability::team_id,
                 ))
                 .do_update()
-                .set(tournament_team_availability::available.eq(true))
+                .set(team_availability::available.eq(true))
                 .execute(conn)
                 .unwrap();
         }
@@ -172,33 +169,30 @@ fn simulate_concurrent_in_rounds(
     }
 
     for round in rounds {
-        let debates = tournament_debates::table
-            .filter(tournament_debates::round_id.eq(&round.id))
+        let debates = debates::table
+            .filter(debates::round_id.eq(&round.id))
             .load::<Debate>(conn)
             .unwrap();
-        let motion = tournament_round_motions::table
-            .filter(tournament_round_motions::round_id.eq(&round.id))
+        let motion = motions_of_round::table
+            .filter(motions_of_round::round_id.eq(&round.id))
             .first::<Motion>(conn)
             .unwrap();
 
         // Randomly allocate judges onto panels. Aims to assign three judges to
         // a panel.
         let _allocate_judges = for debate in debates.iter() {
-            let free_judges = tournament_judges::table
+            let free_judges = judges::table
                 .filter(
-                    tournament_judges::id.ne_all(
-                        tournament_debate_judges::table
+                    judges::id.ne_all(
+                        judges_of_debate::table
                             .filter(
-                                tournament_debate_judges::debate_id.eq_any(
-                                    tournament_debates::table
-                                        .filter(
-                                            tournament_debates::round_id
-                                                .eq(&round.id),
-                                        )
-                                        .select(tournament_debates::id),
+                                judges_of_debate::debate_id.eq_any(
+                                    debates::table
+                                        .filter(debates::round_id.eq(&round.id))
+                                        .select(debates::id),
                                 ),
                             )
-                            .select(tournament_debate_judges::judge_id),
+                            .select(judges_of_debate::judge_id),
                     ),
                 )
                 .limit(3)
@@ -206,11 +200,11 @@ fn simulate_concurrent_in_rounds(
                 .unwrap();
 
             for (i, j) in free_judges.iter().enumerate() {
-                diesel::insert_into(tournament_debate_judges::table)
+                diesel::insert_into(judges_of_debate::table)
                     .values((
-                        tournament_debate_judges::debate_id.eq(&debate.id),
-                        tournament_debate_judges::judge_id.eq(&j.id),
-                        tournament_debate_judges::status.eq(if i == 0 {
+                        judges_of_debate::debate_id.eq(&debate.id),
+                        judges_of_debate::judge_id.eq(&j.id),
+                        judges_of_debate::status.eq(if i == 0 {
                             "C"
                         } else {
                             "P"
@@ -222,8 +216,8 @@ fn simulate_concurrent_in_rounds(
         };
 
         let _add_ballots = for debate in debates.iter() {
-            let judges = tournament_debate_judges::table
-                .filter(tournament_debate_judges::debate_id.eq(&debate.id))
+            let judges = judges_of_debate::table
+                .filter(judges_of_debate::debate_id.eq(&debate.id))
                 .load::<DebateJudge>(conn)
                 .unwrap();
 
@@ -234,15 +228,15 @@ fn simulate_concurrent_in_rounds(
                                            conn: &mut _|
              -> String {
                 let ballot_id = Uuid::now_v7().to_string();
-                diesel::insert_into(tournament_ballots::table)
+                diesel::insert_into(ballots::table)
                     .values((
-                        tournament_ballots::id.eq(&ballot_id),
-                        tournament_ballots::tournament_id.eq(&tournament.id),
-                        tournament_ballots::debate_id.eq(&debate.id),
-                        tournament_ballots::judge_id.eq(&judge.judge_id),
-                        tournament_ballots::submitted_at.eq(diesel::dsl::now),
-                        tournament_ballots::motion_id.eq(&motion.id),
-                        tournament_ballots::version.eq(0),
+                        ballots::id.eq(&ballot_id),
+                        ballots::tournament_id.eq(&tournament.id),
+                        ballots::debate_id.eq(&debate.id),
+                        ballots::judge_id.eq(&judge.judge_id),
+                        ballots::submitted_at.eq(diesel::dsl::now),
+                        ballots::motion_id.eq(&motion.id),
+                        ballots::version.eq(0),
                     ))
                     .execute(conn)
                     .unwrap();
@@ -266,37 +260,31 @@ fn simulate_concurrent_in_rounds(
                         };
 
                         speaker_scores.push((
-                            tournament_speaker_score_entries::id
+                            speaker_scores_of_ballot::id
                                 .eq(Uuid::now_v7().to_string()),
-                            tournament_speaker_score_entries::ballot_id
-                                .eq(&ballot_id),
-                            tournament_speaker_score_entries::team_id
-                                .eq(&team.team_id),
-                            tournament_speaker_score_entries::speaker_id
+                            speaker_scores_of_ballot::ballot_id.eq(&ballot_id),
+                            speaker_scores_of_ballot::team_id.eq(&team.team_id),
+                            speaker_scores_of_ballot::speaker_id
                                 .eq(first.id.clone()),
-                            tournament_speaker_score_entries::speaker_position
-                                .eq(0),
-                            tournament_speaker_score_entries::score
+                            speaker_scores_of_ballot::speaker_position.eq(0),
+                            speaker_scores_of_ballot::score
                                 .eq(speaker_1_speak as f32),
                         ));
                         speaker_scores.push((
-                            tournament_speaker_score_entries::id
+                            speaker_scores_of_ballot::id
                                 .eq(Uuid::now_v7().to_string()),
-                            tournament_speaker_score_entries::ballot_id
-                                .eq(&ballot_id),
-                            tournament_speaker_score_entries::team_id
-                                .eq(&team.team_id),
-                            tournament_speaker_score_entries::speaker_id
+                            speaker_scores_of_ballot::ballot_id.eq(&ballot_id),
+                            speaker_scores_of_ballot::team_id.eq(&team.team_id),
+                            speaker_scores_of_ballot::speaker_id
                                 .eq(second.id.clone()),
-                            tournament_speaker_score_entries::speaker_position
-                                .eq(1),
-                            tournament_speaker_score_entries::score
+                            speaker_scores_of_ballot::speaker_position.eq(1),
+                            speaker_scores_of_ballot::score
                                 .eq(speaker_2_speak as f32),
                         ));
                     }
                 }
 
-                diesel::insert_into(tournament_speaker_score_entries::table)
+                diesel::insert_into(speaker_scores_of_ballot::table)
                     .values(speaker_scores)
                     .execute(conn)
                     .unwrap();
@@ -334,22 +322,19 @@ fn simulate_concurrent_in_rounds(
             aggregate_ballot_set(&reprs, tournament, &repr, conn);
         };
 
-        diesel::update(
-            tournament_rounds::table
-                .filter(tournament_rounds::id.eq(&round.id)),
-        )
-        .set((
-            tournament_rounds::completed.eq(true),
-            tournament_rounds::draw_released_at.eq(diesel::dsl::now),
-            // todo: the pages showing results should probably check if the
-            // time set here is in the future
-            //
-            // users should not be able to set times in the future because it
-            // will become very awkward (i.e. this is a time set internally
-            // by the application when round results are published)
-            tournament_rounds::results_published_at.eq(diesel::dsl::now),
-        ))
-        .execute(&mut *conn)
-        .unwrap();
+        diesel::update(rounds::table.filter(rounds::id.eq(&round.id)))
+            .set((
+                rounds::completed.eq(true),
+                rounds::draw_released_at.eq(diesel::dsl::now),
+                // todo: the pages showing results should probably check if the
+                // time set here is in the future
+                //
+                // users should not be able to set times in the future because it
+                // will become very awkward (i.e. this is a time set internally
+                // by the application when round results are published)
+                rounds::results_published_at.eq(diesel::dsl::now),
+            ))
+            .execute(&mut *conn)
+            .unwrap();
     }
 }

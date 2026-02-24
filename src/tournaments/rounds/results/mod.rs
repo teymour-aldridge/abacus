@@ -6,7 +6,7 @@ use hypertext::{Renderable, prelude::*};
 
 use crate::{
     auth::User,
-    schema::tournament_debate_team_results,
+    schema::agg_team_results_of_debate,
     state::Conn,
     template::Page,
     tournaments::{
@@ -132,10 +132,8 @@ pub async fn view_results_page(
             .map(|d| d.debate.id.clone())
             .collect();
 
-        let team_results = tournament_debate_team_results::table
-            .filter(
-                tournament_debate_team_results::debate_id.eq_any(&debate_ids),
-            )
+        let team_results = agg_team_results_of_debate::table
+            .filter(agg_team_results_of_debate::debate_id.eq_any(&debate_ids))
             .load::<TeamResult>(&mut *conn)
             .unwrap();
 

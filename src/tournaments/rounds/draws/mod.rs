@@ -1,16 +1,16 @@
 use std::collections::HashMap;
 
 use super::Round;
-use crate::schema::tournament_ballots;
-use crate::schema::tournament_debate_judges;
-use crate::schema::tournament_debate_teams;
-use crate::schema::tournament_debates;
-use crate::schema::tournament_judges;
-use crate::schema::tournament_rooms;
-use crate::schema::tournament_round_motions;
-use crate::schema::tournament_speakers;
-use crate::schema::tournament_team_speakers;
-use crate::schema::tournament_teams;
+use crate::schema::ballots;
+use crate::schema::debates;
+use crate::schema::judges;
+use crate::schema::judges_of_debate;
+use crate::schema::motions_of_round;
+use crate::schema::rooms as schema_rooms;
+use crate::schema::speakers;
+use crate::schema::speakers_of_team;
+use crate::schema::teams;
+use crate::schema::teams_of_debate;
 use crate::tournaments::participants::DebateJudge;
 use crate::tournaments::participants::Judge;
 use crate::tournaments::participants::Speaker;
@@ -55,11 +55,11 @@ impl RoundDrawRepr {
         RoundDrawRepr {
             round,
             debates: {
-                tournament_debates::table
-                    .filter(tournament_debates::round_id.eq(id))
+                debates::table
+                    .filter(debates::round_id.eq(id))
                     // todo: assign integer ID to debates?
-                    .order_by(tournament_debates::id.asc())
-                    .select(tournament_debates::id)
+                    .order_by(debates::id.asc())
+                    .select(debates::id)
                     .load::<String>(conn)
                     .unwrap()
                     .into_iter()
@@ -100,37 +100,37 @@ impl DebateRepr {
         id: &str,
         conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Result<Self, diesel::result::Error> {
-        let debate = tournament_debates::table
-            .filter(tournament_debates::id.eq(&id))
+        let debate = debates::table
+            .filter(debates::id.eq(&id))
             .first::<Debate>(conn)?;
 
         let room = match &debate.room_id {
             Some(room_id) => Some(
-                tournament_rooms::table
-                    .filter(tournament_rooms::id.eq(room_id))
+                schema_rooms::table
+                    .filter(schema_rooms::id.eq(room_id))
                     .first::<Room>(conn)?,
             ),
             None => None,
         };
 
-        let debate_teams: Vec<DebateTeam> = tournament_debate_teams::table
-            .filter(tournament_debate_teams::debate_id.eq(&debate.id))
+        let debate_teams: Vec<DebateTeam> = teams_of_debate::table
+            .filter(teams_of_debate::debate_id.eq(&debate.id))
             // e.g.
             // OG (seq=0, side=0)
             // OO (seq=0, side=1)
             // CG (seq=1, side=0)
             // CO (seq=1, side=1)
             .order_by((
-                tournament_debate_teams::debate_id,
-                2.into_sql::<BigInt>() * tournament_debate_teams::seq
-                    + tournament_debate_teams::side,
+                teams_of_debate::debate_id,
+                2.into_sql::<BigInt>() * teams_of_debate::seq
+                    + teams_of_debate::side,
             ))
             .load::<DebateTeam>(conn)?;
 
-        let teams = tournament_teams::table
-            .filter(tournament_teams::tournament_id.eq(&debate.tournament_id))
+        let teams = teams::table
+            .filter(teams::tournament_id.eq(&debate.tournament_id))
             .filter(
-                tournament_teams::id.eq_any(
+                teams::id.eq_any(
                     debate_teams
                         .iter()
                         .map(|dt| dt.team_id.clone())
@@ -139,21 +139,19 @@ impl DebateRepr {
             )
             .load::<Team>(conn)?;
 
-        let tournament_team_speakers =
-            tournament_team_speakers::table
-                .filter(tournament_team_speakers::team_id.eq_any(
-                    teams.iter().map(|team| team.id.clone()).collect_vec(),
-                ))
-                .select((
-                    tournament_team_speakers::team_id,
-                    tournament_team_speakers::speaker_id,
-                ))
-                .load::<(String, String)>(&mut *conn)?;
-
-        let tournament_speakers = tournament_speakers::table
+        let speakers_of_team = speakers_of_team::table
             .filter(
-                tournament_speakers::id.eq_any(
-                    tournament_team_speakers
+                speakers_of_team::team_id.eq_any(
+                    teams.iter().map(|team| team.id.clone()).collect_vec(),
+                ),
+            )
+            .select((speakers_of_team::team_id, speakers_of_team::speaker_id))
+            .load::<(String, String)>(&mut *conn)?;
+
+        let speakers = speakers::table
+            .filter(
+                speakers::id.eq_any(
+                    speakers_of_team
                         .iter()
                         .map(|(_, id)| id.clone())
                         .collect_vec(),
@@ -161,21 +159,18 @@ impl DebateRepr {
             )
             .load::<Speaker>(&mut *conn)?;
 
-        let judges_of_debate = tournament_debate_judges::table
-            .filter(tournament_debate_judges::debate_id.eq(&debate.id))
+        let judges_of_debate = judges_of_debate::table
+            .filter(judges_of_debate::debate_id.eq(&debate.id))
             .order_by((
                 diesel::dsl::case_when(
-                    tournament_debate_judges::status.eq("C"),
+                    judges_of_debate::status.eq("C"),
                     1.into_sql::<diesel::sql_types::BigInt>(),
                 )
                 .otherwise(2.into_sql::<diesel::sql_types::BigInt>()),
                 {
-                    let name = tournament_judges::table
-                        .filter(
-                            tournament_judges::id
-                                .eq(tournament_debate_judges::judge_id),
-                        )
-                        .select(tournament_judges::name)
+                    let name = judges::table
+                        .filter(judges::id.eq(judges_of_debate::judge_id))
+                        .select(judges::name)
                         .single_value()
                         .assume_not_null();
                     name.asc()
@@ -183,10 +178,10 @@ impl DebateRepr {
             ))
             .load::<DebateJudge>(conn)?;
 
-        let judges = tournament_judges::table
-            .filter(tournament_judges::tournament_id.eq(&debate.tournament_id))
+        let judges = judges::table
+            .filter(judges::tournament_id.eq(&debate.tournament_id))
             .filter(
-                tournament_judges::id.eq_any(
+                judges::id.eq_any(
                     judges_of_debate
                         .iter()
                         .map(|debate_judge| debate_judge.judge_id.clone())
@@ -198,10 +193,8 @@ impl DebateRepr {
             .map(|judge| (judge.id.clone(), judge))
             .collect();
 
-        let motions: HashMap<_, _> = tournament_round_motions::table
-            .filter(
-                tournament_round_motions::round_id.eq(debate.round_id.clone()),
-            )
+        let motions: HashMap<_, _> = motions_of_round::table
+            .filter(motions_of_round::round_id.eq(debate.round_id.clone()))
             .load::<Motion>(&mut *conn)
             .unwrap()
             .into_iter()
@@ -218,11 +211,9 @@ impl DebateRepr {
                 .collect(),
             speakers_of_team: {
                 let mut map = HashMap::new();
-                for (team_id, speaker_id) in tournament_team_speakers {
-                    let speaker = tournament_speakers
-                        .iter()
-                        .find(|s| s.id == speaker_id)
-                        .unwrap();
+                for (team_id, speaker_id) in speakers_of_team {
+                    let speaker =
+                        speakers.iter().find(|s| s.id == speaker_id).unwrap();
                     map.entry(team_id)
                         .and_modify(|speakers: &mut Vec<Speaker>| {
                             speakers.push(speaker.clone())
@@ -265,10 +256,10 @@ impl DebateRepr {
         &self,
         conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Vec<BallotRepr> {
-        tournament_ballots::table
-            .filter(tournament_ballots::debate_id.eq(&self.debate.id))
-            .select(tournament_ballots::id)
-            .order_by(tournament_ballots::submitted_at.desc())
+        ballots::table
+            .filter(ballots::debate_id.eq(&self.debate.id))
+            .select(ballots::id)
+            .order_by(ballots::submitted_at.desc())
             .load::<String>(conn)
             .unwrap()
             .into_iter()
@@ -291,7 +282,7 @@ pub enum DrawStatus {
 }
 
 #[derive(QueryableByName, Queryable, Debug, Clone, Serialize)]
-#[diesel(table_name = tournament_debates)]
+#[diesel(table_name = debates)]
 pub struct Debate {
     pub id: String,
     pub tournament_id: String,
@@ -302,8 +293,8 @@ pub struct Debate {
 }
 
 #[derive(QueryableByName, Queryable, Debug, Clone, Serialize)]
-#[diesel(table_name = tournament_debate_teams)]
-/// This struct represents a single row in the `tournament_debate_teams` table.
+#[diesel(table_name = teams_of_debate)]
+/// This struct represents a single row in the `teams_of_debate` table.
 pub struct DebateTeam {
     pub id: String,
     pub tournament_id: String,

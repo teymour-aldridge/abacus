@@ -9,7 +9,7 @@ use tokio::sync::broadcast::Sender;
 use crate::{
     auth::User,
     msg::{Msg, MsgContents},
-    schema::{tournament_institutions, tournament_teams},
+    schema::{institutions, teams},
     state::Conn,
     template::Page,
     tournaments::{
@@ -46,11 +46,11 @@ pub async fn manage_team_page(
         &mut *conn,
     )?;
 
-    let team = match tournament_teams::table
+    let team = match teams::table
         .filter(
-            tournament_teams::tournament_id
+            teams::tournament_id
                 .eq(&tournament_id)
-                .and(tournament_teams::id.eq(&team_id)),
+                .and(teams::id.eq(&team_id)),
         )
         .first::<Team>(&mut *conn)
         .optional()
@@ -111,11 +111,11 @@ pub async fn edit_team_details_page(
         &mut *conn,
     )?;
 
-    let team = match tournament_teams::table
+    let team = match teams::table
         .filter(
-            tournament_teams::tournament_id
+            teams::tournament_id
                 .eq(&tournament_id)
-                .and(tournament_teams::id.eq(&team_id)),
+                .and(teams::id.eq(&team_id)),
         )
         .first::<Team>(&mut *conn)
         .optional()
@@ -125,8 +125,8 @@ pub async fn edit_team_details_page(
         None => return err_not_found(),
     };
 
-    let institutions = tournament_institutions::table
-        .filter(tournament_institutions::tournament_id.eq(&tournament.id))
+    let institutions = institutions::table
+        .filter(institutions::tournament_id.eq(&tournament.id))
         .load::<Institution>(&mut *conn)
         .unwrap();
     let institution_selector = InstitutionSelector::new(
@@ -177,11 +177,11 @@ pub async fn do_edit_team_details(
         &mut *conn,
     )?;
 
-    let team = match tournament_teams::table
+    let team = match teams::table
         .filter(
-            tournament_teams::tournament_id
+            teams::tournament_id
                 .eq(&tournament_id)
-                .and(tournament_teams::id.eq(&team_id)),
+                .and(teams::id.eq(&team_id)),
         )
         .first::<Team>(&mut *conn)
         .optional()
@@ -210,8 +210,8 @@ pub async fn do_edit_team_details(
 
     let inst = match id {
         Some(inst) => {
-            match tournament_institutions::table
-                .filter(tournament_institutions::id.eq(inst))
+            match institutions::table
+                .filter(institutions::id.eq(inst))
                 .first::<Institution>(&mut *conn)
                 .optional()
                 .unwrap()
@@ -235,15 +235,13 @@ pub async fn do_edit_team_details(
         None => None,
     };
 
-    diesel::update(
-        tournament_teams::table.filter(tournament_teams::id.eq(&team.id)),
-    )
-    .set((
-        tournament_teams::name.eq(&form.name),
-        tournament_teams::institution_id.eq(inst.map(|t| t.id)),
-    ))
-    .execute(&mut *conn)
-    .unwrap();
+    diesel::update(teams::table.filter(teams::id.eq(&team.id)))
+        .set((
+            teams::name.eq(&form.name),
+            teams::institution_id.eq(inst.map(|t| t.id)),
+        ))
+        .execute(&mut *conn)
+        .unwrap();
 
     take_snapshot(&tournament.id, &mut *conn);
 

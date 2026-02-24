@@ -6,7 +6,7 @@ use serde::Deserialize;
 
 use crate::{
     auth::User,
-    schema::tournament_rounds,
+    schema::rounds,
     state::Conn,
     template::Page,
     tournaments::{
@@ -173,11 +173,10 @@ pub async fn set_round_completed(
 
     // If marking as incomplete, also unpublish results (maintain invariant)
     if !form.completed {
-        diesel::update(tournament_rounds::table.find(&round.id))
+        diesel::update(rounds::table.find(&round.id))
             .set((
-                tournament_rounds::completed.eq(false),
-                tournament_rounds::results_published_at
-                    .eq(None::<chrono::NaiveDateTime>),
+                rounds::completed.eq(false),
+                rounds::results_published_at.eq(None::<chrono::NaiveDateTime>),
             ))
             .execute(&mut *conn)
             .unwrap();
@@ -233,8 +232,8 @@ pub async fn set_round_completed(
             }
         }
 
-        diesel::update(tournament_rounds::table.find(&round.id))
-            .set(tournament_rounds::completed.eq(true))
+        diesel::update(rounds::table.find(&round.id))
+            .set(rounds::completed.eq(true))
             .execute(&mut *conn)
             .unwrap();
     }
@@ -273,14 +272,12 @@ pub async fn set_results_published(
         );
     }
 
-    diesel::update(tournament_rounds::table.find(&round.id))
-        .set(
-            tournament_rounds::results_published_at.eq(if form.published {
-                Some(Utc::now().naive_utc())
-            } else {
-                None
-            }),
-        )
+    diesel::update(rounds::table.find(&round.id))
+        .set(rounds::results_published_at.eq(if form.published {
+            Some(Utc::now().naive_utc())
+        } else {
+            None
+        }))
         .execute(&mut *conn)
         .unwrap();
 

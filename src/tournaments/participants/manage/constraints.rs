@@ -1,8 +1,7 @@
 use crate::{
     auth::User,
     schema::{
-        judge_room_constraints, speaker_room_constraints,
-        tournament_room_categories,
+        judge_room_constraints, room_categories, speaker_room_constraints,
     },
     state::Conn,
     template::Page,
@@ -70,8 +69,8 @@ fn fetch_speaker_constraints(
     tid: &str,
     conn: &mut SqliteConnection,
 ) -> Result<ConstraintData, FailureResponse> {
-    let all_categories = tournament_room_categories::table
-        .filter(tournament_room_categories::tournament_id.eq(tid))
+    let all_categories = room_categories::table
+        .filter(room_categories::tournament_id.eq(tid))
         .load::<RoomCategory>(conn)
         .map_err(FailureResponse::from)?;
 
@@ -113,8 +112,8 @@ fn fetch_judge_constraints(
     tid: &str,
     conn: &mut SqliteConnection,
 ) -> Result<ConstraintData, FailureResponse> {
-    let all_categories = tournament_room_categories::table
-        .filter(tournament_room_categories::tournament_id.eq(tid))
+    let all_categories = room_categories::table
+        .filter(room_categories::tournament_id.eq(tid))
         .load::<RoomCategory>(conn)
         .map_err(FailureResponse::from)?;
 
@@ -172,9 +171,9 @@ pub async fn manage_constraints_page(
 
     let (participant_name, constraint_data) = match ptype {
         ParticipantType::Speaker => {
-            use crate::schema::tournament_speakers;
-            let speaker = tournament_speakers::table
-                .filter(tournament_speakers::id.eq(&participant_id))
+            use crate::schema::speakers;
+            let speaker = speakers::table
+                .filter(speakers::id.eq(&participant_id))
                 .first::<Speaker>(&mut *conn)
                 .map_err(FailureResponse::from)?;
             let data =
@@ -182,9 +181,9 @@ pub async fn manage_constraints_page(
             (speaker.name, data)
         }
         ParticipantType::Judge => {
-            use crate::schema::tournament_judges;
-            let judge = tournament_judges::table
-                .filter(tournament_judges::id.eq(&participant_id))
+            use crate::schema::judges;
+            let judge = judges::table
+                .filter(judges::id.eq(&participant_id))
                 .first::<Judge>(&mut *conn)
                 .map_err(FailureResponse::from)?;
             let data =

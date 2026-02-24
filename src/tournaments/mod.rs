@@ -9,8 +9,7 @@ use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
 use crate::{
     permission::Permission,
     schema::{
-        tournament_group_members, tournament_group_permissions,
-        tournament_groups, tournament_members, tournaments,
+        groups, members_of_group, org, permissions_of_group, tournaments,
     },
     tournaments::{
         config::{PullupMetric, RankableTeamMetric},
@@ -268,11 +267,11 @@ impl Tournament {
         conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Result<(), FailureResponse> {
         match diesel::select(diesel::dsl::exists(
-            tournament_members::table.filter(
-                tournament_members::user_id
+            org::table.filter(
+                org::user_id
                     .eq(user_id)
-                    .and(tournament_members::tournament_id.eq(&self.id))
-                    .and(tournament_members::is_superuser.eq(true)),
+                    .and(org::tournament_id.eq(&self.id))
+                    .and(org::is_superuser.eq(true)),
             ),
         ))
         .get_result::<bool>(conn)
@@ -291,38 +290,30 @@ impl Tournament {
         conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Result<(), FailureResponse> {
         let has_permission = diesel::dsl::select(diesel::dsl::exists(
-            tournament_members::table
-                .filter(tournament_members::user_id.eq(user_id))
-                .filter(tournament_members::tournament_id.eq(&self.id))
+            org::table
+                .filter(org::user_id.eq(user_id))
+                .filter(org::tournament_id.eq(&self.id))
                 .inner_join(
-                    tournament_groups::table.on(diesel::dsl::exists(
-                        tournament_group_members::table.filter(
-                            tournament_group_members::group_id
-                                .eq(tournament_groups::id)
-                                .and(
-                                    tournament_group_members::member_id
-                                        .eq(tournament_members::id),
-                                ),
+                    groups::table.on(diesel::dsl::exists(
+                        members_of_group::table.filter(
+                            members_of_group::group_id
+                                .eq(groups::id)
+                                .and(members_of_group::member_id.eq(org::id)),
                         ),
                     )),
                 )
                 .inner_join(
-                    tournament_group_permissions::table
-                        .on(tournament_group_permissions::group_id
-                            .eq(tournament_groups::id)),
+                    permissions_of_group::table
+                        .on(permissions_of_group::group_id.eq(groups::id)),
                 )
                 .filter(
-                    tournament_group_permissions::permission
+                    permissions_of_group::permission
                         .eq(serde_json::to_string(&permission).unwrap()),
                 )
                 .select(true.into_sql::<diesel::sql_types::Bool>()),
         ));
-        let is_superuser = tournament_members::table
-            .filter(
-                tournament_members::user_id
-                    .eq(user_id)
-                    .and(tournament_members::is_superuser.eq(true)),
-            )
+        let is_superuser = org::table
+            .filter(org::user_id.eq(user_id).and(org::is_superuser.eq(true)))
             .select(true.into_sql::<diesel::sql_types::Bool>());
         let select = diesel::dsl::select(diesel::dsl::exists(
             has_permission.union(is_superuser),

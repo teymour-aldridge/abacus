@@ -1,7 +1,7 @@
 use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
 use serde::{Deserialize, Serialize};
 
-use crate::{schema::tournament_teams, util_resp::FailureResponse};
+use crate::{schema::teams, util_resp::FailureResponse};
 
 #[derive(Serialize, Deserialize, Queryable, Clone, Debug)]
 pub struct Team {
@@ -19,11 +19,11 @@ impl Team {
         tournament_id: &str,
         conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Result<Team, FailureResponse> {
-        let ret = tournament_teams::table
+        let ret = teams::table
             .filter(
-                tournament_teams::id
+                teams::id
                     .eq(team_id)
-                    .and(tournament_teams::tournament_id.eq(tournament_id)),
+                    .and(teams::tournament_id.eq(tournament_id)),
             )
             .first::<Team>(&mut *conn)
             .optional()

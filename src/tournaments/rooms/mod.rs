@@ -3,8 +3,8 @@ use diesel::sqlite::Sqlite;
 use serde::{Deserialize, Serialize};
 
 use crate::schema::{
-    judge_room_constraints, rooms_of_room_categories, speaker_room_constraints,
-    tournament_room_categories, tournament_rooms,
+    judge_room_constraints, room_categories, rooms, rooms_of_category,
+    speaker_room_constraints,
 };
 
 pub mod manage;
@@ -12,7 +12,7 @@ pub mod manage;
 #[derive(
     Queryable, Selectable, Insertable, Serialize, Deserialize, Debug, Clone,
 )]
-#[diesel(table_name = tournament_rooms)]
+#[diesel(table_name = rooms)]
 #[diesel(check_for_backend(Sqlite))]
 pub struct Room {
     pub id: String,
@@ -26,7 +26,7 @@ pub struct Room {
 #[derive(
     Queryable, Selectable, Insertable, Serialize, Deserialize, Debug, Clone,
 )]
-#[diesel(table_name = tournament_room_categories)]
+#[diesel(table_name = room_categories)]
 #[diesel(check_for_backend(Sqlite))]
 pub struct RoomCategory {
     pub id: String,
@@ -39,7 +39,7 @@ pub struct RoomCategory {
 #[derive(
     Queryable, Selectable, Insertable, Serialize, Deserialize, Debug, Clone,
 )]
-#[diesel(table_name = rooms_of_room_categories)]
+#[diesel(table_name = rooms_of_category)]
 #[diesel(check_for_backend(Sqlite))]
 pub struct RoomsOfRoomCategory {
     pub id: String,

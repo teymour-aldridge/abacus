@@ -5,9 +5,7 @@ use rust_decimal::{Decimal, prelude::FromPrimitive};
 use uuid::Uuid;
 
 use crate::{
-    schema::{
-        tournament_debate_speaker_results, tournament_debate_team_results,
-    },
+    schema::{agg_speaker_results_of_debate, agg_team_results_of_debate},
     tournaments::{
         Tournament,
         rounds::{Round, ballots::BallotRepr, draws::DebateRepr},
@@ -89,7 +87,7 @@ pub fn aggregate_ballot_set(
                     &ballots[0].metadata.debate_id,
                 );
 
-                diesel::insert_into(tournament_debate_speaker_results::table)
+                diesel::insert_into(agg_speaker_results_of_debate::table)
                     .values(speaker_points)
                     .execute(conn)
                     .unwrap();
@@ -108,20 +106,18 @@ fn aggregate_consensus_prelim(
         .iter()
         .map(|team| {
             (
-                tournament_debate_team_results::id
-                    .eq(Uuid::now_v7().to_string()),
-                tournament_debate_team_results::tournament_id
+                agg_team_results_of_debate::id.eq(Uuid::now_v7().to_string()),
+                agg_team_results_of_debate::tournament_id
                     .eq(canonical.metadata.tournament_id.clone()),
-                tournament_debate_team_results::debate_id
+                agg_team_results_of_debate::debate_id
                     .eq(canonical.metadata.debate_id.clone()),
-                tournament_debate_team_results::team_id
-                    .eq(team.team_id.clone()),
-                tournament_debate_team_results::points.eq(Some(team.points)),
+                agg_team_results_of_debate::team_id.eq(team.team_id.clone()),
+                agg_team_results_of_debate::points.eq(Some(team.points)),
             )
         })
         .collect();
 
-    diesel::insert_into(tournament_debate_team_results::table)
+    diesel::insert_into(agg_team_results_of_debate::table)
         .values(team_points)
         .execute(conn)
         .unwrap();
@@ -132,25 +128,25 @@ fn aggregate_consensus_prelim(
             .iter()
             .map(|score| {
                 (
-                    tournament_debate_speaker_results::id
+                    agg_speaker_results_of_debate::id
                         .eq(Uuid::now_v7().to_string()),
-                    tournament_debate_speaker_results::tournament_id
+                    agg_speaker_results_of_debate::tournament_id
                         .eq(canonical.metadata.tournament_id.clone()),
-                    tournament_debate_speaker_results::debate_id
+                    agg_speaker_results_of_debate::debate_id
                         .eq(canonical.metadata.debate_id.clone()),
-                    tournament_debate_speaker_results::speaker_id
+                    agg_speaker_results_of_debate::speaker_id
                         .eq(score.speaker_id.clone()),
-                    tournament_debate_speaker_results::team_id
+                    agg_speaker_results_of_debate::team_id
                         .eq(score.team_id.clone()),
-                    tournament_debate_speaker_results::position
+                    agg_speaker_results_of_debate::position
                         .eq(score.speaker_position),
-                    tournament_debate_speaker_results::score.eq(score.score),
+                    agg_speaker_results_of_debate::score.eq(score.score),
                 )
             })
             .collect();
 
         if !speaker_points.is_empty() {
-            diesel::insert_into(tournament_debate_speaker_results::table)
+            diesel::insert_into(agg_speaker_results_of_debate::table)
                 .values(speaker_points)
                 .execute(conn)
                 .unwrap();
@@ -179,21 +175,19 @@ fn aggregate_consensus_elimination(
         .map(|team| {
             let is_advancing = advancing.contains(team.team_id.as_str());
             (
-                tournament_debate_team_results::id
-                    .eq(Uuid::now_v7().to_string()),
-                tournament_debate_team_results::tournament_id
+                agg_team_results_of_debate::id.eq(Uuid::now_v7().to_string()),
+                agg_team_results_of_debate::tournament_id
                     .eq(canonical.metadata.tournament_id.clone()),
-                tournament_debate_team_results::debate_id
+                agg_team_results_of_debate::debate_id
                     .eq(canonical.metadata.debate_id.clone()),
-                tournament_debate_team_results::team_id
-                    .eq(team.team_id.clone()),
-                tournament_debate_team_results::points
+                agg_team_results_of_debate::team_id.eq(team.team_id.clone()),
+                agg_team_results_of_debate::points
                     .eq(Some(is_advancing as i64)),
             )
         })
         .collect();
 
-    diesel::insert_into(tournament_debate_team_results::table)
+    diesel::insert_into(agg_team_results_of_debate::table)
         .values(team_points)
         .execute(conn)
         .unwrap();
@@ -256,30 +250,26 @@ fn insert_two_team_results(
 
     let team_points = vec![
         (
-            tournament_debate_team_results::id.eq(Uuid::now_v7().to_string()),
-            tournament_debate_team_results::tournament_id
+            agg_team_results_of_debate::id.eq(Uuid::now_v7().to_string()),
+            agg_team_results_of_debate::tournament_id
                 .eq(ballots[0].metadata.tournament_id.clone()),
-            tournament_debate_team_results::debate_id
+            agg_team_results_of_debate::debate_id
                 .eq(ballots[0].metadata.debate_id.clone()),
-            tournament_debate_team_results::team_id
-                .eq(prop_team.team_id.clone()),
-            tournament_debate_team_results::points
-                .eq(Some(did_prop_win as i64)),
+            agg_team_results_of_debate::team_id.eq(prop_team.team_id.clone()),
+            agg_team_results_of_debate::points.eq(Some(did_prop_win as i64)),
         ),
         (
-            tournament_debate_team_results::id.eq(Uuid::now_v7().to_string()),
-            tournament_debate_team_results::tournament_id
+            agg_team_results_of_debate::id.eq(Uuid::now_v7().to_string()),
+            agg_team_results_of_debate::tournament_id
                 .eq(ballots[0].metadata.tournament_id.clone()),
-            tournament_debate_team_results::debate_id
+            agg_team_results_of_debate::debate_id
                 .eq(ballots[0].metadata.debate_id.clone()),
-            tournament_debate_team_results::team_id
-                .eq(opp_team.team_id.clone()),
-            tournament_debate_team_results::points
-                .eq(Some(!did_prop_win as i64)),
+            agg_team_results_of_debate::team_id.eq(opp_team.team_id.clone()),
+            agg_team_results_of_debate::points.eq(Some(!did_prop_win as i64)),
         ),
     ];
 
-    diesel::insert_into(tournament_debate_team_results::table)
+    diesel::insert_into(agg_team_results_of_debate::table)
         .values(team_points)
         .execute(conn)
         .unwrap();
@@ -290,13 +280,13 @@ fn compute_averaged_speaker_scores(
     tournament_id: &str,
     debate_id: &str,
 ) -> Vec<(
-    diesel::dsl::Eq<tournament_debate_speaker_results::id, String>,
-    diesel::dsl::Eq<tournament_debate_speaker_results::tournament_id, String>,
-    diesel::dsl::Eq<tournament_debate_speaker_results::debate_id, String>,
-    diesel::dsl::Eq<tournament_debate_speaker_results::speaker_id, String>,
-    diesel::dsl::Eq<tournament_debate_speaker_results::team_id, String>,
-    diesel::dsl::Eq<tournament_debate_speaker_results::position, i64>,
-    diesel::dsl::Eq<tournament_debate_speaker_results::score, Option<f32>>,
+    diesel::dsl::Eq<agg_speaker_results_of_debate::id, String>,
+    diesel::dsl::Eq<agg_speaker_results_of_debate::tournament_id, String>,
+    diesel::dsl::Eq<agg_speaker_results_of_debate::debate_id, String>,
+    diesel::dsl::Eq<agg_speaker_results_of_debate::speaker_id, String>,
+    diesel::dsl::Eq<agg_speaker_results_of_debate::team_id, String>,
+    diesel::dsl::Eq<agg_speaker_results_of_debate::position, i64>,
+    diesel::dsl::Eq<agg_speaker_results_of_debate::score, Option<f32>>,
 )> {
     let mut speaker_points = Vec::new();
 
@@ -328,19 +318,15 @@ fn compute_averaged_speaker_scores(
         let avg_f32: f32 = avg.round_dp(2).try_into().unwrap();
 
         speaker_points.push((
-            tournament_debate_speaker_results::id
-                .eq(Uuid::now_v7().to_string()),
-            tournament_debate_speaker_results::tournament_id
+            agg_speaker_results_of_debate::id.eq(Uuid::now_v7().to_string()),
+            agg_speaker_results_of_debate::tournament_id
                 .eq(tournament_id.to_string()),
-            tournament_debate_speaker_results::debate_id
-                .eq(debate_id.to_string()),
-            tournament_debate_speaker_results::speaker_id
+            agg_speaker_results_of_debate::debate_id.eq(debate_id.to_string()),
+            agg_speaker_results_of_debate::speaker_id
                 .eq(score.speaker_id.clone()),
-            tournament_debate_speaker_results::team_id
-                .eq(score.team_id.clone()),
-            tournament_debate_speaker_results::position
-                .eq(score.speaker_position),
-            tournament_debate_speaker_results::score.eq(Some(avg_f32)),
+            agg_speaker_results_of_debate::team_id.eq(score.team_id.clone()),
+            agg_speaker_results_of_debate::position.eq(score.speaker_position),
+            agg_speaker_results_of_debate::score.eq(Some(avg_f32)),
         ));
     }
 

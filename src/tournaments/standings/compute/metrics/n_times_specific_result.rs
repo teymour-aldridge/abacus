@@ -2,10 +2,7 @@ use std::collections::HashMap;
 
 use diesel::prelude::*;
 
-use crate::schema::{
-    tournament_debate_team_results, tournament_debates, tournament_rounds,
-    tournament_teams,
-};
+use crate::schema::{agg_team_results_of_debate, debates, rounds, teams};
 
 pub fn times_team_achieved_p_points(
     (p, tid): (u8, &str),
@@ -13,40 +10,36 @@ pub fn times_team_achieved_p_points(
         Backend = diesel::sqlite::Sqlite,
     >,
 ) -> HashMap<String, i64> {
-    let results: std::collections::HashMap<String, i64> =
-        tournament_teams::table
-            .filter(tournament_teams::tournament_id.eq(tid))
-            .inner_join(
-                tournament_debate_team_results::table
-                    .inner_join(
-                        tournament_debates::table.inner_join(
-                            tournament_rounds::table.on(tournament_rounds::id
-                                .eq(tournament_debates::round_id)
-                                .and(tournament_rounds::kind.eq("P"))
-                                .and(tournament_rounds::completed.eq(true))),
-                        ),
-                    )
-                    .on(tournament_debate_team_results::team_id
-                        .eq(tournament_teams::id)
-                        .and(
-                            tournament_debate_team_results::debate_id
-                                .eq(tournament_debates::id),
-                        )),
-            )
-            .filter(tournament_debate_team_results::points.eq(p as i64))
-            .group_by(tournament_teams::id)
-            .select((
-                tournament_teams::id,
-                diesel::dsl::count(tournament_debate_team_results::id),
-            ))
-            .load::<(String, i64)>(conn)
-            .unwrap()
-            .into_iter()
-            .collect();
+    let results: std::collections::HashMap<String, i64> = teams::table
+        .filter(teams::tournament_id.eq(tid))
+        .inner_join(
+            agg_team_results_of_debate::table
+                .inner_join(
+                    debates::table.inner_join(
+                        rounds::table.on(rounds::id
+                            .eq(debates::round_id)
+                            .and(rounds::kind.eq("P"))
+                            .and(rounds::completed.eq(true))),
+                    ),
+                )
+                .on(agg_team_results_of_debate::team_id.eq(teams::id).and(
+                    agg_team_results_of_debate::debate_id.eq(debates::id),
+                )),
+        )
+        .filter(agg_team_results_of_debate::points.eq(p as i64))
+        .group_by(teams::id)
+        .select((
+            teams::id,
+            diesel::dsl::count(agg_team_results_of_debate::id),
+        ))
+        .load::<(String, i64)>(conn)
+        .unwrap()
+        .into_iter()
+        .collect();
 
-    tournament_teams::table
-        .filter(tournament_teams::tournament_id.eq(tid))
-        .select(tournament_teams::id)
+    teams::table
+        .filter(teams::tournament_id.eq(tid))
+        .select(teams::id)
         .load::<String>(conn)
         .unwrap()
         .into_iter()

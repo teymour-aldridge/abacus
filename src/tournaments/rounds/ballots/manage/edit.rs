@@ -126,7 +126,16 @@ impl BallotForm {
     }
 }
 
-#[tracing::instrument(skip(form, tournament, round, debate_repr, participants, new_metadata, prior_version, conn))]
+#[tracing::instrument(skip(
+    form,
+    tournament,
+    round,
+    debate_repr,
+    participants,
+    new_metadata,
+    prior_version,
+    conn
+))]
 fn build_edit_ballot(
     form: BallotForm,
     tournament: &Tournament,

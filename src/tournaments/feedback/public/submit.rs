@@ -9,11 +9,9 @@ use uuid::Uuid;
 use crate::{
     auth::User,
     schema::{
-        feedback_from_judges_question_answers,
-        feedback_from_teams_question_answers, feedback_of_judges,
-        feedback_of_teams, feedback_questions, tournament_debate_judges,
-        tournament_debates, tournament_judges, tournament_rounds,
-        tournament_speakers, tournament_team_speakers,
+        answers_of_feedback_from_judges, answers_of_feedback_from_teams,
+        debates, feedback_of_judges, feedback_of_teams, feedback_questions,
+        judges, judges_of_debate, rounds, speakers, speakers_of_team,
     },
     state::Conn,
     template::Page,
@@ -43,22 +41,22 @@ pub async fn submit_feedback_page(
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     let round = Round::fetch(&round_id, &mut *conn)?;
 
-    let judge = tournament_judges::table
+    let judge = judges::table
         .filter(
-            tournament_judges::private_url
+            judges::private_url
                 .eq(&private_url)
-                .and(tournament_judges::tournament_id.eq(&tournament_id)),
+                .and(judges::tournament_id.eq(&tournament_id)),
         )
         .first::<Judge>(&mut *conn)
         .optional()
         .unwrap();
 
     let speaker = if judge.is_none() {
-        tournament_speakers::table
+        speakers::table
             .filter(
-                tournament_speakers::private_url
+                speakers::private_url
                     .eq(&private_url)
-                    .and(tournament_speakers::tournament_id.eq(&tournament_id)),
+                    .and(speakers::tournament_id.eq(&tournament_id)),
             )
             .first::<Speaker>(&mut *conn)
             .optional()
@@ -206,22 +204,22 @@ pub async fn do_submit_feedback(
     let round = Round::fetch(&round_id, &mut *conn)?;
 
     // Identify submitter
-    let judge = tournament_judges::table
+    let judge = judges::table
         .filter(
-            tournament_judges::private_url
+            judges::private_url
                 .eq(&private_url)
-                .and(tournament_judges::tournament_id.eq(&tournament_id)),
+                .and(judges::tournament_id.eq(&tournament_id)),
         )
         .first::<Judge>(&mut *conn)
         .optional()
         .unwrap();
 
     let speaker = if judge.is_none() {
-        tournament_speakers::table
+        speakers::table
             .filter(
-                tournament_speakers::private_url
+                speakers::private_url
                     .eq(&private_url)
-                    .and(tournament_speakers::tournament_id.eq(&tournament_id)),
+                    .and(speakers::tournament_id.eq(&tournament_id)),
             )
             .first::<Speaker>(&mut *conn)
             .optional()
@@ -277,21 +275,19 @@ pub async fn do_submit_feedback(
                 .execute(conn)?;
 
             for (q_id, ans) in &form.answers {
-                diesel::insert_into(
-                    feedback_from_judges_question_answers::table,
-                )
-                .values(FeedbackFromJudgesQuestionAnswer {
-                    id: Uuid::now_v7().to_string(),
-                    feedback_id: feedback_id.clone(),
-                    question_id: q_id.clone(),
-                    answer: ans.clone(),
-                })
-                .execute(conn)?;
+                diesel::insert_into(answers_of_feedback_from_judges::table)
+                    .values(FeedbackFromJudgesQuestionAnswer {
+                        id: Uuid::now_v7().to_string(),
+                        feedback_id: feedback_id.clone(),
+                        question_id: q_id.clone(),
+                        answer: ans.clone(),
+                    })
+                    .execute(conn)?;
             }
         } else if let Some(speaker) = &speaker {
-            let team_id = tournament_team_speakers::table
-                .filter(tournament_team_speakers::speaker_id.eq(&speaker.id))
-                .select(tournament_team_speakers::team_id)
+            let team_id = speakers_of_team::table
+                .filter(speakers_of_team::speaker_id.eq(&speaker.id))
+                .select(speakers_of_team::team_id)
                 .first::<String>(conn)?;
 
             diesel::insert_into(feedback_of_teams::table)
@@ -305,16 +301,14 @@ pub async fn do_submit_feedback(
                 .execute(conn)?;
 
             for (q_id, ans) in &form.answers {
-                diesel::insert_into(
-                    feedback_from_teams_question_answers::table,
-                )
-                .values(FeedbackFromTeamsQuestionAnswer {
-                    id: Uuid::now_v7().to_string(),
-                    feedback_id: feedback_id.clone(),
-                    question_id: q_id.clone(),
-                    answer: ans.clone(),
-                })
-                .execute(conn)?;
+                diesel::insert_into(answers_of_feedback_from_teams::table)
+                    .values(FeedbackFromTeamsQuestionAnswer {
+                        id: Uuid::now_v7().to_string(),
+                        feedback_id: feedback_id.clone(),
+                        question_id: q_id.clone(),
+                        answer: ans.clone(),
+                    })
+                    .execute(conn)?;
             }
         }
 
@@ -342,22 +336,16 @@ fn debate_of_judge_in_round(
     round_id: &str,
     conn: &mut impl LoadConnection<Backend = diesel::sqlite::Sqlite>,
 ) -> Result<Debate, FailureResponse> {
-    match tournament_debates::table
-        .inner_join(
-            tournament_rounds::table
-                .on(tournament_rounds::id.eq(tournament_debates::round_id)),
-        )
-        .filter(tournament_rounds::id.eq(round_id))
-        .filter(tournament_rounds::draw_status.eq("released_full"))
+    match debates::table
+        .inner_join(rounds::table.on(rounds::id.eq(debates::round_id)))
+        .filter(rounds::id.eq(round_id))
+        .filter(rounds::draw_status.eq("released_full"))
         .filter(diesel::dsl::exists(
-            tournament_debate_judges::table
-                .filter(tournament_debate_judges::judge_id.eq(judge_id))
-                .filter(
-                    tournament_debate_judges::debate_id
-                        .eq(tournament_debates::id),
-                ),
+            judges_of_debate::table
+                .filter(judges_of_debate::judge_id.eq(judge_id))
+                .filter(judges_of_debate::debate_id.eq(debates::id)),
         ))
-        .select(tournament_debates::all_columns)
+        .select(debates::all_columns)
         .first::<Debate>(conn)
         .optional()
         .unwrap()
@@ -372,32 +360,27 @@ fn debate_of_speaker_in_round(
     round_id: &str,
     conn: &mut impl LoadConnection<Backend = diesel::sqlite::Sqlite>,
 ) -> Result<Debate, FailureResponse> {
-    let team_id = tournament_team_speakers::table
-        .filter(tournament_team_speakers::speaker_id.eq(speaker_id))
-        .select(tournament_team_speakers::team_id)
+    let team_id = speakers_of_team::table
+        .filter(speakers_of_team::speaker_id.eq(speaker_id))
+        .select(speakers_of_team::team_id)
         .first::<String>(conn)
         .optional()
         .unwrap();
 
     if let Some(tid) = team_id {
-        match tournament_debates::table
-            .inner_join(
-                tournament_rounds::table
-                    .on(tournament_rounds::id.eq(tournament_debates::round_id)),
-            )
-            .filter(tournament_rounds::id.eq(round_id))
-            .filter(tournament_rounds::draw_status.eq("released_full"))
+        match debates::table
+            .inner_join(rounds::table.on(rounds::id.eq(debates::round_id)))
+            .filter(rounds::id.eq(round_id))
+            .filter(rounds::draw_status.eq("released_full"))
             .filter(diesel::dsl::exists(
-                crate::schema::tournament_debate_teams::table
+                crate::schema::teams_of_debate::table
+                    .filter(crate::schema::teams_of_debate::team_id.eq(tid))
                     .filter(
-                        crate::schema::tournament_debate_teams::team_id.eq(tid),
-                    )
-                    .filter(
-                        crate::schema::tournament_debate_teams::debate_id
-                            .eq(tournament_debates::id),
+                        crate::schema::teams_of_debate::debate_id
+                            .eq(debates::id),
                     ),
             ))
-            .select(tournament_debates::all_columns)
+            .select(debates::all_columns)
             .first::<Debate>(conn)
             .optional()
             .unwrap()
@@ -415,24 +398,23 @@ fn get_feedback_targets_for_judge(
     debate_id: &str,
     conn: &mut impl LoadConnection<Backend = diesel::sqlite::Sqlite>,
 ) -> Vec<Judge> {
-    let status = tournament_debate_judges::table
-        .filter(tournament_debate_judges::debate_id.eq(debate_id))
-        .filter(tournament_debate_judges::judge_id.eq(judge_id))
-        .select(tournament_debate_judges::status)
+    let status = judges_of_debate::table
+        .filter(judges_of_debate::debate_id.eq(debate_id))
+        .filter(judges_of_debate::judge_id.eq(judge_id))
+        .select(judges_of_debate::status)
         .first::<String>(conn)
         .unwrap_or_default();
 
     let _target_status = if status == "c" { "w" } else { "c" };
 
-    tournament_judges::table
+    judges::table
         .inner_join(
-            tournament_debate_judges::table
-                .on(tournament_debate_judges::judge_id
-                    .eq(tournament_judges::id)),
+            judges_of_debate::table
+                .on(judges_of_debate::judge_id.eq(judges::id)),
         )
-        .filter(tournament_debate_judges::debate_id.eq(debate_id))
-        .filter(tournament_judges::id.ne(judge_id))
-        .select(tournament_judges::all_columns)
+        .filter(judges_of_debate::debate_id.eq(debate_id))
+        .filter(judges::id.ne(judge_id))
+        .select(judges::all_columns)
         .load::<Judge>(conn)
         .unwrap_or_default()
 }
@@ -441,15 +423,14 @@ fn get_feedback_targets_for_speaker(
     debate_id: &str,
     conn: &mut impl LoadConnection<Backend = diesel::sqlite::Sqlite>,
 ) -> Vec<Judge> {
-    tournament_judges::table
+    judges::table
         .inner_join(
-            tournament_debate_judges::table
-                .on(tournament_debate_judges::judge_id
-                    .eq(tournament_judges::id)),
+            judges_of_debate::table
+                .on(judges_of_debate::judge_id.eq(judges::id)),
         )
-        .filter(tournament_debate_judges::debate_id.eq(debate_id))
-        .filter(tournament_debate_judges::status.eq("c"))
-        .select(tournament_judges::all_columns)
+        .filter(judges_of_debate::debate_id.eq(debate_id))
+        .filter(judges_of_debate::status.eq("c"))
+        .select(judges::all_columns)
         .load::<Judge>(conn)
         .unwrap_or_default()
 }

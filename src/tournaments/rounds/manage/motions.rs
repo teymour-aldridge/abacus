@@ -3,7 +3,7 @@ use diesel::prelude::*;
 
 use crate::{
     auth::User,
-    schema::{tournament_round_motions, tournament_rounds},
+    schema::{motions_of_round, rounds},
     state::Conn,
     template::Page,
     tournaments::Tournament,
@@ -22,10 +22,10 @@ pub async fn publish_motions(
 
     let round_id = rid.clone();
     match diesel::update(
-        tournament_round_motions::table
-            .filter(tournament_round_motions::round_id.eq(&round_id)),
+        motions_of_round::table
+            .filter(motions_of_round::round_id.eq(&round_id)),
     )
-    .set(tournament_round_motions::published_at.eq(diesel::dsl::now))
+    .set(motions_of_round::published_at.eq(diesel::dsl::now))
     .execute(&mut *conn)
     {
         Ok(_) => (),
@@ -41,9 +41,9 @@ pub async fn publish_motions(
         }
     }
 
-    let round_seq: i64 = crate::schema::tournament_rounds::table
-        .filter(tournament_rounds::id.eq(&rid))
-        .select(tournament_rounds::seq)
+    let round_seq: i64 = crate::schema::rounds::table
+        .filter(rounds::id.eq(&rid))
+        .select(rounds::seq)
         .first(&mut *conn)
         .unwrap();
 

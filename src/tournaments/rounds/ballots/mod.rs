@@ -13,10 +13,7 @@ use itertools::Itertools;
 use rust_decimal::Decimal;
 
 use crate::{
-    schema::{
-        tournament_ballots, tournament_speaker_score_entries,
-        tournament_team_rank_entries,
-    },
+    schema::{ballots, speaker_scores_of_ballot, team_ranks_of_ballot},
     tournaments::{
         Tournament,
         rounds::{draws::DebateRepr, side_names},
@@ -63,35 +60,31 @@ impl BallotRepr {
     /// update existing ballots, only to create new ones!
     #[tracing::instrument(skip(conn))]
     pub fn insert(&self, conn: &mut impl LoadConnection<Backend = Sqlite>) {
-        let n = diesel::insert_into(tournament_ballots::table)
+        let n = diesel::insert_into(ballots::table)
             .values((
-                tournament_ballots::id.eq(&self.metadata.id),
-                tournament_ballots::tournament_id
-                    .eq(&self.metadata.tournament_id),
-                tournament_ballots::debate_id.eq(&self.metadata.debate_id),
-                tournament_ballots::judge_id.eq(&self.metadata.judge_id),
-                tournament_ballots::submitted_at
-                    .eq(&self.metadata.submitted_at),
-                tournament_ballots::motion_id.eq(&self.metadata.motion_id),
-                tournament_ballots::version.eq(&self.metadata.version),
-                tournament_ballots::change.eq(&self.metadata.change),
-                tournament_ballots::editor_id.eq(&self.metadata.editor_id),
+                ballots::id.eq(&self.metadata.id),
+                ballots::tournament_id.eq(&self.metadata.tournament_id),
+                ballots::debate_id.eq(&self.metadata.debate_id),
+                ballots::judge_id.eq(&self.metadata.judge_id),
+                ballots::submitted_at.eq(&self.metadata.submitted_at),
+                ballots::motion_id.eq(&self.metadata.motion_id),
+                ballots::version.eq(&self.metadata.version),
+                ballots::change.eq(&self.metadata.change),
+                ballots::editor_id.eq(&self.metadata.editor_id),
             ))
             .execute(conn)
             .unwrap();
         assert_eq!(n, 1);
 
         for team_rank in &self.team_ranks {
-            let n = diesel::insert_into(tournament_team_rank_entries::table)
+            let n = diesel::insert_into(team_ranks_of_ballot::table)
                 .values((
-                    tournament_team_rank_entries::id.eq(&team_rank.id),
-                    tournament_team_rank_entries::tournament_id
+                    team_ranks_of_ballot::id.eq(&team_rank.id),
+                    team_ranks_of_ballot::tournament_id
                         .eq(&team_rank.tournament_id),
-                    tournament_team_rank_entries::ballot_id
-                        .eq(&team_rank.ballot_id),
-                    tournament_team_rank_entries::team_id
-                        .eq(&team_rank.team_id),
-                    tournament_team_rank_entries::points.eq(&team_rank.points),
+                    team_ranks_of_ballot::ballot_id.eq(&team_rank.ballot_id),
+                    team_ranks_of_ballot::team_id.eq(&team_rank.team_id),
+                    team_ranks_of_ballot::points.eq(&team_rank.points),
                 ))
                 .execute(conn)
                 .unwrap();
@@ -99,25 +92,20 @@ impl BallotRepr {
         }
 
         for score in &self.scores {
-            let n =
-                diesel::insert_into(tournament_speaker_score_entries::table)
-                    .values((
-                        tournament_speaker_score_entries::id.eq(&score.id),
-                        tournament_speaker_score_entries::tournament_id
-                            .eq(&score.tournament_id),
-                        tournament_speaker_score_entries::ballot_id
-                            .eq(&score.ballot_id),
-                        tournament_speaker_score_entries::team_id
-                            .eq(&score.team_id),
-                        tournament_speaker_score_entries::speaker_id
-                            .eq(&score.speaker_id),
-                        tournament_speaker_score_entries::speaker_position
-                            .eq(&score.speaker_position),
-                        tournament_speaker_score_entries::score
-                            .eq(&score.score),
-                    ))
-                    .execute(conn)
-                    .unwrap();
+            let n = diesel::insert_into(speaker_scores_of_ballot::table)
+                .values((
+                    speaker_scores_of_ballot::id.eq(&score.id),
+                    speaker_scores_of_ballot::tournament_id
+                        .eq(&score.tournament_id),
+                    speaker_scores_of_ballot::ballot_id.eq(&score.ballot_id),
+                    speaker_scores_of_ballot::team_id.eq(&score.team_id),
+                    speaker_scores_of_ballot::speaker_id.eq(&score.speaker_id),
+                    speaker_scores_of_ballot::speaker_position
+                        .eq(&score.speaker_position),
+                    speaker_scores_of_ballot::score.eq(&score.score),
+                ))
+                .execute(conn)
+                .unwrap();
             assert_eq!(n, 1);
         }
     }
@@ -296,18 +284,18 @@ impl BallotRepr {
         ballot_id: &str,
         conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Self {
-        let ballot = tournament_ballots::table
-            .filter(tournament_ballots::id.eq(ballot_id))
+        let ballot = ballots::table
+            .filter(ballots::id.eq(ballot_id))
             .first::<BallotMetadata>(conn)
             .unwrap();
 
-        let team_ranks = tournament_team_rank_entries::table
-            .filter(tournament_team_rank_entries::ballot_id.eq(&ballot.id))
+        let team_ranks = team_ranks_of_ballot::table
+            .filter(team_ranks_of_ballot::ballot_id.eq(&ballot.id))
             .load::<BallotTeamRank>(conn)
             .unwrap();
 
-        let scores = tournament_speaker_score_entries::table
-            .filter(tournament_speaker_score_entries::ballot_id.eq(&ballot.id))
+        let scores = speaker_scores_of_ballot::table
+            .filter(speaker_scores_of_ballot::ballot_id.eq(&ballot.id))
             .load::<BallotScore>(conn)
             .unwrap();
 
@@ -405,11 +393,10 @@ pub fn update_debate_status(
     };
 
     diesel::update(
-        crate::schema::tournament_debates::table.filter(
-            crate::schema::tournament_debates::id.eq(&debate.debate.id),
-        ),
+        crate::schema::debates::table
+            .filter(crate::schema::debates::id.eq(&debate.debate.id)),
     )
-    .set(crate::schema::tournament_debates::status.eq(status))
+    .set(crate::schema::debates::status.eq(status))
     .execute(conn)
     .unwrap();
 }
@@ -429,7 +416,7 @@ pub struct BallotMetadata {
 
 #[derive(Queryable, QueryableByName, Clone, Debug)]
 #[diesel(check_for_backend(Sqlite))]
-#[diesel(table_name = tournament_team_rank_entries)]
+#[diesel(table_name = team_ranks_of_ballot)]
 pub struct BallotTeamRank {
     pub id: String,
     pub tournament_id: String,
@@ -440,7 +427,7 @@ pub struct BallotTeamRank {
 
 #[derive(Queryable, QueryableByName, Clone, Debug)]
 #[diesel(check_for_backend(Sqlite))]
-#[diesel(table_name = tournament_speaker_score_entries)]
+#[diesel(table_name = speaker_scores_of_ballot)]
 pub struct BallotScore {
     pub id: String,
     pub tournament_id: String,
@@ -587,7 +574,6 @@ impl<'a> BallotBuilder<'a> {
             None
         };
 
-
         Ok(Self {
             tournament,
             debate,
@@ -655,12 +641,18 @@ impl<'a> BallotBuilder<'a> {
     pub fn build(self) -> Result<BallotRepr, String> {
         let expected_teams = (self.tournament.teams_per_side * 2) as usize;
         if self.teams_added != expected_teams {
-            tracing::debug!("rejecting ballot due to incorrect number of teams (self.teams_added={}, expected_teams={})", self.teams_added, expected_teams);
+            tracing::debug!(
+                "rejecting ballot due to incorrect number of teams (self.teams_added={}, expected_teams={})",
+                self.teams_added,
+                expected_teams
+            );
             return Err("Error: incorrect number of teams submitted".into());
         }
 
         let team_ranks = if self.is_elim {
-            let num_advancing = self.num_advancing.expect("self.num_advancing must be computed for elimination rounds");
+            let num_advancing = self.num_advancing.expect(
+                "self.num_advancing must be computed for elimination rounds",
+            );
             if self.advancing_team_ids.len() != num_advancing {
                 return Err(format!(
                     "Error: expected {} advancing team(s), but {} were selected",

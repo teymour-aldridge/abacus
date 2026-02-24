@@ -1,7 +1,7 @@
 use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
 use rand::{Rng, distr::Alphanumeric};
 
-use crate::schema::{tournament_judges, tournament_speakers};
+use crate::schema::{judges, speakers};
 
 pub fn get_unique_private_url(
     tournament: &str,
@@ -15,24 +15,21 @@ pub fn get_unique_private_url(
             .collect();
 
         let is_duplicate = diesel::dsl::select(diesel::dsl::exists(
-            tournament_speakers::table
+            speakers::table
                 .filter(
-                    tournament_speakers::private_url
+                    speakers::private_url
                         .eq(&random_string)
-                        .and(tournament_speakers::tournament_id.eq(tournament)),
+                        .and(speakers::tournament_id.eq(tournament)),
                 )
-                .select(tournament_speakers::id)
+                .select(speakers::id)
                 .union(
-                    tournament_judges::table
+                    judges::table
                         .filter(
-                            tournament_judges::private_url
+                            judges::private_url
                                 .eq(&random_string)
-                                .and(
-                                    tournament_judges::tournament_id
-                                        .eq(&tournament),
-                                ),
+                                .and(judges::tournament_id.eq(&tournament)),
                         )
-                        .select(tournament_judges::id),
+                        .select(judges::id),
                 ),
         ))
         .get_result::<bool>(conn)

@@ -8,7 +8,7 @@ use tokio::sync::broadcast::Sender;
 use crate::{
     auth::User,
     msg::{Msg, MsgContents},
-    schema::{tournament_debates, tournament_rooms},
+    schema::{debates, rooms},
     state::Conn,
     tournaments::{Tournament, rooms::Room, rounds::draws::Debate},
     util_resp::{FailureResponse, StandardResponse, bad_request, success},
@@ -33,9 +33,9 @@ pub async fn move_room(
 
     let round_ids = form.rounds;
 
-    let room = match tournament_rooms::table
-        .filter(tournament_rooms::id.eq(&form.room_id))
-        .filter(tournament_rooms::tournament_id.eq(&tournament.id))
+    let room = match rooms::table
+        .filter(rooms::id.eq(&form.room_id))
+        .filter(rooms::tournament_id.eq(&tournament.id))
         .first::<Room>(&mut *conn)
     {
         Ok(r) => r,
@@ -51,48 +51,47 @@ pub async fn move_room(
         .transaction(|conn| {
             // Unassign room from any debate in the rounds
             diesel::update(
-                tournament_debates::table.filter(
-                    tournament_debates::round_id
+                debates::table.filter(
+                    debates::round_id
                         .eq_any(&round_ids)
-                        .and(tournament_debates::room_id.eq(&room.id)),
+                        .and(debates::room_id.eq(&room.id)),
                 ),
             )
-            .set(tournament_debates::room_id.eq(None::<String>))
+            .set(debates::room_id.eq(None::<String>))
             .execute(conn)?;
 
             if let Some(to_debate_id) =
                 form.to_debate_id.filter(|s| !s.is_empty())
             {
-                let debate =
-                    match tournament_debates::table
-                        .filter(tournament_debates::id.eq(&to_debate_id).and(
-                            tournament_debates::round_id.eq_any(&round_ids),
-                        ))
-                        .first::<Debate>(conn)
-                    {
-                        Ok(d) => d,
-                        Err(DieselError::NotFound) => {
-                            // This will rollback the transaction
-                            return Err(diesel::result::Error::NotFound);
-                        }
-                        Err(e) => {
-                            return Err(e);
-                        }
-                    };
+                let debate = match debates::table
+                    .filter(
+                        debates::id
+                            .eq(&to_debate_id)
+                            .and(debates::round_id.eq_any(&round_ids)),
+                    )
+                    .first::<Debate>(conn)
+                {
+                    Ok(d) => d,
+                    Err(DieselError::NotFound) => {
+                        // This will rollback the transaction
+                        return Err(diesel::result::Error::NotFound);
+                    }
+                    Err(e) => {
+                        return Err(e);
+                    }
+                };
 
                 // Unassign any existing room from the debate
                 diesel::update(
-                    tournament_debates::table
-                        .filter(tournament_debates::id.eq(&debate.id)),
+                    debates::table.filter(debates::id.eq(&debate.id)),
                 )
-                .set(tournament_debates::room_id.eq(None::<String>))
+                .set(debates::room_id.eq(None::<String>))
                 .execute(conn)?;
 
                 diesel::update(
-                    tournament_debates::table
-                        .filter(tournament_debates::id.eq(&debate.id)),
+                    debates::table.filter(debates::id.eq(&debate.id)),
                 )
-                .set(tournament_debates::room_id.eq(Some(room.id.clone())))
+                .set(debates::room_id.eq(Some(room.id.clone())))
                 .execute(conn)?;
             }
             Ok(success(Default::default()))

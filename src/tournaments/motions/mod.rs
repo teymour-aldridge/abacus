@@ -4,7 +4,7 @@ use hypertext::{maud, prelude::*};
 
 use crate::{
     auth::User,
-    schema::tournament_round_motions,
+    schema::motions_of_round,
     state::Conn,
     template::Page,
     tournaments::{
@@ -85,13 +85,12 @@ pub async fn public_motions_page(
         false
     };
 
-    let mut query = tournament_round_motions::table
-        .filter(tournament_round_motions::tournament_id.eq(&tournament_id))
+    let mut query = motions_of_round::table
+        .filter(motions_of_round::tournament_id.eq(&tournament_id))
         .into_boxed();
 
     if !is_admin {
-        query =
-            query.filter(tournament_round_motions::published_at.is_not_null());
+        query = query.filter(motions_of_round::published_at.is_not_null());
     }
 
     let motions: Vec<(Motion, String)> = query

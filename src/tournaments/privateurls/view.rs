@@ -6,8 +6,8 @@ use itertools::Itertools;
 use crate::{
     auth::User,
     schema::{
-        tournament_debate_judges, tournament_debate_teams, tournament_debates,
-        tournament_institutions, tournament_team_speakers,
+        debates, institutions, judges_of_debate, speakers_of_team,
+        teams_of_debate,
     },
     state::Conn,
     template::Page,
@@ -61,28 +61,25 @@ fn private_url_page_of_speaker(
         // of those teams can be marked available (and placed on the draw)
         // across all rounds (!)
 
-        let team_debate = tournament_debate_teams::table
+        let team_debate = teams_of_debate::table
             .filter(
-                tournament_debate_teams::team_id.eq_any(
-                    tournament_team_speakers::table
-                        .filter(
-                            tournament_team_speakers::speaker_id
-                                .eq(&speaker.id),
-                        )
-                        .select(tournament_team_speakers::team_id),
+                teams_of_debate::team_id.eq_any(
+                    speakers_of_team::table
+                        .filter(speakers_of_team::speaker_id.eq(&speaker.id))
+                        .select(speakers_of_team::team_id),
                 ),
             )
-            .filter(tournament_debate_teams::debate_id.eq_any({
-                tournament_debates::table
+            .filter(teams_of_debate::debate_id.eq_any({
+                debates::table
                     .filter(
-                        tournament_debates::round_id.eq_any(
+                        debates::round_id.eq_any(
                             current_rounds
                                 .iter()
                                 .map(|round| round.id.clone())
                                 .collect::<Vec<_>>(),
                         ),
                     )
-                    .select(tournament_debates::id)
+                    .select(debates::id)
             }))
             .first::<DebateTeam>(conn)
             .optional()
@@ -170,9 +167,9 @@ fn private_url_page_of_judge(
         .collect_vec();
 
     let institution_name = if let Some(ref inst_id) = judge.institution_id {
-        tournament_institutions::table
-            .filter(tournament_institutions::id.eq(inst_id))
-            .select(tournament_institutions::name)
+        institutions::table
+            .filter(institutions::id.eq(inst_id))
+            .select(institutions::name)
             .first::<String>(conn)
             .ok()
     } else {
@@ -180,24 +177,21 @@ fn private_url_page_of_judge(
     };
 
     let current_debate_info = if !current_rounds.is_empty() {
-        let judge_debate = tournament_debate_judges::table
-            .filter(tournament_debate_judges::judge_id.eq(&judge.id))
-            .filter(tournament_debate_judges::debate_id.eq_any({
-                tournament_debates::table
+        let judge_debate = judges_of_debate::table
+            .filter(judges_of_debate::judge_id.eq(&judge.id))
+            .filter(judges_of_debate::debate_id.eq_any({
+                debates::table
                     .filter(
-                        tournament_debates::round_id.eq_any(
+                        debates::round_id.eq_any(
                             current_rounds
                                 .iter()
                                 .map(|round| round.id.clone())
                                 .collect::<Vec<_>>(),
                         ),
                     )
-                    .select(tournament_debates::id)
+                    .select(debates::id)
             }))
-            .select((
-                tournament_debate_judges::debate_id,
-                tournament_debate_judges::status,
-            ))
+            .select((judges_of_debate::debate_id, judges_of_debate::status))
             .first::<(String, String)>(conn)
             .optional()
             .unwrap();

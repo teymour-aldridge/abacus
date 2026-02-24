@@ -14,7 +14,7 @@ use tokio::{sync::broadcast::Receiver, task::spawn_blocking};
 use crate::{
     auth::User,
     msg::{Msg, MsgContents},
-    schema::{tournament_rooms, tournament_rounds},
+    schema::{rooms, rounds},
     state::{Conn, DbPool},
     template::Page,
     tournaments::{
@@ -50,8 +50,8 @@ pub async fn load_room_allocator_page(
     let all_rounds =
         TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
 
-    let rounds2edit = match tournament_rounds::table
-        .filter(tournament_rounds::id.eq_any(&rounds_vec))
+    let rounds2edit = match rounds::table
+        .filter(rounds::id.eq_any(&rounds_vec))
         .load::<Round>(&mut *conn)
         .optional()
         .unwrap()
@@ -133,9 +133,9 @@ pub async fn room_allocator_updates(
             .check_user_is_superuser(&user.id, &mut conn)
             .ok()?;
 
-        let rounds = tournament_rounds::table
-            .filter(tournament_rounds::tournament_id.eq(&tournament.id))
-            .filter(tournament_rounds::id.eq_any(&round_ids))
+        let rounds = rounds::table
+            .filter(rounds::tournament_id.eq(&tournament.id))
+            .filter(rounds::id.eq_any(&round_ids))
             .load::<Round>(&mut conn)
             .optional()
             .unwrap();
@@ -279,9 +279,9 @@ fn get_draw_update(
     round_ids: &[String],
     conn: &mut SqliteConnection,
 ) -> (Vec<Room>, Vec<RoundDrawRepr>) {
-    let rounds = tournament_rounds::table
-        .filter(tournament_rounds::tournament_id.eq(tournament_id))
-        .filter(tournament_rounds::id.eq_any(round_ids))
+    let rounds = rounds::table
+        .filter(rounds::tournament_id.eq(tournament_id))
+        .filter(rounds::id.eq_any(round_ids))
         .load::<Round>(conn)
         .unwrap();
 
@@ -290,8 +290,8 @@ fn get_draw_update(
         .map(|round| RoundDrawRepr::of_round(round, conn))
         .collect::<Vec<_>>();
 
-    let all_rooms = tournament_rooms::table
-        .filter(tournament_rooms::tournament_id.eq(tournament_id))
+    let all_rooms = rooms::table
+        .filter(rooms::tournament_id.eq(tournament_id))
         .load::<Room>(conn)
         .unwrap();
 

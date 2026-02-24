@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::{
     auth::User,
-    schema::{tournament_speakers, tournament_team_speakers},
+    schema::{speakers, speakers_of_team},
     state::Conn,
     template::Page,
     tournaments::{
@@ -115,23 +115,23 @@ pub async fn do_create_speaker(
     let private_url = get_unique_private_url(&tournament.id, &mut *conn);
 
     let speaker_id = Uuid::now_v7().to_string();
-    let n = diesel::insert_into(tournament_speakers::table)
+    let n = diesel::insert_into(speakers::table)
         .values((
-            tournament_speakers::id.eq(&speaker_id),
-            tournament_speakers::tournament_id.eq(&tournament.id),
-            tournament_speakers::name.eq(&form.name),
-            tournament_speakers::email.eq(&form.email),
-            tournament_speakers::private_url.eq(private_url),
+            speakers::id.eq(&speaker_id),
+            speakers::tournament_id.eq(&tournament.id),
+            speakers::name.eq(&form.name),
+            speakers::email.eq(&form.email),
+            speakers::private_url.eq(private_url),
         ))
         .execute(&mut *conn)
         .unwrap();
     assert_eq!(n, 1);
 
-    diesel::insert_into(tournament_team_speakers::table)
+    diesel::insert_into(speakers_of_team::table)
         .values((
-            tournament_team_speakers::id.eq(Uuid::now_v7().to_string()),
-            tournament_team_speakers::team_id.eq(team.id),
-            tournament_team_speakers::speaker_id.eq(speaker_id),
+            speakers_of_team::id.eq(Uuid::now_v7().to_string()),
+            speakers_of_team::team_id.eq(team.id),
+            speakers_of_team::speaker_id.eq(speaker_id),
         ))
         .execute(&mut *conn)
         .unwrap();

@@ -8,10 +8,7 @@ use uuid::Uuid;
 
 use crate::{
     auth::User,
-    schema::{
-        tournament_ballots, tournament_debate_judges, tournament_debates,
-        tournament_rounds,
-    },
+    schema::{ballots, debates, judges_of_debate, rounds},
     state::Conn,
     template::Page,
     tournaments::{
@@ -224,7 +221,12 @@ pub async fn do_submit_ballot(
 
     let round = Round::fetch(&round_id, &mut *conn)?;
 
-    tracing::debug!("Resolved tournament={}, judge={}, round={}.", tournament.id, judge.id, round.id);
+    tracing::debug!(
+        "Resolved tournament={}, judge={}, round={}.",
+        tournament.id,
+        judge.id,
+        round.id
+    );
 
     check_round_released(
         &tournament_id,
@@ -244,11 +246,11 @@ pub async fn do_submit_ballot(
     let debate = debate_of_judge_in_round(&judge.id, &round.id, &mut *conn)?;
     let debate_repr = DebateRepr::fetch(&debate.id, &mut *conn);
 
-    let prior = tournament_ballots::table
-        .filter(tournament_ballots::tournament_id.eq(&tournament.id))
-        .filter(tournament_ballots::judge_id.eq(&judge.id))
-        .filter(tournament_ballots::debate_id.eq(&debate.id))
-        .order_by(tournament_ballots::submitted_at.desc())
+    let prior = ballots::table
+        .filter(ballots::tournament_id.eq(&tournament.id))
+        .filter(ballots::judge_id.eq(&judge.id))
+        .filter(ballots::debate_id.eq(&debate.id))
+        .order_by(ballots::submitted_at.desc())
         .first::<BallotMetadata>(&mut *conn)
         .optional()
         .unwrap();
@@ -299,22 +301,16 @@ fn debate_of_judge_in_round(
     round_id: &str,
     conn: &mut impl LoadConnection<Backend = Sqlite>,
 ) -> Result<Debate, FailureResponse> {
-    match tournament_debates::table
-        .inner_join(
-            tournament_rounds::table
-                .on(tournament_rounds::id.eq(tournament_debates::round_id)),
-        )
-        .filter(tournament_rounds::id.eq(round_id))
-        .filter(tournament_rounds::draw_status.eq("released_full"))
+    match debates::table
+        .inner_join(rounds::table.on(rounds::id.eq(debates::round_id)))
+        .filter(rounds::id.eq(round_id))
+        .filter(rounds::draw_status.eq("released_full"))
         .filter(diesel::dsl::exists(
-            tournament_debate_judges::table
-                .filter(tournament_debate_judges::judge_id.eq(judge_id))
-                .filter(
-                    tournament_debate_judges::debate_id
-                        .eq(tournament_debates::id),
-                ),
+            judges_of_debate::table
+                .filter(judges_of_debate::judge_id.eq(judge_id))
+                .filter(judges_of_debate::debate_id.eq(debates::id)),
         ))
-        .select(tournament_debates::all_columns)
+        .select(debates::all_columns)
         .first::<Debate>(conn)
         .optional()
         .unwrap()

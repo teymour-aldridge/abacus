@@ -5,7 +5,7 @@ use itertools::Itertools;
 
 use crate::{
     auth::User,
-    schema::{tournament_debates, tournament_rounds},
+    schema::{debates, rounds},
     state::Conn,
     template::Page,
     tournaments::{
@@ -31,8 +31,8 @@ pub async fn admin_ballot_of_seq_overview(
     let all_rounds =
         TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
 
-    let rounds = tournament_rounds::table
-        .filter(tournament_rounds::seq.eq(round_seq))
+    let rounds = rounds::table
+        .filter(rounds::seq.eq(round_seq))
         .load::<Round>(&mut *conn)
         .unwrap();
 
@@ -40,17 +40,14 @@ pub async fn admin_ballot_of_seq_overview(
         return err_not_found();
     }
 
-    let debates = tournament_debates::table
+    let debates = debates::table
         .inner_join(
-            tournament_rounds::table.on(tournament_rounds::seq
+            rounds::table.on(rounds::seq
                 .eq(round_seq)
-                .and(tournament_debates::round_id.eq(tournament_rounds::id))),
+                .and(debates::round_id.eq(rounds::id))),
         )
-        .order_by((
-            tournament_rounds::id.asc(),
-            tournament_debates::number.asc(),
-        ))
-        .select(tournament_debates::all_columns)
+        .order_by((rounds::id.asc(), debates::number.asc()))
+        .select(debates::all_columns)
         .load::<Debate>(&mut *conn)
         .unwrap();
 

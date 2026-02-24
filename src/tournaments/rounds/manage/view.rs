@@ -4,7 +4,7 @@ use hypertext::{maud, prelude::*};
 
 use crate::{
     auth::User,
-    schema::tournament_rounds,
+    schema::rounds,
     state::Conn,
     template::Page,
     tournaments::{
@@ -15,7 +15,7 @@ use crate::{
     util_resp::{StandardResponse, success},
 };
 
-pub async fn view_tournament_rounds_page(
+pub async fn view_rounds_page(
     Path((tid, rid)): Path<(String, i64)>,
     user: User<true>,
     mut conn: Conn<true>,
@@ -23,9 +23,9 @@ pub async fn view_tournament_rounds_page(
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
-    let rounds = tournament_rounds::table
-        .filter(tournament_rounds::tournament_id.eq(&tid))
-        .filter(tournament_rounds::seq.eq(rid))
+    let rounds = rounds::table
+        .filter(rounds::tournament_id.eq(&tid))
+        .filter(rounds::seq.eq(rid))
         .load::<Round>(&mut *conn)
         .unwrap();
 

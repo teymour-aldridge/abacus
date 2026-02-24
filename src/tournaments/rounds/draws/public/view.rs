@@ -6,7 +6,7 @@ use hypertext::prelude::*;
 
 use crate::{
     auth::User,
-    schema::tournament_teams,
+    schema::teams,
     state::Conn,
     template::Page,
     tournaments::{
@@ -44,8 +44,8 @@ pub async fn view_active_draw_page(
         .map(|round| RoundDrawRepr::of_round(round.clone(), &mut *conn))
         .collect::<Vec<_>>();
 
-    let teams = tournament_teams::table
-        .filter(tournament_teams::tournament_id.eq(&tournament_id))
+    let teams = teams::table
+        .filter(teams::tournament_id.eq(&tournament_id))
         .load::<Team>(&mut *conn)
         .unwrap()
         .into_iter()

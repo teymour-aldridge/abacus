@@ -5,7 +5,7 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    schema::{tournament_round_motions, tournament_rounds},
+    schema::{motions_of_round, rounds},
     util_resp::{FailureResponse, err_not_found},
 };
 
@@ -65,10 +65,10 @@ impl Round {
             .as_ref()
             .expect("is_final_of_break_category called on a round without a break category");
 
-        let max_seq: Option<i64> = tournament_rounds::table
-            .filter(tournament_rounds::tournament_id.eq(&self.tournament_id))
-            .filter(tournament_rounds::break_category.eq(cat))
-            .select(diesel::dsl::max(tournament_rounds::seq))
+        let max_seq: Option<i64> = rounds::table
+            .filter(rounds::tournament_id.eq(&self.tournament_id))
+            .filter(rounds::break_category.eq(cat))
+            .select(diesel::dsl::max(rounds::seq))
             .first::<Option<i64>>(conn)
             .unwrap();
 
@@ -80,11 +80,11 @@ impl Round {
         tournament_id: &str,
         conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Vec<Round> {
-        tournament_rounds::table
+        rounds::table
             .filter(
-                tournament_rounds::tournament_id
+                rounds::tournament_id
                     .eq(tournament_id)
-                    .and(tournament_rounds::seq.eq(seq)),
+                    .and(rounds::seq.eq(seq)),
             )
             .load::<Round>(conn)
             .unwrap()
@@ -94,8 +94,8 @@ impl Round {
         round_id: &str,
         conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Result<Self, FailureResponse> {
-        tournament_rounds::table
-            .filter(tournament_rounds::id.eq(round_id))
+        rounds::table
+            .filter(rounds::id.eq(round_id))
             .first::<Round>(conn)
             .optional()
             .unwrap()
@@ -111,41 +111,37 @@ impl Round {
         conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Vec<Self> {
         let current_seq = {
-            let released_seq: Option<i64> =
-                tournament_rounds::table
-                    .filter(tournament_rounds::tournament_id.eq(tid))
-                    .filter(tournament_rounds::completed.eq(false))
-                    .filter(
-                        tournament_rounds::draw_status
-                            .eq("released_full")
-                            .or(tournament_rounds::draw_status
-                                .eq("released_teams")),
-                    )
-                    .select(diesel::dsl::max(tournament_rounds::seq))
-                    .first::<Option<i64>>(conn)
-                    .unwrap();
+            let released_seq: Option<i64> = rounds::table
+                .filter(rounds::tournament_id.eq(tid))
+                .filter(rounds::completed.eq(false))
+                .filter(
+                    rounds::draw_status
+                        .eq("released_full")
+                        .or(rounds::draw_status.eq("released_teams")),
+                )
+                .select(diesel::dsl::max(rounds::seq))
+                .first::<Option<i64>>(conn)
+                .unwrap();
 
             match released_seq {
                 Some(seq) => seq,
                 None => {
-                    let sq = diesel::alias!(tournament_rounds as sq);
-                    sq.filter(
-                        sq.field(tournament_rounds::tournament_id).eq(tid),
-                    )
-                    .filter(sq.field(tournament_rounds::completed).eq(false))
-                    .select(diesel::dsl::min(sq.field(tournament_rounds::seq)))
-                    .first::<Option<i64>>(conn)
-                    .unwrap()
-                    .unwrap_or(1)
+                    let sq = diesel::alias!(rounds as sq);
+                    sq.filter(sq.field(rounds::tournament_id).eq(tid))
+                        .filter(sq.field(rounds::completed).eq(false))
+                        .select(diesel::dsl::min(sq.field(rounds::seq)))
+                        .first::<Option<i64>>(conn)
+                        .unwrap()
+                        .unwrap_or(1)
                 }
             }
         };
 
-        let ret = tournament_rounds::table
-            .filter(tournament_rounds::tournament_id.eq(tid))
-            .filter(tournament_rounds::seq.eq(current_seq))
-            .filter(tournament_rounds::completed.eq(false))
-            .order_by(tournament_rounds::seq.asc())
+        let ret = rounds::table
+            .filter(rounds::tournament_id.eq(tid))
+            .filter(rounds::seq.eq(current_seq))
+            .filter(rounds::completed.eq(false))
+            .order_by(rounds::seq.asc())
             .load::<Round>(conn)
             .unwrap();
 
@@ -163,14 +159,11 @@ impl Round {
         &self,
         conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Option<Round> {
-        tournament_rounds::table
-            .filter(tournament_rounds::seq.lt(self.seq))
-            .filter(tournament_rounds::completed.eq(false))
-            .filter(tournament_rounds::tournament_id.eq(&self.tournament_id))
-            .order_by((
-                tournament_rounds::seq.asc(),
-                tournament_rounds::name.asc(),
-            ))
+        rounds::table
+            .filter(rounds::seq.lt(self.seq))
+            .filter(rounds::completed.eq(false))
+            .filter(rounds::tournament_id.eq(&self.tournament_id))
+            .order_by((rounds::seq.asc(), rounds::name.asc()))
             .first::<Round>(conn)
             .optional()
             .unwrap()
@@ -199,9 +192,9 @@ impl TournamentRounds {
         tid: &str,
         conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Result<TournamentRounds, diesel::result::Error> {
-        let rounds = tournament_rounds::table
-            .filter(tournament_rounds::tournament_id.eq(tid))
-            .order_by((tournament_rounds::seq.asc(),))
+        let rounds = rounds::table
+            .filter(rounds::tournament_id.eq(tid))
+            .order_by((rounds::seq.asc(),))
             .load::<Round>(conn)
             .unwrap();
 
@@ -318,7 +311,7 @@ impl TournamentRounds {
 #[derive(
     Debug, Clone, Serialize, Deserialize, Queryable, Identifiable, Insertable,
 )]
-#[diesel(table_name = tournament_round_motions)]
+#[diesel(table_name = motions_of_round)]
 pub struct Motion {
     pub id: String,
     pub tournament_id: String,

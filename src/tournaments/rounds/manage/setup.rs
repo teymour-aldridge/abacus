@@ -5,10 +5,7 @@ use itertools::Itertools;
 
 use crate::{
     auth::User,
-    schema::{
-        tournament_judge_availability, tournament_judges,
-        tournament_team_availability, tournament_teams,
-    },
+    schema::{judge_availability, judges, team_availability, teams},
     state::Conn,
     template::Page,
     tournaments::{
@@ -24,11 +21,11 @@ fn percentage_teams_available(
     round_id: &str,
     conn: &mut impl LoadConnection<Backend = Sqlite>,
 ) -> (f32, i64, i64) {
-    let available = tournament_team_availability::table
+    let available = team_availability::table
         .filter(
-            tournament_team_availability::round_id
+            team_availability::round_id
                 .eq(round_id)
-                .and(tournament_team_availability::available.eq(true)),
+                .and(team_availability::available.eq(true)),
         )
         .count()
         .get_result::<i64>(&mut *conn)
@@ -46,11 +43,11 @@ fn percentage_judges_available(
     round_id: &str,
     conn: &mut impl LoadConnection<Backend = Sqlite>,
 ) -> (f32, i64, i64) {
-    let available = tournament_judge_availability::table
+    let available = judge_availability::table
         .filter(
-            tournament_judge_availability::round_id
+            judge_availability::round_id
                 .eq(round_id)
-                .and(tournament_judge_availability::available.eq(true)),
+                .and(judge_availability::available.eq(true)),
         )
         .count()
         .get_result::<i64>(&mut *conn)
@@ -78,8 +75,8 @@ pub async fn setup_round_page(
         .cloned()
         .collect_vec();
 
-    let total_teams = tournament_teams::table
-        .filter(tournament_teams::tournament_id.eq(&tid))
+    let total_teams = teams::table
+        .filter(teams::tournament_id.eq(&tid))
         .count()
         .get_result::<i64>(&mut *conn)
         .unwrap();
@@ -96,8 +93,8 @@ pub async fn setup_round_page(
         vec
     };
 
-    let total_judges = tournament_judges::table
-        .filter(tournament_judges::tournament_id.eq(&tid))
+    let total_judges = judges::table
+        .filter(judges::tournament_id.eq(&tid))
         .count()
         .get_result::<i64>(&mut *conn)
         .unwrap();

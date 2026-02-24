@@ -11,7 +11,7 @@ use std::collections::HashMap;
 
 use crate::{
     auth::User,
-    schema::{tournament_round_motions, tournament_rounds},
+    schema::{motions_of_round, rounds},
     state::{AppState, Conn},
     template::Page,
     tournaments::{
@@ -139,16 +139,16 @@ pub async fn get_briefing_room(
     let can_publish_motions: HashMap<String, bool> = rounds
         .iter()
         .map(|round| {
-            let has_motions = tournament_round_motions::table
-                .filter(tournament_round_motions::round_id.eq(&round.id))
+            let has_motions = motions_of_round::table
+                .filter(motions_of_round::round_id.eq(&round.id))
                 .count()
                 .get_result::<i64>(&mut conn)
                 .unwrap_or(0)
                 > 0;
 
-            let has_unpublished_motions = tournament_round_motions::table
-                .filter(tournament_round_motions::round_id.eq(&round.id))
-                .filter(tournament_round_motions::published_at.is_null())
+            let has_unpublished_motions = motions_of_round::table
+                .filter(motions_of_round::round_id.eq(&round.id))
+                .filter(motions_of_round::published_at.is_null())
                 .count()
                 .get_result::<i64>(&mut conn)
                 .unwrap_or(0)
@@ -193,8 +193,8 @@ pub async fn set_draw_published(
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
-    let round = match tournament_rounds::table
-        .filter(tournament_rounds::id.eq(round_id))
+    let round = match rounds::table
+        .filter(rounds::id.eq(round_id))
         .first::<Round>(&mut *conn)
         .optional()
         .unwrap()
@@ -203,10 +203,10 @@ pub async fn set_draw_published(
         None => return err_not_found(),
     };
 
-    diesel::update(tournament_rounds::table.find(round.id.clone()))
+    diesel::update(rounds::table.find(round.id.clone()))
         .set((
-            tournament_rounds::draw_status.eq(&form.status),
-            tournament_rounds::draw_released_at.eq(
+            rounds::draw_status.eq(&form.status),
+            rounds::draw_released_at.eq(
                 if form.status == "released_teams"
                     || form.status == "released_full"
                 {

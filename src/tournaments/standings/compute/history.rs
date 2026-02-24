@@ -5,7 +5,7 @@ use diesel::{
 };
 
 use crate::{
-    schema::{tournament_debate_teams, tournament_teams, tournaments},
+    schema::{teams, teams_of_debate, tournaments},
     tournaments::Tournament,
 };
 
@@ -23,28 +23,28 @@ impl TeamHistory {
             .first::<Tournament>(conn)
             .unwrap();
 
-        let query =
-            tournament_teams::table
-                .filter(tournament_teams::tournament_id.eq(tid))
-                .inner_join(tournament_debate_teams::table.on(
-                    tournament_debate_teams::team_id.eq(tournament_teams::id),
-                ))
-                .group_by(tournament_teams::id);
+        let query = teams::table
+            .filter(teams::tournament_id.eq(tid))
+            .inner_join(
+                teams_of_debate::table
+                    .on(teams_of_debate::team_id.eq(teams::id)),
+            )
+            .group_by(teams::id);
 
         let history = match tournament.teams_per_side {
             1 => query
                 .select((
-                    tournament_teams::id,
+                    teams::id,
                     diesel::dsl::count(diesel::dsl::case_when(
-                        tournament_debate_teams::side
+                        teams_of_debate::side
                             .eq(0)
-                            .and(tournament_debate_teams::seq.eq(0)),
+                            .and(teams_of_debate::seq.eq(0)),
                         1.as_sql::<BigInt>(),
                     )),
                     diesel::dsl::count(diesel::dsl::case_when(
-                        tournament_debate_teams::side
+                        teams_of_debate::side
                             .eq(1)
-                            .and(tournament_debate_teams::seq.eq(0)),
+                            .and(teams_of_debate::seq.eq(0)),
                         1.as_sql::<BigInt>(),
                     )),
                 ))
@@ -57,29 +57,29 @@ impl TeamHistory {
                 .collect(),
             2 => query
                 .select((
-                    tournament_teams::id,
+                    teams::id,
                     diesel::dsl::count(diesel::dsl::case_when(
-                        tournament_debate_teams::side
+                        teams_of_debate::side
                             .eq(0)
-                            .and(tournament_debate_teams::seq.eq(0)),
+                            .and(teams_of_debate::seq.eq(0)),
                         1.as_sql::<BigInt>(),
                     )),
                     diesel::dsl::count(diesel::dsl::case_when(
-                        tournament_debate_teams::side
+                        teams_of_debate::side
                             .eq(1)
-                            .and(tournament_debate_teams::seq.eq(0)),
+                            .and(teams_of_debate::seq.eq(0)),
                         1.as_sql::<BigInt>(),
                     )),
                     diesel::dsl::count(diesel::dsl::case_when(
-                        tournament_debate_teams::side
+                        teams_of_debate::side
                             .eq(0)
-                            .and(tournament_debate_teams::seq.eq(1)),
+                            .and(teams_of_debate::seq.eq(1)),
                         1.as_sql::<BigInt>(),
                     )),
                     diesel::dsl::count(diesel::dsl::case_when(
-                        tournament_debate_teams::side
+                        teams_of_debate::side
                             .eq(0)
-                            .and(tournament_debate_teams::seq.eq(0)),
+                            .and(teams_of_debate::seq.eq(0)),
                         1.as_sql::<BigInt>(),
                     )),
                 ))

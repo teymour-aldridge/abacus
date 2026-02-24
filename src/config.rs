@@ -25,7 +25,7 @@ use crate::{
     // },
     auth::User,
     // msg::Msg,
-    schema::{tournament_members, tournaments},
+    schema::{org, tournaments},
     state::{Conn, DbPool},
     template::Page,
     tournaments::Tournament,
@@ -39,9 +39,9 @@ async fn home(
     if let Some(user) = user {
         let tournaments_list = tournaments::table
             .inner_join(
-                tournament_members::table.on(tournament_members::tournament_id
+                org::table.on(org::tournament_id
                     .eq(tournaments::id)
-                    .and(tournament_members::user_id.eq(&user.id))),
+                    .and(org::user_id.eq(&user.id))),
             )
             .select(tournaments::all_columns)
             .order_by(tournaments::created_at.desc())
@@ -264,7 +264,7 @@ pub fn create_app(pool: DbPool) -> Router {
         .route("/tournaments/:id/rounds/:round_seq/setup", get(crate::tournaments::rounds::manage::setup::setup_round_page))
         .route("/tournaments/:id/rounds/create", get(crate::tournaments::rounds::manage::create::create_new_round))
         .route("/tournaments/:id/rounds/:category_id/create", get(crate::tournaments::rounds::manage::create::create_new_round_of_specific_category_page).post(crate::tournaments::rounds::manage::create::do_create_new_round_of_specific_category))
-        .route("/tournaments/:id/rounds/:round_seq", get(crate::tournaments::rounds::manage::view::view_tournament_rounds_page))
+        .route("/tournaments/:id/rounds/:round_seq", get(crate::tournaments::rounds::manage::view::view_rounds_page))
         .route("/tournaments/:id/rounds/:round_seq/draw", get(crate::tournaments::rounds::draws::public::view::view_active_draw_page))
         .route("/tournaments/:id/rounds/:round_seq/draw/manage", get(crate::tournaments::rounds::manage::draw_view::view_draws_page))
         .route("/tournaments/:id/rounds/:round_id/edit", get(crate::tournaments::rounds::manage::edit::edit_round_page).post(crate::tournaments::rounds::manage::edit::do_edit_round))

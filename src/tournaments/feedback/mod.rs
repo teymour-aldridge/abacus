@@ -5,9 +5,8 @@ use diesel::prelude::*;
 use serde::Serialize;
 
 use crate::schema::{
-    feedback_from_judges_question_answers,
-    feedback_from_teams_question_answers, feedback_of_judges,
-    feedback_of_teams, feedback_questions,
+    answers_of_feedback_from_judges, answers_of_feedback_from_teams,
+    feedback_of_judges, feedback_of_teams, feedback_questions,
 };
 
 #[derive(
@@ -51,7 +50,7 @@ pub struct FeedbackOfTeam {
 #[derive(
     Queryable, Selectable, Identifiable, Insertable, Debug, Clone, Serialize,
 )]
-#[diesel(table_name = feedback_from_judges_question_answers)]
+#[diesel(table_name = answers_of_feedback_from_judges)]
 pub struct FeedbackFromJudgesQuestionAnswer {
     pub id: String,
     pub feedback_id: String,
@@ -62,7 +61,7 @@ pub struct FeedbackFromJudgesQuestionAnswer {
 #[derive(
     Queryable, Selectable, Identifiable, Insertable, Debug, Clone, Serialize,
 )]
-#[diesel(table_name = feedback_from_teams_question_answers)]
+#[diesel(table_name = answers_of_feedback_from_teams)]
 pub struct FeedbackFromTeamsQuestionAnswer {
     pub id: String,
     pub feedback_id: String,

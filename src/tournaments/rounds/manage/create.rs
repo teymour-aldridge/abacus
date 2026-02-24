@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 use crate::{
     auth::User,
-    schema::{tournament_break_categories, tournament_rounds},
+    schema::{break_categories, rounds},
     state::Conn,
     template::Page,
     tournaments::{
@@ -34,9 +34,9 @@ pub async fn create_new_round(
 
     let rounds = TournamentRounds::fetch(&tid, &mut *conn).unwrap();
 
-    let cats = tournament_break_categories::table
-        .filter(tournament_break_categories::tournament_id.eq(&tournament.id))
-        .order_by(tournament_break_categories::priority.asc())
+    let cats = break_categories::table
+        .filter(break_categories::tournament_id.eq(&tournament.id))
+        .order_by(break_categories::priority.asc())
         .load::<BreakCategory>(&mut *conn)
         .unwrap();
 
@@ -97,10 +97,10 @@ pub async fn create_new_round_of_specific_category_page(
         if category_id == "in_round" {
         } else {
             let cat_exists = diesel::dsl::select(diesel::dsl::exists(
-                tournament_break_categories::table.filter(
-                    tournament_break_categories::tournament_id
+                break_categories::table.filter(
+                    break_categories::tournament_id
                         .eq(&tournament.id)
-                        .and(tournament_break_categories::id.eq(&category_id)),
+                        .and(break_categories::id.eq(&category_id)),
                 ),
             ))
             .get_result::<bool>(&mut *conn)
@@ -187,11 +187,9 @@ pub async fn do_create_new_round_of_specific_category(
     let break_cat = if category_id == "in_round" {
         None
     } else {
-        let cat = match tournament_break_categories::table
-            .filter(tournament_break_categories::id.eq(&category_id))
-            .filter(
-                tournament_break_categories::tournament_id.eq(&tournament.id),
-            )
+        let cat = match break_categories::table
+            .filter(break_categories::id.eq(&category_id))
+            .filter(break_categories::tournament_id.eq(&tournament.id))
             .first::<BreakCategory>(&mut *conn)
             .optional()
             .unwrap()
@@ -202,19 +200,15 @@ pub async fn do_create_new_round_of_specific_category(
         Some(cat)
     };
 
-    diesel::insert_into(tournament_rounds::table)
+    diesel::insert_into(rounds::table)
         .values((
-            tournament_rounds::id.eq(Uuid::now_v7().to_string()),
-            tournament_rounds::tournament_id.eq(&tournament.id),
-            tournament_rounds::seq.eq(form.seq as i64),
-            tournament_rounds::name.eq(&form.name),
-            tournament_rounds::kind.eq(if category_id == "in_round" {
-                "P"
-            } else {
-                "E"
-            }),
-            tournament_rounds::break_category.eq(break_cat.map(|c| c.id)),
-            tournament_rounds::completed.eq(false),
+            rounds::id.eq(Uuid::now_v7().to_string()),
+            rounds::tournament_id.eq(&tournament.id),
+            rounds::seq.eq(form.seq as i64),
+            rounds::name.eq(&form.name),
+            rounds::kind.eq(if category_id == "in_round" { "P" } else { "E" }),
+            rounds::break_category.eq(break_cat.map(|c| c.id)),
+            rounds::completed.eq(false),
         ))
         .execute(&mut *conn)
         .unwrap();

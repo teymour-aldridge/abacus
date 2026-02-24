@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::{
     auth::User,
-    schema::{tournament_institutions, tournament_judges},
+    schema::{institutions, judges},
     state::Conn,
     template::Page,
     tournaments::{
@@ -38,8 +38,8 @@ pub async fn create_judge_page(
 
     tracing::trace!("User has permission to manage participants.");
 
-    let institutions = tournament_institutions::table
-        .filter(tournament_institutions::tournament_id.eq(&tournament.id))
+    let institutions = institutions::table
+        .filter(institutions::tournament_id.eq(&tournament.id))
         .load::<Institution>(&mut *conn)
         .unwrap();
 
@@ -162,8 +162,8 @@ pub async fn do_create_judge(
 
     let inst = match id {
         Some(inst) => {
-            match tournament_institutions::table
-                .filter(tournament_institutions::id.eq(inst))
+            match institutions::table
+                .filter(institutions::id.eq(inst))
                 .first::<Institution>(&mut *conn)
                 .optional()
                 .unwrap()
@@ -189,26 +189,25 @@ pub async fn do_create_judge(
 
     let private_url = get_unique_private_url(&tournament.id, &mut *conn);
 
-    let next_number = tournament_judges::table
-        .filter(tournament_judges::tournament_id.eq(&tournament_id))
-        .order_by(tournament_judges::number.desc())
-        .select(tournament_judges::number)
+    let next_number = judges::table
+        .filter(judges::tournament_id.eq(&tournament_id))
+        .order_by(judges::number.desc())
+        .select(judges::number)
         .first::<i64>(&mut *conn)
         .optional()
         .unwrap()
         .unwrap_or(0)
         + 1;
 
-    let n = diesel::insert_into(tournament_judges::table)
+    let n = diesel::insert_into(judges::table)
         .values((
-            tournament_judges::id.eq(Uuid::now_v7().to_string()),
-            tournament_judges::tournament_id.eq(&tournament.id),
-            tournament_judges::name.eq(&form.name),
-            tournament_judges::email.eq(&form.email),
-            tournament_judges::institution_id
-                .eq(inst.map(|inst| inst.id.clone())),
-            tournament_judges::private_url.eq(private_url),
-            tournament_judges::number.eq(next_number),
+            judges::id.eq(Uuid::now_v7().to_string()),
+            judges::tournament_id.eq(&tournament.id),
+            judges::name.eq(&form.name),
+            judges::email.eq(&form.email),
+            judges::institution_id.eq(inst.map(|inst| inst.id.clone())),
+            judges::private_url.eq(private_url),
+            judges::number.eq(next_number),
         ))
         .execute(&mut *conn)
         .unwrap();

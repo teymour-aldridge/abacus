@@ -11,7 +11,7 @@ use tokio::{sync::broadcast::Sender, task::spawn_blocking};
 use crate::{
     auth::User,
     msg::{Msg, MsgContents},
-    schema::tournament_rounds,
+    schema::rounds,
     state::{Conn, DbPool},
     template::Page,
     tournaments::{
@@ -41,9 +41,9 @@ pub async fn generate_draw_page(
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
-    let round = match tournament_rounds::table
-        .filter(tournament_rounds::id.eq(&round_id))
-        .filter(tournament_rounds::tournament_id.eq(&tournament.id))
+    let round = match rounds::table
+        .filter(rounds::id.eq(&round_id))
+        .filter(rounds::tournament_id.eq(&tournament.id))
         .first::<Round>(&mut *conn)
         .optional()
         .unwrap()
@@ -119,8 +119,8 @@ pub async fn do_generate_draw(
             return DrawResult::AuthError(Err(e));
         }
 
-        let round = match tournament_rounds::table
-            .filter(tournament_rounds::id.eq(&round_id_clone))
+        let round = match rounds::table
+            .filter(rounds::id.eq(&round_id_clone))
             .first::<Round>(&mut conn)
             .optional()
             .unwrap()

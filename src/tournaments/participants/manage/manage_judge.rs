@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::{
     auth::User,
-    schema::{tournament_institutions, tournament_judges},
+    schema::{institutions, judges},
     state::Conn,
     template::Page,
     tournaments::{
@@ -39,11 +39,11 @@ pub async fn edit_judge_details_page(
         &mut *conn,
     )?;
 
-    let judge = match tournament_judges::table
+    let judge = match judges::table
         .filter(
-            tournament_judges::tournament_id
+            judges::tournament_id
                 .eq(&tournament.id)
-                .and(tournament_judges::id.eq(&judge_id)),
+                .and(judges::id.eq(&judge_id)),
         )
         .first::<Judge>(&mut *conn)
         .optional()
@@ -53,8 +53,8 @@ pub async fn edit_judge_details_page(
         None => return err_not_found(),
     };
 
-    let institutions = tournament_institutions::table
-        .filter(tournament_institutions::tournament_id.eq(&tournament_id))
+    let institutions = institutions::table
+        .filter(institutions::tournament_id.eq(&tournament_id))
         .load::<Institution>(&mut *conn)
         .unwrap();
 
@@ -153,9 +153,9 @@ pub async fn do_edit_judge_details(
         );
     }
 
-    let judge = match tournament_judges::table
+    let judge = match judges::table
         .find(judge_id)
-        .filter(tournament_judges::tournament_id.eq(&tournament.id))
+        .filter(judges::tournament_id.eq(&tournament.id))
         .first::<Judge>(&mut *conn)
         .optional()
         .unwrap()
@@ -168,9 +168,9 @@ pub async fn do_edit_judge_details(
         "-----" => None,
         id => {
             let inst_exists = diesel::dsl::select(diesel::dsl::exists(
-                tournament_institutions::table.filter(
-                    // Changed from tournament_judges to tournament_institutions as it seems to be checking if institution exists?
-                    tournament_institutions::id.eq(id),
+                institutions::table.filter(
+                    // Changed from judges to institutions as it seems to be checking if institution exists?
+                    institutions::id.eq(id),
                 ),
             ))
             .get_result::<bool>(&mut *conn)
@@ -184,18 +184,16 @@ pub async fn do_edit_judge_details(
         }
     };
 
-    diesel::update(
-        tournament_judges::table.filter(tournament_judges::id.eq(&judge.id)),
-    )
-    .set((
-        tournament_judges::id.eq(Uuid::now_v7().to_string()),
-        tournament_judges::tournament_id.eq(&tournament.id),
-        tournament_judges::name.eq(&form.name),
-        tournament_judges::email.eq(&form.email),
-        tournament_judges::institution_id.eq(institution_id),
-    ))
-    .execute(&mut *conn)
-    .unwrap();
+    diesel::update(judges::table.filter(judges::id.eq(&judge.id)))
+        .set((
+            judges::id.eq(Uuid::now_v7().to_string()),
+            judges::tournament_id.eq(&tournament.id),
+            judges::name.eq(&form.name),
+            judges::email.eq(&form.email),
+            judges::institution_id.eq(institution_id),
+        ))
+        .execute(&mut *conn)
+        .unwrap();
 
     see_other_ok(Redirect::to(&format!(
         "/tournaments/{}/participants",

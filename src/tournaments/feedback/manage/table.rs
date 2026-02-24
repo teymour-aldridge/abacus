@@ -8,9 +8,8 @@ use std::collections::HashMap;
 use crate::{
     auth::User,
     schema::{
-        feedback_from_judges_question_answers,
-        feedback_from_teams_question_answers, feedback_questions,
-        tournament_judges,
+        answers_of_feedback_from_judges, answers_of_feedback_from_teams,
+        feedback_questions, judges,
     },
     state::Conn,
     template::Page,
@@ -79,9 +78,9 @@ pub async fn feedback_table_page(
                     ORDER BY foj.id DESC
                 ) as rn
             FROM feedback_of_judges foj
-            INNER JOIN tournament_judges tj ON tj.id = foj.judge_id
-            INNER JOIN tournament_debates td ON td.id = foj.debate_id
-            INNER JOIN tournament_rounds tr ON tr.id = td.round_id
+            INNER JOIN judges tj ON tj.id = foj.judge_id
+            INNER JOIN debates td ON td.id = foj.debate_id
+            INNER JOIN rounds tr ON tr.id = td.round_id
             WHERE foj.tournament_id = $1
         ),
         latest_team_feedback AS (
@@ -96,9 +95,9 @@ pub async fn feedback_table_page(
                     ORDER BY fot.id DESC
                 ) as rn
             FROM feedback_of_teams fot
-            INNER JOIN tournament_teams tt ON tt.id = fot.team_id
-            INNER JOIN tournament_debates td ON td.id = fot.debate_id
-            INNER JOIN tournament_rounds tr ON tr.id = td.round_id
+            INNER JOIN teams tt ON tt.id = fot.team_id
+            INNER JOIN debates td ON td.id = fot.debate_id
+            INNER JOIN rounds tr ON tr.id = td.round_id
             WHERE fot.tournament_id = $1
         ),
         all_judge_feedback AS (
@@ -112,9 +111,9 @@ pub async fn feedback_table_page(
                     ELSE false
                 END as is_latest
             FROM feedback_of_judges foj
-            INNER JOIN tournament_judges tj ON tj.id = foj.judge_id
-            INNER JOIN tournament_debates td ON td.id = foj.debate_id
-            INNER JOIN tournament_rounds tr ON tr.id = td.round_id
+            INNER JOIN judges tj ON tj.id = foj.judge_id
+            INNER JOIN debates td ON td.id = foj.debate_id
+            INNER JOIN rounds tr ON tr.id = td.round_id
             LEFT JOIN latest_judge_feedback ljf ON ljf.id = foj.id AND ljf.rn = 1
             WHERE foj.tournament_id = $1
         ),
@@ -129,9 +128,9 @@ pub async fn feedback_table_page(
                     ELSE false
                 END as is_latest
             FROM feedback_of_teams fot
-            INNER JOIN tournament_teams tt ON tt.id = fot.team_id
-            INNER JOIN tournament_debates td ON td.id = fot.debate_id
-            INNER JOIN tournament_rounds tr ON tr.id = td.round_id
+            INNER JOIN teams tt ON tt.id = fot.team_id
+            INNER JOIN debates td ON td.id = fot.debate_id
+            INNER JOIN rounds tr ON tr.id = td.round_id
             LEFT JOIN latest_team_feedback ltf ON ltf.id = fot.id AND ltf.rn = 1
             WHERE fot.tournament_id = $1
         ),
@@ -157,28 +156,26 @@ pub async fn feedback_table_page(
     let feedback_ids: Vec<String> =
         feedback_page.iter().map(|item| item.id.clone()).collect();
 
-    let judge_answers = feedback_from_judges_question_answers::table
+    let judge_answers = answers_of_feedback_from_judges::table
         .filter(
-            feedback_from_judges_question_answers::feedback_id
-                .eq_any(&feedback_ids),
+            answers_of_feedback_from_judges::feedback_id.eq_any(&feedback_ids),
         )
         .select((
-            feedback_from_judges_question_answers::feedback_id,
-            feedback_from_judges_question_answers::question_id,
-            feedback_from_judges_question_answers::answer,
+            answers_of_feedback_from_judges::feedback_id,
+            answers_of_feedback_from_judges::question_id,
+            answers_of_feedback_from_judges::answer,
         ))
         .load::<(String, String, String)>(&mut *conn)
         .unwrap();
 
-    let team_answers = feedback_from_teams_question_answers::table
+    let team_answers = answers_of_feedback_from_teams::table
         .filter(
-            feedback_from_teams_question_answers::feedback_id
-                .eq_any(&feedback_ids),
+            answers_of_feedback_from_teams::feedback_id.eq_any(&feedback_ids),
         )
         .select((
-            feedback_from_teams_question_answers::feedback_id,
-            feedback_from_teams_question_answers::question_id,
-            feedback_from_teams_question_answers::answer,
+            answers_of_feedback_from_teams::feedback_id,
+            answers_of_feedback_from_teams::question_id,
+            answers_of_feedback_from_teams::answer,
         ))
         .load::<(String, String, String)>(&mut *conn)
         .unwrap();
@@ -197,9 +194,9 @@ pub async fn feedback_table_page(
     let mut all_feedback = Vec::new();
 
     for item in feedback_page {
-        let target_name = tournament_judges::table
+        let target_name = judges::table
             .find(&item.target_judge_id)
-            .select(tournament_judges::name)
+            .select(judges::name)
             .first::<String>(&mut *conn)
             .unwrap_or_else(|_| "Unknown".to_string());
         let answers = all_answers.get(&item.id).cloned().unwrap_or_default();

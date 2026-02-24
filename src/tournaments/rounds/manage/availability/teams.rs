@@ -20,9 +20,7 @@ use uuid::Uuid;
 use crate::{
     auth::User,
     msg::{Msg, MsgContents},
-    schema::{
-        tournament_rounds, tournament_team_availability, tournament_teams,
-    },
+    schema::{rounds, team_availability, teams},
     state::{Conn, DbPool},
     template::Page,
     tournaments::{
@@ -113,27 +111,18 @@ fn get_teams_and_availability(
     round_seq: usize,
     conn: &mut impl LoadConnection<Backend = Sqlite>,
 ) -> HashMap<(std::string::String, std::string::String), bool> {
-    tournament_teams::table
-        .filter(tournament_teams::tournament_id.eq(tournament_id))
-        .order_by(tournament_teams::id.asc())
-        .inner_join(
-            tournament_rounds::table
-                .on(tournament_rounds::seq.eq(round_seq as i64)),
-        )
-        .left_outer_join(tournament_team_availability::table)
-        .filter(
-            tournament_team_availability::round_id.eq(tournament_rounds::id),
-        )
+    teams::table
+        .filter(teams::tournament_id.eq(tournament_id))
+        .order_by(teams::id.asc())
+        .inner_join(rounds::table.on(rounds::seq.eq(round_seq as i64)))
+        .left_outer_join(team_availability::table)
+        .filter(team_availability::round_id.eq(rounds::id))
         .select((
-            tournament_teams::id,
-            tournament_rounds::id,
+            teams::id,
+            rounds::id,
             case_when(
-                tournament_team_availability::available
-                    .nullable()
-                    .is_not_null(),
-                tournament_team_availability::available
-                    .nullable()
-                    .assume_not_null(),
+                team_availability::available.nullable().is_not_null(),
+                team_availability::available.nullable().assume_not_null(),
             )
             .otherwise(false),
         ))
@@ -155,9 +144,9 @@ pub async fn view_team_availability(
     let rounds = TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
     let current_rounds = Round::current_rounds(&tournament.id, &mut *conn);
 
-    let teams = tournament_teams::table
-        .filter(tournament_teams::tournament_id.eq(&tournament_id))
-        .order_by(tournament_teams::id.asc())
+    let teams = teams::table
+        .filter(teams::tournament_id.eq(&tournament_id))
+        .order_by(teams::id.asc())
         .load::<Team>(&mut *conn)
         .unwrap();
 
@@ -234,10 +223,10 @@ pub async fn team_availability_updates(
             .ok()?;
 
         let rounds = diesel::dsl::select(diesel::dsl::exists(
-            tournament_rounds::table.filter(
-                tournament_rounds::tournament_id
+            rounds::table.filter(
+                rounds::tournament_id
                     .eq(tournament_id.to_string())
-                    .and(tournament_rounds::seq.eq(round_seq)),
+                    .and(rounds::seq.eq(round_seq)),
             ),
         ))
         .get_result::<bool>(&mut conn)
@@ -289,23 +278,19 @@ async fn handle_socket(
                 let table_html = spawn_blocking(move || {
                     let mut conn = pool1.get().unwrap();
 
-                    let rounds = tournament_rounds::table
+                    let rounds = rounds::table
                         .filter(
-                            tournament_rounds::tournament_id
+                            rounds::tournament_id
                                 .eq(&tournament_id)
-                                .and(
-                                    tournament_rounds::seq.eq(round_seq as i64),
-                                ),
+                                .and(rounds::seq.eq(round_seq as i64)),
                         )
-                        .order_by(tournament_rounds::id.asc())
+                        .order_by(rounds::id.asc())
                         .load::<Round>(&mut *conn)
                         .unwrap();
 
-                    let teams = tournament_teams::table
-                        .filter(
-                            tournament_teams::tournament_id.eq(&tournament_id),
-                        )
-                        .order_by(tournament_teams::id.asc())
+                    let teams = teams::table
+                        .filter(teams::tournament_id.eq(&tournament_id))
+                        .order_by(teams::id.asc())
                         .load::<Team>(&mut *conn)
                         .unwrap();
 
@@ -398,56 +383,52 @@ pub async fn update_eligibility_for_all(
                 TournamentParticipants::load(&tournament.id, &mut *conn);
 
             for (_, team) in participants.teams {
-                let n =
-                    diesel::insert_into(tournament_team_availability::table)
-                        .values((
-                            tournament_team_availability::id
-                                .eq(Uuid::now_v7().to_string()),
-                            tournament_team_availability::round_id
-                                .eq(&round.id),
-                            tournament_team_availability::team_id.eq(&team.id),
-                            tournament_team_availability::available.eq(true),
-                            tournament_team_availability::tournament_id
-                                .eq(tournament.id.clone()),
-                        ))
-                        .on_conflict((
-                            tournament_team_availability::round_id,
-                            tournament_team_availability::team_id,
-                        ))
-                        .do_update()
-                        .set(tournament_team_availability::available.eq(true))
-                        .execute(&mut *conn)
-                        .unwrap();
+                let n = diesel::insert_into(team_availability::table)
+                    .values((
+                        team_availability::id.eq(Uuid::now_v7().to_string()),
+                        team_availability::round_id.eq(&round.id),
+                        team_availability::team_id.eq(&team.id),
+                        team_availability::available.eq(true),
+                        team_availability::tournament_id
+                            .eq(tournament.id.clone()),
+                    ))
+                    .on_conflict((
+                        team_availability::round_id,
+                        team_availability::team_id,
+                    ))
+                    .do_update()
+                    .set(team_availability::available.eq(true))
+                    .execute(&mut *conn)
+                    .unwrap();
                 assert_eq!(n, 1);
             }
 
             diesel::update(
-                tournament_team_availability::table.filter(
-                    tournament_team_availability::round_id.eq_any(
-                        tournament_rounds::table
+                team_availability::table.filter(
+                    team_availability::round_id.eq_any(
+                        rounds::table
                             .filter(
-                                tournament_rounds::tournament_id
+                                rounds::tournament_id
                                     .eq(&round.tournament_id)
-                                    .and(tournament_rounds::seq.eq(round.seq))
+                                    .and(rounds::seq.eq(round.seq))
                                     // don't want to mark unavailable for
                                     // current round
-                                    .and(tournament_rounds::id.ne(&round.id)),
+                                    .and(rounds::id.ne(&round.id)),
                             )
-                            .select(tournament_rounds::id),
+                            .select(rounds::id),
                     ),
                 ),
             )
-            .set(tournament_team_availability::available.eq(false))
+            .set(team_availability::available.eq(false))
             .execute(&mut *conn)
             .unwrap();
         }
         "out" => {
             diesel::update(
-                tournament_team_availability::table.filter(
-                    tournament_team_availability::round_id.eq(&round.id),
-                ),
+                team_availability::table
+                    .filter(team_availability::round_id.eq(&round.id)),
             )
-            .set(tournament_team_availability::available.eq(false))
+            .set(team_availability::available.eq(false))
             .execute(&mut *conn)
             .unwrap();
         }
@@ -485,11 +466,11 @@ pub async fn update_team_eligibility(
 
     let available_bool = form.available.as_deref() == Some("true");
 
-    let team = match tournament_teams::table
+    let team = match teams::table
         .filter(
-            tournament_teams::tournament_id
+            teams::tournament_id
                 .eq(&tournament_id)
-                .and(tournament_teams::id.eq(&form.team)),
+                .and(teams::id.eq(&form.team)),
         )
         .first::<Team>(&mut *conn)
         .optional()
@@ -499,11 +480,11 @@ pub async fn update_team_eligibility(
         None => return err_not_found(),
     };
 
-    let round = match tournament_rounds::table
+    let round = match rounds::table
         .filter(
-            tournament_rounds::id
+            rounds::id
                 .eq(&round_id)
-                .and(tournament_rounds::tournament_id.eq(&tournament_id)),
+                .and(rounds::tournament_id.eq(&tournament_id)),
         )
         .first::<Round>(&mut *conn)
         .optional()
@@ -533,58 +514,52 @@ pub async fn update_team_eligibility(
 
     // TODO: check that a team can't be allocated to multiple concurrent rounds
 
-    let n = diesel::insert_into(tournament_team_availability::table)
+    let n = diesel::insert_into(team_availability::table)
         .values((
-            tournament_team_availability::id.eq(Uuid::now_v7().to_string()),
-            tournament_team_availability::round_id.eq(&round.id),
-            tournament_team_availability::team_id.eq(&team.id),
-            tournament_team_availability::available.eq(available_bool),
+            team_availability::id.eq(Uuid::now_v7().to_string()),
+            team_availability::round_id.eq(&round.id),
+            team_availability::team_id.eq(&team.id),
+            team_availability::available.eq(available_bool),
         ))
-        .on_conflict((
-            tournament_team_availability::round_id,
-            tournament_team_availability::team_id,
-        ))
+        .on_conflict((team_availability::round_id, team_availability::team_id))
         .do_update()
-        .set(tournament_team_availability::available.eq(available_bool))
+        .set(team_availability::available.eq(available_bool))
         .execute(&mut *conn)
         .unwrap();
     assert_eq!(n, 1);
 
     diesel::update(
-        tournament_team_availability::table.filter(
-            tournament_team_availability::team_id.eq(&team.id).and(
-                diesel::dsl::exists(
-                    tournament_rounds::table.filter(
-                        tournament_rounds::tournament_id
+        team_availability::table.filter(
+            team_availability::team_id
+                .eq(&team.id)
+                .and(diesel::dsl::exists(
+                    rounds::table.filter(
+                        rounds::tournament_id
                             .eq(&tournament.id)
                             .and(
-                                tournament_rounds::seq
+                                rounds::seq
                                     .eq(round.seq)
-                                    .and(tournament_rounds::id.ne(&round.id)),
+                                    .and(rounds::id.ne(&round.id)),
                             )
-                            .and(
-                                tournament_team_availability::round_id
-                                    .eq(tournament_rounds::id),
-                            ),
+                            .and(team_availability::round_id.eq(rounds::id)),
                     ),
-                ),
-            ),
+                )),
         ),
     )
-    .set(tournament_team_availability::available.eq(false))
+    .set(team_availability::available.eq(false))
     .execute(&mut *conn)
     .unwrap();
 
     debug_assert!(
         // check that a team is only ever assigned to one round (where there
         // are multiple concurrent rounds)
-        tournament_team_availability::table
+        team_availability::table
             .filter(
-                tournament_team_availability::team_id.eq(&team.id).and(
-                    tournament_team_availability::round_id.eq_any(
-                        tournament_rounds::table
-                            .filter(tournament_rounds::seq.eq(round.seq))
-                            .select(tournament_rounds::id)
+                team_availability::team_id.eq(&team.id).and(
+                    team_availability::round_id.eq_any(
+                        rounds::table
+                            .filter(rounds::seq.eq(round.seq))
+                            .select(rounds::id)
                     )
                 )
             )

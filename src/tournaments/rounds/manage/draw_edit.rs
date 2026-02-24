@@ -22,8 +22,7 @@ use crate::{
     auth::User,
     msg::{Msg, MsgContents},
     schema::{
-        tournament_debate_judges, tournament_debate_teams, tournament_debates,
-        tournament_judges, tournament_rooms, tournament_rounds,
+        debates, judges, judges_of_debate, rooms, rounds, teams_of_debate,
     },
     state::{Conn, DbPool},
     template::Page,
@@ -67,8 +66,8 @@ pub async fn edit_multiple_draws_page(
     let _all_rounds =
         TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
 
-    let rounds2edit = match tournament_rounds::table
-        .filter(tournament_rounds::id.eq_any(&rounds_vec))
+    let rounds2edit = match rounds::table
+        .filter(rounds::id.eq_any(&rounds_vec))
         .load::<Round>(&mut *conn)
         .optional()
         .unwrap()
@@ -152,9 +151,9 @@ pub async fn draw_updates(
             .check_user_is_superuser(&user.id, &mut conn)
             .ok()?;
 
-        let rounds = tournament_rounds::table
-            .filter(tournament_rounds::tournament_id.eq(&tournament.id))
-            .filter(tournament_rounds::id.eq_any(&round_ids))
+        let rounds = rounds::table
+            .filter(rounds::tournament_id.eq(&tournament.id))
+            .filter(rounds::id.eq_any(&round_ids))
             .load::<Round>(&mut conn)
             .optional()
             .unwrap();
@@ -226,9 +225,9 @@ async fn handle_socket(
     let initial_data = spawn_blocking(move || {
         let mut conn = pool1.get().unwrap();
 
-        let rounds = tournament_rounds::table
-            .filter(tournament_rounds::tournament_id.eq(&tournament_id_clone))
-            .filter(tournament_rounds::id.eq_any(&round_ids_clone))
+        let rounds = rounds::table
+            .filter(rounds::tournament_id.eq(&tournament_id_clone))
+            .filter(rounds::id.eq_any(&round_ids_clone))
             .load::<Round>(&mut conn)
             .unwrap();
 
@@ -258,8 +257,8 @@ async fn handle_socket(
         let unallocated_teams = participants.teams.values().cloned().collect();
 
         // Get unallocated rooms
-        let all_rooms = tournament_rooms::table
-            .filter(tournament_rooms::tournament_id.eq(&tournament_id_clone))
+        let all_rooms = rooms::table
+            .filter(rooms::tournament_id.eq(&tournament_id_clone))
             .load::<Room>(&mut *conn)
             .unwrap();
         let allocated_room_ids: std::collections::HashSet<String> = reprs
@@ -314,12 +313,9 @@ async fn handle_socket(
                 let update_data = spawn_blocking(move || {
                     let mut conn = pool1.get().unwrap();
 
-                    let rounds = tournament_rounds::table
-                        .filter(
-                            tournament_rounds::tournament_id
-                                .eq(&tournament_id_clone),
-                        )
-                        .filter(tournament_rounds::id.eq_any(&round_ids_clone))
+                    let rounds = rounds::table
+                        .filter(rounds::tournament_id.eq(&tournament_id_clone))
+                        .filter(rounds::id.eq_any(&round_ids_clone))
                         .load::<Round>(&mut conn)
                         .unwrap();
 
@@ -356,11 +352,8 @@ async fn handle_socket(
                         participants.teams.values().cloned().collect();
 
                     // Get unallocated rooms
-                    let all_rooms = tournament_rooms::table
-                        .filter(
-                            tournament_rooms::tournament_id
-                                .eq(&tournament_id_clone),
-                        )
+                    let all_rooms = rooms::table
+                        .filter(rooms::tournament_id.eq(&tournament_id_clone))
                         .load::<Room>(&mut *conn)
                         .unwrap();
                     let allocated_room_ids: std::collections::HashSet<String> =
@@ -443,8 +436,8 @@ pub async fn submit_cmd(
         .filter(|s| !s.is_empty())
         .collect();
 
-    let rounds = match tournament_rounds::table
-        .filter(tournament_rounds::id.eq_any(&round_ids))
+    let rounds = match rounds::table
+        .filter(rounds::id.eq_any(&round_ids))
         .load::<Round>(&mut *conn)
         .optional()
         .unwrap()
@@ -499,23 +492,18 @@ impl JudgeDebateAllocation {
         rounds: &[String],
         conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Option<Self> {
-        match tournament_debates::table
-            .filter(tournament_debates::round_id.eq_any(rounds))
+        match debates::table
+            .filter(debates::round_id.eq_any(rounds))
             .inner_join(
-                tournament_debate_judges::table.on(
-                    tournament_debate_judges::debate_id
-                        .eq(tournament_debates::id)
-                        .and(
-                            tournament_debate_judges::judge_id.eq_any(
-                                tournament_judges::table
-                                    .filter(
-                                        tournament_judges::number
-                                            .eq(judge_no as i64),
-                                    )
-                                    .select(tournament_judges::id),
-                            ),
+                judges_of_debate::table.on(judges_of_debate::debate_id
+                    .eq(debates::id)
+                    .and(
+                        judges_of_debate::judge_id.eq_any(
+                            judges::table
+                                .filter(judges::number.eq(judge_no as i64))
+                                .select(judges::id),
                         ),
-                ),
+                    )),
             )
             .first::<(Debate, DebateJudge)>(&mut *conn)
             .optional()
@@ -537,8 +525,8 @@ fn apply_move(
     rounds: &[Round],
     conn: &mut impl LoadConnection<Backend = Sqlite>,
 ) -> Result<(), String> {
-    let judge = match tournament_judges::table
-        .filter(tournament_judges::number.eq(judge_no as i64))
+    let judge = match judges::table
+        .filter(judges::number.eq(judge_no as i64))
         .first::<Judge>(&mut *conn)
         .optional()
         .unwrap()
@@ -556,11 +544,11 @@ fn apply_move(
         JudgeDebateAllocation::find(judge_no, &debate_ids, &mut *conn);
 
     let debate_to_alloc_to = if let Some(debate_no) = debate_no {
-        match tournament_debates::table
+        match debates::table
             .filter(
-                tournament_debates::round_id
+                debates::round_id
                     .eq_any(&debate_ids)
-                    .and(tournament_debates::number.eq(debate_no as i64)),
+                    .and(debates::number.eq(debate_no as i64)),
             )
             .first::<Debate>(conn)
             .optional()
@@ -579,16 +567,11 @@ fn apply_move(
 
     let _delete_existing_alloc = {
         if let Some(alloc) = existing_alloc {
-            diesel::delete(
-                tournament_debate_judges::table.filter(
-                    tournament_debate_judges::debate_id
-                        .eq(alloc.debate.id)
-                        .and(
-                            tournament_debate_judges::judge_id
-                                .eq(alloc.debate_judge.judge_id),
-                        ),
+            diesel::delete(judges_of_debate::table.filter(
+                judges_of_debate::debate_id.eq(alloc.debate.id).and(
+                    judges_of_debate::judge_id.eq(alloc.debate_judge.judge_id),
                 ),
-            )
+            ))
             .execute(&mut *conn)
             .unwrap();
         }
@@ -596,11 +579,11 @@ fn apply_move(
 
     let _create_new_alloc = {
         if let Some(alloc) = debate_to_alloc_to {
-            diesel::insert_into(tournament_debate_judges::table)
+            diesel::insert_into(judges_of_debate::table)
                 .values((
-                    tournament_debate_judges::debate_id.eq(alloc.id),
-                    tournament_debate_judges::judge_id.eq(judge.id),
-                    tournament_debate_judges::status.eq(role.to_string()),
+                    judges_of_debate::debate_id.eq(alloc.id),
+                    judges_of_debate::judge_id.eq(judge.id),
+                    judges_of_debate::status.eq(role.to_string()),
                 ))
                 .execute(&mut *conn)
                 .unwrap();
@@ -673,9 +656,9 @@ pub async fn move_judge(
 
     let round_ids = form.rounds;
 
-    let judge = match tournament_judges::table
-        .filter(tournament_judges::id.eq(&form.judge_id))
-        .filter(tournament_judges::tournament_id.eq(&tournament.id))
+    let judge = match judges::table
+        .filter(judges::id.eq(&form.judge_id))
+        .filter(judges::tournament_id.eq(&tournament.id))
         .first::<Judge>(&mut *conn)
         .optional()
         .unwrap()
@@ -692,14 +675,12 @@ pub async fn move_judge(
         // can of course be assigned to multiple debates across
         // non-concurrent rounds)
         diesel::delete(
-            tournament_debate_judges::table.filter(
-                tournament_debate_judges::judge_id.eq(&judge.id).and(
-                    tournament_debate_judges::debate_id.eq_any(
-                        tournament_debates::table
-                            .filter(
-                                tournament_debates::round_id.eq_any(&round_ids),
-                            )
-                            .select(tournament_debates::id),
+            judges_of_debate::table.filter(
+                judges_of_debate::judge_id.eq(&judge.id).and(
+                    judges_of_debate::debate_id.eq_any(
+                        debates::table
+                            .filter(debates::round_id.eq_any(&round_ids))
+                            .select(debates::id),
                     ),
                 ),
             ),
@@ -708,11 +689,11 @@ pub async fn move_judge(
 
         if let Some(to_debate_id) = form.to_debate_id.filter(|s| !s.is_empty())
         {
-            let debate = match tournament_debates::table
+            let debate = match debates::table
                 .filter(
-                    tournament_debates::id
+                    debates::id
                         .eq(&to_debate_id)
-                        .and(tournament_debates::round_id.eq_any(&round_ids)),
+                        .and(debates::round_id.eq_any(&round_ids)),
                 )
                 .first::<Debate>(conn)
                 .optional()?
@@ -732,14 +713,13 @@ pub async fn move_judge(
                 }
             };
 
-            diesel::insert_into(tournament_debate_judges::table)
+            diesel::insert_into(judges_of_debate::table)
                 .values((
-                    tournament_debate_judges::id.eq(Uuid::now_v7().to_string()),
-                    tournament_debate_judges::debate_id.eq(debate.id),
-                    tournament_debate_judges::judge_id.eq(judge.id),
-                    tournament_debate_judges::status.eq(role.to_string()),
-                    tournament_debate_judges::tournament_id
-                        .eq(tournament.id.clone()),
+                    judges_of_debate::id.eq(Uuid::now_v7().to_string()),
+                    judges_of_debate::debate_id.eq(debate.id),
+                    judges_of_debate::judge_id.eq(judge.id),
+                    judges_of_debate::status.eq(role.to_string()),
+                    judges_of_debate::tournament_id.eq(tournament.id.clone()),
                 ))
                 .execute(conn)?;
         }
@@ -795,13 +775,13 @@ pub async fn change_judge_role(
     };
 
     diesel::update(
-        tournament_debate_judges::table.filter(
-            tournament_debate_judges::judge_id
+        judges_of_debate::table.filter(
+            judges_of_debate::judge_id
                 .eq(&form.judge_id)
-                .and(tournament_debate_judges::debate_id.eq(&form.debate_id)),
+                .and(judges_of_debate::debate_id.eq(&form.debate_id)),
         ),
     )
-    .set(tournament_debate_judges::status.eq(role.to_string()))
+    .set(judges_of_debate::status.eq(role.to_string()))
     .execute(&mut *conn)
     .unwrap();
 
@@ -838,26 +818,26 @@ pub async fn move_team(
     let round_ids = form.rounds;
 
     let transaction_result = conn.transaction(|conn| {
-        let team1_debate_team = tournament_debate_teams::table
-            .filter(tournament_debate_teams::team_id.eq(&form.team1_id))
-            .filter(tournament_debate_teams::tournament_id.eq(&tournament.id))
+        let team1_debate_team = teams_of_debate::table
+            .filter(teams_of_debate::team_id.eq(&form.team1_id))
+            .filter(teams_of_debate::tournament_id.eq(&tournament.id))
             .filter(
-                tournament_debate_teams::debate_id.eq_any(
-                    tournament_debates::table
-                        .filter(tournament_debates::round_id.eq_any(&round_ids))
-                        .select(tournament_debates::id),
+                teams_of_debate::debate_id.eq_any(
+                    debates::table
+                        .filter(debates::round_id.eq_any(&round_ids))
+                        .select(debates::id),
                 ),
             )
             .first::<DebateTeam>(conn)?;
 
-        let team2_debate_team = tournament_debate_teams::table
-            .filter(tournament_debate_teams::team_id.eq(&form.team2_id))
-            .filter(tournament_debate_teams::tournament_id.eq(&tournament.id))
+        let team2_debate_team = teams_of_debate::table
+            .filter(teams_of_debate::team_id.eq(&form.team2_id))
+            .filter(teams_of_debate::tournament_id.eq(&tournament.id))
             .filter(
-                tournament_debate_teams::debate_id.eq_any(
-                    tournament_debates::table
-                        .filter(tournament_debates::round_id.eq_any(&round_ids))
-                        .select(tournament_debates::id),
+                teams_of_debate::debate_id.eq_any(
+                    debates::table
+                        .filter(debates::round_id.eq_any(&round_ids))
+                        .select(debates::id),
                 ),
             )
             .first::<DebateTeam>(conn)?;
@@ -867,25 +847,24 @@ pub async fn move_team(
         let temp_seq = team1_debate_team.seq;
 
         diesel::update(
-            tournament_debate_teams::table
-                .filter(tournament_debate_teams::id.eq(&team1_debate_team.id)),
+            teams_of_debate::table
+                .filter(teams_of_debate::id.eq(&team1_debate_team.id)),
         )
         .set((
-            tournament_debate_teams::debate_id
-                .eq(team2_debate_team.debate_id.clone()),
-            tournament_debate_teams::side.eq(team2_debate_team.side),
-            tournament_debate_teams::seq.eq(team2_debate_team.seq),
+            teams_of_debate::debate_id.eq(team2_debate_team.debate_id.clone()),
+            teams_of_debate::side.eq(team2_debate_team.side),
+            teams_of_debate::seq.eq(team2_debate_team.seq),
         ))
         .execute(conn)?;
 
         diesel::update(
-            tournament_debate_teams::table
-                .filter(tournament_debate_teams::id.eq(&team2_debate_team.id)),
+            teams_of_debate::table
+                .filter(teams_of_debate::id.eq(&team2_debate_team.id)),
         )
         .set((
-            tournament_debate_teams::debate_id.eq(temp_debate_id),
-            tournament_debate_teams::side.eq(temp_side),
-            tournament_debate_teams::seq.eq(temp_seq),
+            teams_of_debate::debate_id.eq(temp_debate_id),
+            teams_of_debate::side.eq(temp_side),
+            teams_of_debate::seq.eq(temp_seq),
         ))
         .execute(conn)?;
 

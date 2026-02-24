@@ -7,10 +7,7 @@ use rust_decimal::prelude::ToPrimitive;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::schema::{
-    tournament_team_metrics, tournament_team_standings, tournament_teams,
-    tournaments,
-};
+use crate::schema::{team_metrics, team_standings, teams, tournaments};
 use crate::tournaments::Tournament;
 use crate::tournaments::config::{
     PullupMetric, RankableTeamMetric, UnrankableTeamMetric,
@@ -185,8 +182,8 @@ impl TeamStandings {
             }
         }
 
-        let mut teams = tournament_teams::table
-            .filter(tournament_teams::tournament_id.eq(tid))
+        let mut teams = teams::table
+            .filter(teams::tournament_id.eq(tid))
             .load::<Team>(conn)
             .unwrap();
 
@@ -280,8 +277,8 @@ impl TeamStandings {
             .first::<Tournament>(conn)
             .unwrap();
 
-        let teams: HashMap<_, _> = tournament_teams::table
-            .filter(tournament_teams::tournament_id.eq(tid))
+        let teams: HashMap<_, _> = teams::table
+            .filter(teams::tournament_id.eq(tid))
             .load::<Team>(conn)
             .unwrap()
             .into_iter()
@@ -290,13 +287,10 @@ impl TeamStandings {
 
         let metrics = tournament.metrics();
 
-        let rankings = tournament_team_standings::table
-            .filter(tournament_team_standings::tournament_id.eq(tid))
-            .select((
-                tournament_team_standings::team_id,
-                tournament_team_standings::rank,
-            ))
-            .order_by(tournament_team_standings::rank.asc())
+        let rankings = team_standings::table
+            .filter(team_standings::tournament_id.eq(tid))
+            .select((team_standings::team_id, team_standings::rank))
+            .order_by(team_standings::rank.asc())
             .load::<(String, i64)>(conn)
             .unwrap();
 
@@ -311,12 +305,12 @@ impl TeamStandings {
             })
             .collect();
 
-        let team_metrics = tournament_team_metrics::table
-            .filter(tournament_team_metrics::tournament_id.eq(tid))
+        let team_metrics = team_metrics::table
+            .filter(team_metrics::tournament_id.eq(tid))
             .select((
-                tournament_team_metrics::team_id,
-                tournament_team_metrics::metric_kind,
-                tournament_team_metrics::metric_value,
+                team_metrics::team_id,
+                team_metrics::metric_kind,
+                team_metrics::metric_value,
             ))
             .load::<(String, String, f32)>(conn)
             .unwrap();
@@ -404,15 +398,14 @@ impl TeamStandings {
     ) -> Result<(), diesel::result::Error> {
         let _flush = {
             diesel::delete(
-                tournament_team_metrics::table
-                    .filter(tournament_team_metrics::tournament_id.eq(tid)),
+                team_metrics::table.filter(team_metrics::tournament_id.eq(tid)),
             )
             .execute(conn)
             .unwrap();
 
             diesel::delete(
-                tournament_team_standings::table
-                    .filter(tournament_team_standings::tournament_id.eq(tid)),
+                team_standings::table
+                    .filter(team_standings::tournament_id.eq(tid)),
             )
             .execute(conn)
             .unwrap();
@@ -424,19 +417,17 @@ impl TeamStandings {
             for (team, metric) in &self.ranked_metrics_of_team {
                 for (kind, value) in metric {
                     records.push((
-                        tournament_team_metrics::id
-                            .eq(Uuid::now_v7().to_string()),
-                        tournament_team_metrics::tournament_id.eq(tid),
-                        tournament_team_metrics::team_id.eq(team),
-                        tournament_team_metrics::metric_kind
+                        team_metrics::id.eq(Uuid::now_v7().to_string()),
+                        team_metrics::tournament_id.eq(tid),
+                        team_metrics::team_id.eq(team),
+                        team_metrics::metric_kind
                             .eq(serde_json::to_string(kind).unwrap()),
-                        tournament_team_metrics::metric_value
-                            .eq(value.to_f32().unwrap()),
+                        team_metrics::metric_value.eq(value.to_f32().unwrap()),
                     ))
                 }
             }
 
-            diesel::insert_into(tournament_team_metrics::table)
+            diesel::insert_into(team_metrics::table)
                 .values(records)
                 .execute(conn)
                 .unwrap();
@@ -447,17 +438,16 @@ impl TeamStandings {
 
             for ((team, metric_kind), value) in &self.pullup_metrics {
                 records.push((
-                    tournament_team_metrics::id.eq(Uuid::now_v7().to_string()),
-                    tournament_team_metrics::tournament_id.eq(tid),
-                    tournament_team_metrics::team_id.eq(team),
-                    tournament_team_metrics::metric_kind
+                    team_metrics::id.eq(Uuid::now_v7().to_string()),
+                    team_metrics::tournament_id.eq(tid),
+                    team_metrics::team_id.eq(team),
+                    team_metrics::metric_kind
                         .eq(serde_json::to_string(metric_kind).unwrap()),
-                    tournament_team_metrics::metric_value
-                        .eq(value.to_f32().unwrap()),
+                    team_metrics::metric_value.eq(value.to_f32().unwrap()),
                 ));
             }
 
-            diesel::insert_into(tournament_team_metrics::table)
+            diesel::insert_into(team_metrics::table)
                 .values(records)
                 .execute(conn)
                 .unwrap();
@@ -468,15 +458,14 @@ impl TeamStandings {
 
             for (team, rank) in &self.rank_of_team {
                 records.push((
-                    tournament_team_standings::id
-                        .eq(Uuid::now_v7().to_string()),
-                    tournament_team_standings::tournament_id.eq(tid),
-                    tournament_team_standings::team_id.eq(team.clone()),
-                    tournament_team_standings::rank.eq(rank),
+                    team_standings::id.eq(Uuid::now_v7().to_string()),
+                    team_standings::tournament_id.eq(tid),
+                    team_standings::team_id.eq(team.clone()),
+                    team_standings::rank.eq(rank),
                 ));
             }
 
-            diesel::insert_into(tournament_team_standings::table)
+            diesel::insert_into(team_standings::table)
                 .values(records)
                 .execute(conn)
                 .unwrap();

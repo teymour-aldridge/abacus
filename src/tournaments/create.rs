@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::util_resp::bad_request;
 
-use crate::schema::{tournament_members, tournaments};
+use crate::schema::{org, tournaments};
 use crate::state::Conn;
 use crate::template::Page;
 
@@ -151,12 +151,12 @@ pub async fn do_create_tournament(
         .unwrap();
     assert_eq!(n, 1);
 
-    let n = diesel::insert_into(tournament_members::table)
+    let n = diesel::insert_into(org::table)
         .values((
-            tournament_members::id.eq(Uuid::now_v7().to_string()),
-            tournament_members::user_id.eq(user.id),
-            tournament_members::tournament_id.eq(&tid),
-            tournament_members::is_superuser.eq(true),
+            org::id.eq(Uuid::now_v7().to_string()),
+            org::user_id.eq(user.id),
+            org::tournament_id.eq(&tid),
+            org::is_superuser.eq(true),
         ))
         .execute(&mut *conn)
         .unwrap();

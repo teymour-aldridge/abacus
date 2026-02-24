@@ -165,6 +165,8 @@ fn build_submit_ballot(
     expected_version: i64,
     prior_version: i64,
 ) -> Result<BallotRepr, FailureResponse> {
+    tracing::debug!("form = {form:?}");
+
     use crate::util_resp::bad_request_from_string;
 
     let mut builder = crate::tournaments::rounds::ballots::BallotBuilder::new(
@@ -205,6 +207,7 @@ fn build_submit_ballot(
 // TODO: it would be nice to display the errors inline. However, this is more
 // programming effort, so currently we collate a list of problems and then
 // display a list of problems at the top of the page.
+#[tracing::instrument(skip(conn))]
 pub async fn do_submit_ballot(
     Path((tournament_id, private_url, round_id)): Path<(
         String,
@@ -220,6 +223,8 @@ pub async fn do_submit_ballot(
         Judge::of_private_url(&private_url, &tournament_id, &mut *conn)?;
 
     let round = Round::fetch(&round_id, &mut *conn)?;
+
+    tracing::debug!("Resolved tournament={}, judge={}, round={}.", tournament.id, judge.id, round.id);
 
     check_round_released(
         &tournament_id,

@@ -32,6 +32,7 @@ use crate::{
 ///
 /// Our HTML form logic requires that this form be parsed with [`serde_qs`]
 /// rather than the standard axum (or axum_extra) extractors.
+#[derive(Debug)]
 pub struct BallotForm {
     #[serde(default)]
     pub teams: Vec<BallotFormSingleTeamEntry>,
@@ -40,13 +41,13 @@ pub struct BallotForm {
     pub expected_version: i64,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BallotFormSingleSpeakerEntry {
     pub id: String,
     pub score: Option<f32>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct BallotFormSingleTeamEntry {
     pub speakers: Vec<BallotFormSingleSpeakerEntry>,
     pub points: Option<usize>,
@@ -125,6 +126,7 @@ impl BallotForm {
     }
 }
 
+#[tracing::instrument(skip(form, tournament, round, debate_repr, participants, new_metadata, prior_version, conn))]
 fn build_edit_ballot(
     form: BallotForm,
     tournament: &Tournament,
@@ -136,6 +138,8 @@ fn build_edit_ballot(
     prior_version: i64,
     conn: &mut impl LoadConnection<Backend = Sqlite>,
 ) -> Result<BallotRepr, crate::util_resp::FailureResponse> {
+    tracing::trace!("form = {form:?}");
+
     use crate::util_resp::bad_request_from_string;
 
     let mut builder = crate::tournaments::rounds::ballots::BallotBuilder::new(

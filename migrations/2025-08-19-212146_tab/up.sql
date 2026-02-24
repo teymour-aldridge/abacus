@@ -490,7 +490,7 @@ create table if not exists tournament_speaker_score_entries (
     speaker_id text not null references tournament_speakers(id),
     speaker_position integer not null,
     score float,
-    unique (ballot_id, team_id, speaker_id)
+    unique (ballot_id, team_id, speaker_id, speaker_position)
 );
 
 create table if not exists feedback_of_judges (

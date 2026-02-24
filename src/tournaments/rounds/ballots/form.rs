@@ -25,7 +25,9 @@ where
         let bytes = Bytes::from_request(req, state)
             .await
             .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
-        let res = serde_qs::from_bytes::<T>(&bytes)
+        let config = serde_qs::Config::new(10, false);
+        let res = config
+            .deserialize_bytes::<T>(&bytes)
             .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
         Ok(QsForm(res))
     }
@@ -86,7 +88,7 @@ pub fn fields_of_single_ballot_form(
         div class="row g-4 mb-5" {
             @for seq in 0..tournament.teams_per_side {
                 @for side in 0..2 {
-                    @let no = side * 2 + seq;
+                    @let no = seq * 2 + side;
                     @let team = debate.team_of_side_and_seq(side, seq);
                     @let team_meta = debate.teams.get(&team.team_id).unwrap();
                     @let existing_team = existing.and_then(|e| e.teams.get(no as usize));
@@ -105,9 +107,9 @@ pub fn fields_of_single_ballot_form(
                                         @let pos_name = tournament.speaker_position_name(side, seq, speaker_idx);
                                         div class="mb-4" {
                                             label class="form-label d-block fw-bold text-muted small text-uppercase mb-2" { (pos_name) }
-                                            div class="row g-3" {
-                                                div class="col-8" {
-                                                    select name=(format!("teams[{no}].speakers[{speaker_idx}].id")) class="form-select" {
+                                            div class="row g-2" {
+                                                div class="col-7" {
+                                                    select name=(format!("teams[{no}][speakers][{speaker_idx}][id]")) class="form-select" {
                                                         @let team_speakers = debate.speakers_of_team.get(&team.team_id).unwrap();
                                                         @for speaker in team_speakers {
                                                             @let selected = existing_team.map(|t| {
@@ -126,17 +128,15 @@ pub fn fields_of_single_ballot_form(
                                                     @let existing_value = existing_team.and_then(|t| {
                                                         t.speakers.get(speaker_idx as usize).and_then(|s| s.score)
                                                     });
-                                                    div class="col-4" {
-                                                        div class="input-group" {
-                                                            span class="input-group-text bg-light small px-2 text-muted" { "Score" }
-                                                            input type="number"
-                                                                  class="form-control"
-                                                                  value=(existing_value)
-                                                                  name=(format!("teams[{no}].speakers[{speaker_idx}].score"))
-                                                                  min=(tournament.min_substantive_speak().unwrap().to_string())
-                                                                  max=(tournament.max_substantive_speak().unwrap().to_string())
-                                                                  step=(tournament.speak_step().unwrap().to_string());
-                                                        }
+                                                    div class="col-5" {
+                                                        input type="number"
+                                                              class="form-control text-center"
+                                                              placeholder="Score"
+                                                              value=(existing_value)
+                                                              name=(format!("teams[{no}][speakers][{speaker_idx}][score]"))
+                                                              min=(tournament.min_substantive_speak().unwrap().to_string())
+                                                              max=(tournament.max_substantive_speak().unwrap().to_string())
+                                                              step=(tournament.speak_step().unwrap().to_string());
                                                     }
                                                 }
                                             }
@@ -147,9 +147,9 @@ pub fn fields_of_single_ballot_form(
                                         @let pos_name = tournament.speaker_position_name(side, seq, reply_idx);
                                         div class="mb-3" {
                                             label class="form-label d-block fw-bold text-muted small text-uppercase mb-2" { (pos_name) }
-                                            div class="row g-3" {
-                                                div class="col-8" {
-                                                    select name=(format!("teams[{no}].speakers[{reply_idx}].id")) class="form-select" {
+                                            div class="row g-2" {
+                                                div class="col-7" {
+                                                    select name=(format!("teams[{no}][speakers][{reply_idx}][id]")) class="form-select" {
                                                         @let team_speakers = debate.speakers_of_team.get(&team.team_id).unwrap();
                                                         @for speaker in team_speakers {
                                                             @let selected = existing_team.map(|t| {
@@ -168,17 +168,15 @@ pub fn fields_of_single_ballot_form(
                                                     @let existing_value = existing_team.and_then(|t| {
                                                         t.speakers.get(reply_idx as usize).and_then(|s| s.score)
                                                     });
-                                                    div class="col-4" {
-                                                        div class="input-group" {
-                                                            span class="input-group-text bg-light small px-2 text-muted" { "Score" }
-                                                            input type="number"
-                                                                  class="form-control"
-                                                                  value=(existing_value)
-                                                                  name=(format!("teams[{no}].speakers[{reply_idx}].score"))
-                                                                  min=(tournament.reply_speech_min_speak.map(|v| v.to_string()).unwrap_or_default())
-                                                                  max=(tournament.reply_speech_max_speak.map(|v| v.to_string()).unwrap_or_default())
-                                                                  step=(tournament.speak_step().map(|v| v.to_string()).unwrap_or("1".to_string()));
-                                                        }
+                                                    div class="col-5" {
+                                                        input type="number"
+                                                              class="form-control text-center"
+                                                              placeholder="Score"
+                                                              value=(existing_value)
+                                                              name=(format!("teams[{no}][speakers][{reply_idx}][score]"))
+                                                              min=(tournament.reply_speech_min_speak.map(|v| v.to_string()).unwrap_or_default())
+                                                              max=(tournament.reply_speech_max_speak.map(|v| v.to_string()).unwrap_or_default())
+                                                              step=(tournament.speak_step().map(|v| v.to_string()).unwrap_or("1".to_string()));
                                                     }
                                                 }
                                             }
@@ -189,17 +187,17 @@ pub fn fields_of_single_ballot_form(
                                     @if is_elim {
                                         div class="d-flex gap-3" {
                                             div class="form-check" {
-                                                input class="form-check-input" type="radio" id=(format!("win-{no}")) name=(format!("teams[{no}].points")) value="1" checked[existing_points == Some(1)];
+                                                input class="form-check-input" type="radio" id=(format!("win-{no}")) name=(format!("teams[{no}][points]")) value="1" checked[existing_points == Some(1)];
                                                 label class="form-check-label" for=(format!("win-{no}")) { "Win" }
                                             }
                                             div class="form-check" {
-                                                input class="form-check-input" type="radio" id=(format!("loss-{no}")) name=(format!("teams[{no}].points")) value="0" checked[existing_points == Some(0)];
+                                                input class="form-check-input" type="radio" id=(format!("loss-{no}")) name=(format!("teams[{no}][points]")) value="0" checked[existing_points == Some(0)];
                                                 label class="form-check-label" for=(format!("loss-{no}")) { "Loss" }
                                             }
                                         }
                                     } @else {
                                         label class="form-label fw-bold text-muted small text-uppercase mb-2" { "Points" }
-                                        input type="number" class="form-control" name=(format!("teams[{no}].points"))
+                                        input type="number" class="form-control" name=(format!("teams[{no}][points]"))
                                             value=(existing_points)
                                             min=(0)
                                             max=(if tournament.teams_per_side == 4 { 0 } else { 1 })

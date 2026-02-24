@@ -162,7 +162,17 @@ pub async fn view_ballot_set_page(
                                 }
 
                                 div class="row" {
-                                    @for team_id in ballot.teams() {
+                                    @for team_id in ballot
+                                                        .teams()
+                                                        .sorted_by_key(|id| {
+                                                            let dt = debate
+                                                                .teams_of_debate
+                                                                .iter()
+                                                                .find(
+                                                                    |team| &team.team_id == id
+                                                                ).unwrap();
+                                                            2 * dt.side + dt.seq
+                                                        }) {
                                         @let debate_team = debate.teams_of_debate.iter().find(|dt| dt.team_id == *team_id).unwrap();
                                         @let short_name = crate::tournaments::rounds::side_names::name_of_side(&tournament, debate_team.side, debate_team.seq, true);
                                         @let full_team_name = debate.teams.get(&team_id).unwrap().name.clone();
@@ -276,7 +286,7 @@ pub async fn view_ballot_set_page(
                                         li class="list-group-item d-flex justify-content-between align-items-center p-3" {
                                             div {
                                                 h5 class="mb-1" { "Version " (ballot.metadata.version) }
-                                                small class="text-muted" { 
+                                                small class="text-muted" {
                                                     "Submitted at " (ballot.ballot().submitted_at.format("%Y-%m-%d %H:%M:%S").to_string())
                                                     @if let Some(editor_id) = &ballot.metadata.editor_id {
                                                         @let editor_name = editor_names.get(editor_id).map(|s| s.as_str()).unwrap_or("unknown");
@@ -350,8 +360,8 @@ pub async fn view_single_ballot_page(
                             h1 class="display-4 fw-bold mb-2" {
                                 "Ballot (Version " (ballot.metadata.version) ")"
                             }
-                            h2 class="h4 text-muted" { 
-                                "Debate " (debate.debate.number) " — " (judge.name) " (" (judge_role) ")" 
+                            h2 class="h4 text-muted" {
+                                "Debate " (debate.debate.number) " — " (judge.name) " (" (judge_role) ")"
                             }
                             p class="text-muted mt-2" {
                                 "Submitted at " (ballot.ballot().submitted_at.format("%Y-%m-%d %H:%M:%S").to_string())

@@ -61,6 +61,7 @@ impl BallotRepr {
 
     /// Insert the provided ballot into the database. This cannot be used to
     /// update existing ballots, only to create new ones!
+    #[tracing::instrument(skip(conn))]
     pub fn insert(&self, conn: &mut impl LoadConnection<Backend = Sqlite>) {
         let n = diesel::insert_into(tournament_ballots::table)
             .values((
@@ -547,7 +548,7 @@ pub struct BallotBuilder<'a> {
     records_positions: bool,
     records_scores: bool,
     is_elim: bool,
-    num_advancing: usize,
+    num_advancing: Option<usize>,
 
     scores: Vec<BallotScore>,
     advancing_team_ids: Vec<String>,
@@ -572,10 +573,20 @@ impl<'a> BallotBuilder<'a> {
             return Err("Error: invalid motion".into());
         }
 
-        metadata.version = prior_version + 1;
+        if prior_version == 0 {
+            assert_eq!(expected_version, 0);
+        } else {
+            assert_eq!(expected_version, prior_version + 1);
+        }
 
-        let num_advancing =
-            num_advancing_for_elim_round(tournament, round, conn);
+        metadata.version = expected_version;
+
+        let num_advancing = if round.is_elim() {
+            Some(num_advancing_for_elim_round(tournament, round, conn))
+        } else {
+            None
+        };
+
 
         Ok(Self {
             tournament,
@@ -608,6 +619,8 @@ impl<'a> BallotBuilder<'a> {
         speakers: Vec<(String, Option<f32>)>,
         points: Option<usize>,
     ) -> Result<(), String> {
+        tracing::debug!("Adding team for side={side} and seq={seq}");
+
         let dt = self.debate.team_of_side_and_seq(side as i64, seq as i64);
 
         if !self.records_positions && !speakers.is_empty() {
@@ -642,14 +655,16 @@ impl<'a> BallotBuilder<'a> {
     pub fn build(self) -> Result<BallotRepr, String> {
         let expected_teams = (self.tournament.teams_per_side * 2) as usize;
         if self.teams_added != expected_teams {
+            tracing::debug!("rejecting ballot due to incorrect number of teams (self.teams_added={}, expected_teams={})", self.teams_added, expected_teams);
             return Err("Error: incorrect number of teams submitted".into());
         }
 
         let team_ranks = if self.is_elim {
-            if self.advancing_team_ids.len() != self.num_advancing {
+            let num_advancing = self.num_advancing.expect("self.num_advancing must be computed for elimination rounds");
+            if self.advancing_team_ids.len() != num_advancing {
                 return Err(format!(
                     "Error: expected {} advancing team(s), but {} were selected",
-                    self.num_advancing,
+                    num_advancing,
                     self.advancing_team_ids.len()
                 ));
             }

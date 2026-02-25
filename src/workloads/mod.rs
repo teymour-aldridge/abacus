@@ -11,7 +11,7 @@ pub fn fuzz() {
     let result = fuzzcheck::fuzz_test(test_function)
         .default_mutator()
         .serde_serializer()
-        .default_sensor_and_pool()
+        .default_sensor_and_pool_with_custom_filter(|_, _| true)
         .arguments_from_cargo_fuzzcheck()
         .launch();
     assert!(!result.found_test_failure);

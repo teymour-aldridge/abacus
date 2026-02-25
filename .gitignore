@@ -17,3 +17,5 @@ static/
 fuzz/Cargo.lock
 
 .sass-cache
+
+fuzz

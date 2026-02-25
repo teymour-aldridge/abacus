@@ -1,4 +1,5 @@
 #![allow(clippy::let_unit_value)]
+#![cfg_attr(test, feature(coverage_attribute))]
 
 use diesel_migrations::EmbeddedMigrations;
 use lalrpop_util::lalrpop_mod;
@@ -23,3 +24,6 @@ pub mod util_resp;
 // /// Code for validating data input to the tab system.
 pub mod validation;
 pub mod widgets;
+
+#[cfg(any(test, fuzzing))]
+pub mod workloads;

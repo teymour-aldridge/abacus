@@ -12,7 +12,7 @@ use tracing::{Instrument, Level};
 use url::Url;
 
 use crate::{
-    auth::{User, set_login_cookie},
+    auth::{User, clear_login_cookie, set_login_cookie},
     schema::users,
     state::Conn,
     template::Page,
@@ -156,4 +156,11 @@ pub async fn do_login(
             Redirect::to(&redirect_to)
         }),
     )
+}
+
+pub async fn do_logout(
+    jar: PrivateCookieJar<Key>,
+) -> (PrivateCookieJar<Key>, StandardResponse) {
+    let jar = clear_login_cookie(jar);
+    (jar, see_other_ok(Redirect::to("/")))
 }

@@ -5,7 +5,355 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
 use diesel::sqlite::SqliteConnection;
 use fuzzcheck::DefaultMutator;
+use fuzzcheck::Mutator;
 use serde::{Deserialize, Serialize};
+use std::any::Any;
+use std::collections::HashMap;
+use std::rc::{Rc, Weak};
+
+const TABDA_DICTIONARY_ANIMALS: [&str; 12] = [
+    "otter", "badger", "lynx", "falcon", "gecko", "narwhal", "wombat",
+    "panther", "meerkat", "ibex", "quetzal", "capybara",
+];
+
+type InnerStringMutator = fuzzcheck::mutators::grammar::ASTMutator;
+type InnerStringCache =
+    <InnerStringMutator as Mutator<fuzzcheck::mutators::grammar::AST>>::Cache;
+type InnerStringMutationStep = <InnerStringMutator as Mutator<
+    fuzzcheck::mutators::grammar::AST,
+>>::MutationStep;
+type InnerStringArbitraryStep = <InnerStringMutator as Mutator<
+    fuzzcheck::mutators::grammar::AST,
+>>::ArbitraryStep;
+type InnerStringUnmutateToken = <InnerStringMutator as Mutator<
+    fuzzcheck::mutators::grammar::AST,
+>>::UnmutateToken;
+type InnerStringAst = fuzzcheck::mutators::grammar::AST;
+
+pub struct TabdaDictionaryStringMutator {
+    inner: InnerStringMutator,
+}
+
+#[derive(Clone)]
+pub struct TabdaDictionaryStringCache {
+    ast: Option<InnerStringAst>,
+    ast_cache: Option<InnerStringCache>,
+}
+
+#[derive(Clone)]
+pub struct TabdaDictionaryStringArbitraryStep {
+    inner: InnerStringArbitraryStep,
+}
+
+#[derive(Clone)]
+pub struct TabdaDictionaryStringMutationStep {
+    inner: Option<InnerStringMutationStep>,
+    arbitrary: InnerStringArbitraryStep,
+}
+
+pub enum TabdaDictionaryStringUnmutateToken {
+    ReplaceWhole {
+        old_value: String,
+        old_cache: TabdaDictionaryStringCache,
+    },
+    Inner(InnerStringUnmutateToken),
+}
+
+impl TabdaDictionaryStringMutator {
+    fn new() -> Self {
+        Self {
+            inner: fuzzcheck::mutators::grammar::grammar_based_ast_mutator(
+                tabda_dictionary_string_grammar(),
+            ),
+        }
+    }
+
+    fn ast_to_string(ast: &InnerStringAst) -> String {
+        ast.to_string()
+    }
+
+    fn arbitrary_value_from_step(
+        &self,
+        step: &mut InnerStringArbitraryStep,
+        max_cplx: f64,
+    ) -> Option<(String, TabdaDictionaryStringCache, f64)> {
+        let (ast, cplx) = self.inner.ordered_arbitrary(step, max_cplx)?;
+        let ast_cache = self
+            .inner
+            .validate_value(&ast)
+            .expect("grammar mutator should validate its own AST output");
+        Some((
+            Self::ast_to_string(&ast),
+            TabdaDictionaryStringCache {
+                ast: Some(ast),
+                ast_cache: Some(ast_cache),
+            },
+            cplx,
+        ))
+    }
+
+    fn random_value(
+        &self,
+        max_cplx: f64,
+    ) -> (String, TabdaDictionaryStringCache, f64) {
+        let (ast, cplx) = self.inner.random_arbitrary(max_cplx);
+        let ast_cache = self
+            .inner
+            .validate_value(&ast)
+            .expect("grammar mutator should validate its own AST output");
+        (
+            Self::ast_to_string(&ast),
+            TabdaDictionaryStringCache {
+                ast: Some(ast),
+                ast_cache: Some(ast_cache),
+            },
+            cplx,
+        )
+    }
+
+    fn fallback_cache() -> TabdaDictionaryStringCache {
+        TabdaDictionaryStringCache {
+            ast: None,
+            ast_cache: None,
+        }
+    }
+}
+
+fn literal_string(value: &str) -> Rc<fuzzcheck::mutators::grammar::Grammar> {
+    fuzzcheck::mutators::grammar::concatenation(
+        value.chars().map(fuzzcheck::mutators::grammar::literal),
+    )
+}
+
+fn animal_grammar() -> Rc<fuzzcheck::mutators::grammar::Grammar> {
+    fuzzcheck::mutators::grammar::alternation(
+        TABDA_DICTIONARY_ANIMALS
+            .iter()
+            .map(|animal| literal_string(animal)),
+    )
+}
+
+fn email_grammar() -> Rc<fuzzcheck::mutators::grammar::Grammar> {
+    fuzzcheck::mutators::grammar::regex(
+        "[a-z]{1,12}@[a-z]{1,10}\\.(com|org|net|edu)",
+    )
+}
+
+fn tabda_dictionary_string_grammar() -> Rc<fuzzcheck::mutators::grammar::Grammar>
+{
+    use fuzzcheck::mutators::grammar::{
+        alternation, concatenation, recurse, recursive, regex,
+    };
+
+    let animal = animal_grammar();
+    let email = email_grammar();
+    let ascii = regex("[ -~]");
+
+    recursive(|whole: &Weak<fuzzcheck::mutators::grammar::Grammar>| {
+        alternation([
+            animal.clone(),
+            animal.clone(),
+            animal.clone(),
+            email.clone(),
+            ascii.clone(),
+            concatenation([recurse(whole), recurse(whole)]),
+        ])
+    })
+}
+
+impl Mutator<String> for TabdaDictionaryStringMutator {
+    type Cache = TabdaDictionaryStringCache;
+    type MutationStep = TabdaDictionaryStringMutationStep;
+    type ArbitraryStep = TabdaDictionaryStringArbitraryStep;
+    type UnmutateToken = TabdaDictionaryStringUnmutateToken;
+
+    fn initialize(&self) {
+        self.inner.initialize();
+    }
+
+    fn default_arbitrary_step(&self) -> Self::ArbitraryStep {
+        Self::ArbitraryStep {
+            inner: self.inner.default_arbitrary_step(),
+        }
+    }
+
+    fn is_valid(&self, value: &String) -> bool {
+        value.is_ascii()
+    }
+
+    fn validate_value(&self, value: &String) -> Option<Self::Cache> {
+        if self.is_valid(value) {
+            Some(Self::fallback_cache())
+        } else {
+            None
+        }
+    }
+
+    fn default_mutation_step(
+        &self,
+        _value: &String,
+        cache: &Self::Cache,
+    ) -> Self::MutationStep {
+        Self::MutationStep {
+            inner: cache.ast.as_ref().zip(cache.ast_cache.as_ref()).map(
+                |(ast, ast_cache)| {
+                    self.inner.default_mutation_step(ast, ast_cache)
+                },
+            ),
+            arbitrary: self.inner.default_arbitrary_step(),
+        }
+    }
+
+    fn global_search_space_complexity(&self) -> f64 {
+        self.inner.global_search_space_complexity()
+    }
+
+    fn max_complexity(&self) -> f64 {
+        self.inner.max_complexity()
+    }
+
+    fn min_complexity(&self) -> f64 {
+        self.inner.min_complexity()
+    }
+
+    fn complexity(&self, value: &String, cache: &Self::Cache) -> f64 {
+        match (cache.ast.as_ref(), cache.ast_cache.as_ref()) {
+            (Some(ast), Some(ast_cache)) => {
+                self.inner.complexity(ast, ast_cache)
+            }
+            _ => (value.len() * 8) as f64,
+        }
+    }
+
+    fn ordered_arbitrary(
+        &self,
+        step: &mut Self::ArbitraryStep,
+        max_cplx: f64,
+    ) -> Option<(String, f64)> {
+        self.arbitrary_value_from_step(&mut step.inner, max_cplx)
+            .map(|(value, _, cplx)| (value, cplx))
+    }
+
+    fn random_arbitrary(&self, max_cplx: f64) -> (String, f64) {
+        let (value, _, cplx) = self.random_value(max_cplx);
+        (value, cplx)
+    }
+
+    fn ordered_mutate(
+        &self,
+        value: &mut String,
+        cache: &mut Self::Cache,
+        step: &mut Self::MutationStep,
+        subvalue_provider: &dyn fuzzcheck::SubValueProvider,
+        max_cplx: f64,
+    ) -> Option<(Self::UnmutateToken, f64)> {
+        if let (Some(ast), Some(ast_cache), Some(ast_step)) = (
+            cache.ast.as_mut(),
+            cache.ast_cache.as_mut(),
+            step.inner.as_mut(),
+        ) {
+            if let Some((token, cplx)) = self.inner.ordered_mutate(
+                ast,
+                ast_cache,
+                ast_step,
+                subvalue_provider,
+                max_cplx,
+            ) {
+                *value = Self::ast_to_string(ast);
+                return Some((
+                    TabdaDictionaryStringUnmutateToken::Inner(token),
+                    cplx,
+                ));
+            }
+        }
+
+        let old_value = value.clone();
+        let old_cache = cache.clone();
+        let (new_value, new_cache, cplx) =
+            self.arbitrary_value_from_step(&mut step.arbitrary, max_cplx)?;
+        *value = new_value;
+        *cache = new_cache;
+        step.inner = cache.ast.as_ref().zip(cache.ast_cache.as_ref()).map(
+            |(ast, ast_cache)| self.inner.default_mutation_step(ast, ast_cache),
+        );
+        Some((
+            TabdaDictionaryStringUnmutateToken::ReplaceWhole {
+                old_value,
+                old_cache,
+            },
+            cplx,
+        ))
+    }
+
+    fn random_mutate(
+        &self,
+        value: &mut String,
+        cache: &mut Self::Cache,
+        max_cplx: f64,
+    ) -> (Self::UnmutateToken, f64) {
+        if let (Some(ast), Some(ast_cache)) =
+            (cache.ast.as_mut(), cache.ast_cache.as_mut())
+        {
+            let (token, cplx) =
+                self.inner.random_mutate(ast, ast_cache, max_cplx);
+            *value = Self::ast_to_string(ast);
+            (TabdaDictionaryStringUnmutateToken::Inner(token), cplx)
+        } else {
+            let old_value = value.clone();
+            let old_cache = cache.clone();
+            let (new_value, new_cache, cplx) = self.random_value(max_cplx);
+            *value = new_value;
+            *cache = new_cache;
+            (
+                TabdaDictionaryStringUnmutateToken::ReplaceWhole {
+                    old_value,
+                    old_cache,
+                },
+                cplx,
+            )
+        }
+    }
+
+    fn unmutate(
+        &self,
+        value: &mut String,
+        cache: &mut Self::Cache,
+        t: Self::UnmutateToken,
+    ) {
+        match t {
+            TabdaDictionaryStringUnmutateToken::ReplaceWhole {
+                old_value,
+                old_cache,
+            } => {
+                *value = old_value;
+                *cache = old_cache;
+            }
+            TabdaDictionaryStringUnmutateToken::Inner(token) => {
+                if let (Some(ast), Some(ast_cache)) =
+                    (cache.ast.as_mut(), cache.ast_cache.as_mut())
+                {
+                    self.inner.unmutate(ast, ast_cache, token);
+                    *value = Self::ast_to_string(ast);
+                }
+            }
+        }
+    }
+
+    fn visit_subvalues<'a>(
+        &self,
+        value: &'a String,
+        cache: &'a Self::Cache,
+        visit: &mut dyn FnMut(&'a dyn Any, f64),
+    ) {
+        if let (Some(ast), Some(ast_cache)) =
+            (cache.ast.as_ref(), cache.ast_cache.as_ref())
+        {
+            self.inner.visit_subvalues(ast, ast_cache, visit);
+        } else {
+            visit(value, self.complexity(value, cache));
+        }
+    }
+}
 
 macro_rules! get_id_by_idx {
     ($conn:expr, $query:expr, $idx:expr $(,)?) => {{
@@ -27,55 +375,72 @@ macro_rules! get_id_by_idx {
 pub enum Action {
     // Auth
     RegisterUser {
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         username: String,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         email: String,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         password: String,
     },
+    LogoutUser,
     LoginUser {
         user_idx: usize,
     },
-
     // Tournaments
     CreateTournament {
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         name: String,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         abbrv: String,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         slug: String,
     },
     UpdateTournamentConfiguration {
         tournament_idx: usize,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         name: String,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         abbrv: String,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         slug: String,
     },
 
     // Participants
     CreateTeam {
         tournament_idx: usize,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         name: String,
         institution_idx: Option<usize>,
     },
     EditTeam {
         tournament_idx: usize,
         team_idx: usize,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         name: String,
         institution_idx: Option<usize>,
     },
     CreateSpeaker {
         tournament_idx: usize,
         team_idx: usize,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         name: String,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         email: String,
     },
     CreateJudge {
         tournament_idx: usize,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         name: String,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         email: String,
         institution_idx: Option<usize>,
     },
     EditJudge {
         tournament_idx: usize,
         judge_idx: usize,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         name: String,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         email: String,
         institution_idx: Option<usize>,
     },
@@ -83,12 +448,14 @@ pub enum Action {
     // Constraints
     AddConstraint {
         tournament_idx: usize,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         ptype: String,
         pid_idx: usize,
         category_idx: usize,
     },
     RemoveConstraint {
         tournament_idx: usize,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         ptype: String,
         pid_idx: usize,
         constraint_idx: usize,
@@ -97,6 +464,7 @@ pub enum Action {
     // Rooms
     CreateRoom {
         tournament_idx: usize,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         name: String,
         priority: i64,
     },
@@ -106,6 +474,7 @@ pub enum Action {
     },
     CreateRoomCategory {
         tournament_idx: usize,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         name: String,
     },
     DeleteRoomCategory {
@@ -126,7 +495,9 @@ pub enum Action {
     // Feedback
     AddFeedbackQuestion {
         tournament_idx: usize,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         question_text: String,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         question_type: String,
     },
     DeleteFeedbackQuestion {
@@ -137,6 +508,7 @@ pub enum Action {
     // Rounds & Draws
     CreateRound {
         tournament_idx: usize,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         name: String,
         category_idx: Option<usize>,
     },
@@ -209,12 +581,28 @@ pub struct FuzzerBallotTeamEntry {
     pub points: Option<usize>,
 }
 
+#[derive(Default)]
+pub struct FuzzState {
+    user_passwords: HashMap<String, String>,
+}
+
+impl FuzzState {
+    fn remember_user_password(&mut self, user_id: String, password: String) {
+        self.user_passwords.entry(user_id).or_insert(password);
+    }
+
+    fn password_for_user(&self, user_id: &str) -> Option<&str> {
+        self.user_passwords.get(user_id).map(String::as_str)
+    }
+}
+
 impl Action {
     #[tracing::instrument(skip_all)]
     pub async fn run(
         self,
         pool: &Pool<ConnectionManager<SqliteConnection>>,
         client: &mut TestServer,
+        state: &mut FuzzState,
     ) {
         tracing::info!("Running Action::run");
         match self {
@@ -223,12 +611,34 @@ impl Action {
                 email,
                 password,
             } => {
+                let password2 = password.clone();
+                let lookup_username = username.clone();
+                let lookup_email = email.clone();
                 let form = [
                     ("username", username),
                     ("email", email),
                     ("password", password),
+                    ("password2", password2.clone()),
                 ];
-                client.post("/register").form(&form).await;
+                let res = client.post("/register").form(&form).await;
+                assert!(
+                    !res.status_code().is_server_error(),
+                    "{:?}",
+                    res.status_code()
+                );
+
+                let mut conn = pool.get().unwrap();
+                if let Ok(user_id) = users::table
+                    .filter(
+                        users::username
+                            .eq(lookup_username)
+                            .and(users::email.eq(lookup_email)),
+                    )
+                    .select(users::id)
+                    .first::<String>(&mut *conn)
+                {
+                    state.remember_user_password(user_id, password2);
+                }
             }
             Action::LoginUser { user_idx } => {
                 let mut conn = pool.get().unwrap();
@@ -237,16 +647,24 @@ impl Action {
                     users::table.select(users::id).order_by(users::id),
                     user_idx,
                 ) {
-                    let (username, password): (String, String) = users::table
-                        .filter(users::id.eq(user_id))
-                        .select((users::username, users::password_hash))
+                    let login_id: String = users::table
+                        .filter(users::id.eq(&user_id))
+                        .select(users::username)
                         .first(&mut *conn)
                         .unwrap();
                     drop(conn);
 
-                    let form = [("username", username), ("password", password)];
-                    client.post("/login").form(&form).await;
+                    if let Some(password) = state.password_for_user(&user_id) {
+                        let form = [
+                            ("id", login_id),
+                            ("password", password.to_string()),
+                        ];
+                        client.post("/login").form(&form).await;
+                    }
                 }
+            }
+            Action::LogoutUser => {
+                client.post("/logout").await;
             }
             Action::CreateTournament { name, abbrv, slug } => {
                 let form = [("name", name), ("abbrv", abbrv), ("slug", slug)];

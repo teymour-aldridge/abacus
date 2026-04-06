@@ -170,6 +170,7 @@ pub fn create_app(pool: DbPool) -> Router {
         .route("/", get(home))
         .route("/style.css", get(style_css))
         .route("/login", get(crate::auth::login::login_page).post(crate::auth::login::do_login))
+        .route("/logout", post(crate::auth::login::do_logout))
         .route("/register", get(crate::auth::register::register_page).post(crate::auth::register::do_register))
         .route("/tournaments/create", get(crate::tournaments::create::create_tournament_page).post(crate::tournaments::create::do_create_tournament))
         .route("/tournaments/:id", get(crate::tournaments::view::view_tournament_page))

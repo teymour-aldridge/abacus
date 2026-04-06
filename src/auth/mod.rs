@@ -141,3 +141,7 @@ pub fn set_login_cookie(id: String, jar: PrivateCookieJar) -> PrivateCookieJar {
         .unwrap(),
     ))
 }
+
+pub fn clear_login_cookie(jar: PrivateCookieJar) -> PrivateCookieJar {
+    jar.remove(Cookie::from(LOGIN_COOKIE))
+}

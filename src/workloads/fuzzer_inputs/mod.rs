@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
+use uuid::Uuid;
 
 const TABDA_DICTIONARY_ANIMALS: [&str; 12] = [
     "otter", "badger", "lynx", "falcon", "gecko", "narwhal", "wombat",
@@ -395,14 +396,30 @@ pub enum Action {
         #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         slug: String,
     },
-    UpdateTournamentConfiguration {
+    CreateBreakCategory {
         tournament_idx: usize,
         #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         name: String,
-        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
-        abbrv: String,
-        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
-        slug: String,
+        priority: i64,
+    },
+    UpdateTournamentConfiguration {
+        tournament_idx: usize,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        abbrv: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        slug: Option<String>,
+        #[serde(default)]
+        show_draws: bool,
+        #[serde(default)]
+        show_round_results: bool,
+        #[serde(default)]
+        team_tab_public: bool,
+        #[serde(default)]
+        speaker_tab_public: bool,
+        #[serde(default)]
+        standings_public: bool,
     },
 
     // Participants
@@ -474,8 +491,17 @@ pub enum Action {
     },
     CreateRoomCategory {
         tournament_idx: usize,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(default)]
         #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
-        name: String,
+        private_name: String,
+        #[serde(default)]
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
+        public_name: String,
+        #[serde(default)]
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
+        description: String,
     },
     DeleteRoomCategory {
         tournament_idx: usize,
@@ -495,10 +521,15 @@ pub enum Action {
     // Feedback
     AddFeedbackQuestion {
         tournament_idx: usize,
+        #[serde(alias = "question_text")]
         #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
-        question_text: String,
+        question: String,
         #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         question_type: String,
+        #[serde(default)]
+        for_judges: bool,
+        #[serde(default)]
+        for_teams: bool,
     },
     DeleteFeedbackQuestion {
         tournament_idx: usize,
@@ -511,6 +542,15 @@ pub enum Action {
         #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         name: String,
         category_idx: Option<usize>,
+        #[serde(default = "default_round_seq")]
+        seq: u32,
+    },
+    CreateMotion {
+        tournament_idx: usize,
+        round_idx: usize,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
+        motion: String,
+        infoslide: Option<String>,
     },
     GenerateDraw {
         tournament_idx: usize,
@@ -519,7 +559,11 @@ pub enum Action {
     SetDrawPublished {
         tournament_idx: usize,
         round_idx: usize,
-        published: bool,
+        #[serde(default)]
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
+        status: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        published: Option<bool>,
     },
     SetRoundCompleted {
         tournament_idx: usize,
@@ -568,6 +612,10 @@ pub enum Action {
     },
 }
 
+fn default_round_seq() -> u32 {
+    1
+}
+
 #[derive(DefaultMutator, Clone, Debug, Serialize, Deserialize)]
 pub struct FuzzerBallotForm {
     pub motion_idx: usize,
@@ -584,6 +632,7 @@ pub struct FuzzerBallotTeamEntry {
 #[derive(Default)]
 pub struct FuzzState {
     user_passwords: HashMap<String, String>,
+    logged_in: bool,
 }
 
 impl FuzzState {
@@ -593,6 +642,120 @@ impl FuzzState {
 
     fn password_for_user(&self, user_id: &str) -> Option<&str> {
         self.user_passwords.get(user_id).map(String::as_str)
+    }
+}
+
+fn normalize_username(input: String) -> String {
+    let mut value: String = input
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .collect();
+    if value.is_empty() {
+        value = "user".to_string();
+    }
+    if value.len() > 32 {
+        value.truncate(32);
+    }
+    value
+}
+
+fn normalize_email(input: String) -> String {
+    let lower = input.to_ascii_lowercase();
+    let filtered: String = lower
+        .chars()
+        .filter(|c| {
+            c.is_ascii_alphanumeric() || matches!(c, '@' | '.' | '_' | '-')
+        })
+        .collect();
+    let parts: Vec<_> = filtered.split('@').collect();
+    if parts.len() == 2 && parts[1].contains('.') && !parts[0].is_empty() {
+        return filtered;
+    }
+    let stem: String = filtered
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .collect();
+    let stem = if stem.is_empty() { "otter" } else { &stem };
+    format!("{stem}@tabda.org")
+}
+
+fn normalize_password(input: String) -> String {
+    let mut value: String =
+        input.chars().filter(|c| c.is_ascii_graphic()).collect();
+    if value.len() < 6 {
+        value.push_str("wombat");
+    }
+    if value.len() > 32 {
+        value.truncate(32);
+    }
+    value
+}
+
+fn normalize_name(input: String, min_len: usize, max_len: usize) -> String {
+    let mut value: String = input
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == ' ')
+        .collect();
+    if value.trim().is_empty() {
+        value = "tabda".to_string();
+    }
+    while value.len() < min_len {
+        value.push('a');
+    }
+    if value.len() > max_len {
+        value.truncate(max_len);
+    }
+    value
+}
+
+fn normalize_slug(input: String) -> String {
+    let mut value: String = input
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .collect();
+    if value.is_empty() {
+        value = "tabda1".to_string();
+    }
+    if value.len() > 16 {
+        value.truncate(16);
+    }
+    value
+}
+
+fn normalize_participant_kind(input: String) -> &'static str {
+    if input.eq_ignore_ascii_case("speaker")
+        || input.eq_ignore_ascii_case("speakers")
+    {
+        "speaker"
+    } else {
+        "judge"
+    }
+}
+
+fn normalize_feedback_kind(input: String) -> &'static str {
+    match input.to_ascii_lowercase().as_str() {
+        "score" => "score",
+        "text" => "text",
+        "bool" => "bool",
+        _ => "score",
+    }
+}
+
+fn normalize_draw_status(
+    input: String,
+    published: Option<bool>,
+) -> &'static str {
+    match input.as_str() {
+        "confirmed" => "confirmed",
+        "released_teams" => "released_teams",
+        "released_full" => "released_full",
+        _ => {
+            if published.unwrap_or(false) {
+                "released_full"
+            } else {
+                "confirmed"
+            }
+        }
     }
 }
 
@@ -611,6 +774,9 @@ impl Action {
                 email,
                 password,
             } => {
+                let username = normalize_username(username);
+                let email = normalize_email(email);
+                let password = normalize_password(password);
                 let password2 = password.clone();
                 let lookup_username = username.clone();
                 let lookup_email = email.clone();
@@ -638,6 +804,7 @@ impl Action {
                     .first::<String>(&mut *conn)
                 {
                     state.remember_user_password(user_id, password2);
+                    state.logged_in = true;
                 }
             }
             Action::LoginUser { user_idx } => {
@@ -660,13 +827,27 @@ impl Action {
                             ("password", password.to_string()),
                         ];
                         client.post("/login").form(&form).await;
+                        state.logged_in = true;
                     }
                 }
             }
             Action::LogoutUser => {
-                client.post("/logout").await;
+                if state.logged_in {
+                    client.post("/logout").await;
+                    state.logged_in = false;
+                }
             }
             Action::CreateTournament { name, abbrv, slug } => {
+                let name = normalize_name(name, 4, 32);
+                let abbrv = normalize_slug(abbrv);
+                let abbrv = if abbrv.len() < 2 {
+                    format!("{abbrv}x")
+                } else if abbrv.len() > 8 {
+                    abbrv[..8].to_string()
+                } else {
+                    abbrv
+                };
+                let slug = normalize_slug(slug);
                 let form = [("name", name), ("abbrv", abbrv), ("slug", slug)];
                 let res = client.post("/tournaments/create").form(&form).await;
                 assert!(
@@ -675,11 +856,41 @@ impl Action {
                     res.status_code()
                 );
             }
-            Action::UpdateTournamentConfiguration {
+            Action::CreateBreakCategory {
                 tournament_idx,
                 name,
-                abbrv,
-                slug,
+                priority,
+            } => {
+                let name = normalize_name(name, 4, 32);
+                let mut conn = pool.get().unwrap();
+                if let Some(tid) = get_id_by_idx!(
+                    &mut *conn,
+                    tournaments::table
+                        .select(tournaments::id)
+                        .order_by(tournaments::id),
+                    tournament_idx,
+                ) {
+                    let next_priority = if priority < 0 { 0 } else { priority };
+                    let _ = diesel::insert_into(break_categories::table)
+                        .values((
+                            break_categories::id.eq(Uuid::now_v7().to_string()),
+                            break_categories::tournament_id.eq(tid),
+                            break_categories::name.eq(name),
+                            break_categories::priority.eq(next_priority),
+                        ))
+                        .execute(&mut *conn);
+                }
+            }
+            Action::UpdateTournamentConfiguration {
+                tournament_idx,
+                name: _name,
+                abbrv: _abbrv,
+                slug: _slug,
+                show_draws,
+                show_round_results,
+                team_tab_public,
+                speaker_tab_public,
+                standings_public,
             } => {
                 let mut conn = pool.get().unwrap();
                 if let Some(tid) = get_id_by_idx!(
@@ -690,12 +901,27 @@ impl Action {
                     tournament_idx,
                 ) {
                     drop(conn);
-                    let form =
-                        [("name", name), ("abbrv", abbrv), ("slug", slug)];
-                    client
-                        .post(&format!("/tournaments/{}/configuration", tid))
-                        .form(&form)
-                        .await;
+                    let mut conn = pool.get().unwrap();
+                    if let Ok(tournament) =
+                        crate::tournaments::Tournament::fetch(&tid, &mut *conn)
+                    {
+                        let mut config = crate::tournaments::manage::config::config_of_tournament(&tournament);
+                        config.show_draws = show_draws;
+                        config.show_round_results = show_round_results;
+                        config.team_tab_public = team_tab_public;
+                        config.speaker_tab_public = speaker_tab_public;
+                        config.standings_public = standings_public;
+                        let config = toml::to_string(&config).unwrap();
+                        drop(conn);
+                        let form = [("config", config)];
+                        client
+                            .post(&format!(
+                                "/tournaments/{}/configuration",
+                                tid
+                            ))
+                            .form(&form)
+                            .await;
+                    }
                 }
             }
             Action::CreateTeam {
@@ -703,6 +929,7 @@ impl Action {
                 name,
                 institution_idx,
             } => {
+                let name = normalize_name(name, 4, 32);
                 let mut conn = pool.get().unwrap();
                 if let Some(tid) = get_id_by_idx!(
                     &mut *conn,
@@ -740,6 +967,7 @@ impl Action {
                 name,
                 institution_idx,
             } => {
+                let name = normalize_name(name, 4, 32);
                 let mut conn = pool.get().unwrap();
                 if let Some(tid) = get_id_by_idx!(
                     &mut *conn,
@@ -790,6 +1018,8 @@ impl Action {
                 email,
                 institution_idx,
             } => {
+                let name = normalize_name(name, 1, 64);
+                let email = normalize_email(email);
                 let mut conn = pool.get().unwrap();
                 if let Some(tid) = get_id_by_idx!(
                     &mut *conn,
@@ -832,6 +1062,8 @@ impl Action {
                 email,
                 institution_idx,
             } => {
+                let name = normalize_name(name, 1, 64);
+                let email = normalize_email(email);
                 let mut conn = pool.get().unwrap();
                 if let Some(tid) = get_id_by_idx!(
                     &mut *conn,
@@ -885,6 +1117,8 @@ impl Action {
                 name,
                 email,
             } => {
+                let name = normalize_name(name, 1, 64);
+                let email = normalize_email(email);
                 let mut conn = pool.get().unwrap();
                 if let Some(tid) = get_id_by_idx!(
                     &mut *conn,
@@ -919,6 +1153,7 @@ impl Action {
                 pid_idx,
                 category_idx,
             } => {
+                let ptype = normalize_participant_kind(ptype);
                 let mut conn = pool.get().unwrap();
                 if let Some(tid) = get_id_by_idx!(
                     &mut *conn,
@@ -951,12 +1186,10 @@ impl Action {
                         pid,
                         get_id_by_idx!(
                             &mut *conn,
-                            break_categories::table
-                                .filter(
-                                    break_categories::tournament_id.eq(&tid),
-                                )
-                                .select(break_categories::id)
-                                .order_by(break_categories::id),
+                            room_categories::table
+                                .filter(room_categories::tournament_id.eq(&tid))
+                                .select(room_categories::id)
+                                .order_by(room_categories::id),
                             category_idx,
                         ),
                     ) {
@@ -972,6 +1205,7 @@ impl Action {
                 pid_idx,
                 constraint_idx,
             } => {
+                let ptype = normalize_participant_kind(ptype);
                 let mut conn = pool.get().unwrap();
                 if let Some(tid) = get_id_by_idx!(
                     &mut *conn,
@@ -1057,6 +1291,7 @@ impl Action {
                 name,
                 priority,
             } => {
+                let name = normalize_name(name, 1, 64);
                 let mut conn = pool.get().unwrap();
                 if let Some(tid) = get_id_by_idx!(
                     &mut *conn,
@@ -1107,7 +1342,30 @@ impl Action {
             Action::CreateRoomCategory {
                 tournament_idx,
                 name,
+                private_name,
+                public_name,
+                description,
             } => {
+                let legacy_name = name.unwrap_or_default();
+                let private_name = normalize_name(
+                    if private_name.is_empty() {
+                        legacy_name.clone()
+                    } else {
+                        private_name
+                    },
+                    1,
+                    64,
+                );
+                let public_name = normalize_name(
+                    if public_name.is_empty() {
+                        legacy_name
+                    } else {
+                        public_name
+                    },
+                    1,
+                    64,
+                );
+                let description = normalize_name(description, 0, 128);
                 let mut conn = pool.get().unwrap();
                 if let Some(tid) = get_id_by_idx!(
                     &mut *conn,
@@ -1117,7 +1375,11 @@ impl Action {
                     tournament_idx,
                 ) {
                     drop(conn);
-                    let form = [("name", name)];
+                    let form = [
+                        ("private_name", private_name),
+                        ("public_name", public_name),
+                        ("description", description),
+                    ];
                     client
                         .post(&format!(
                             "/tournaments/{}/rooms/categories/create",
@@ -1239,9 +1501,13 @@ impl Action {
             }
             Action::AddFeedbackQuestion {
                 tournament_idx,
-                question_text,
+                question,
                 question_type,
+                for_judges,
+                for_teams,
             } => {
+                let question = normalize_name(question, 4, 128);
+                let question_type = normalize_feedback_kind(question_type);
                 let mut conn = pool.get().unwrap();
                 if let Some(tid) = get_id_by_idx!(
                     &mut *conn,
@@ -1251,8 +1517,20 @@ impl Action {
                     tournament_idx,
                 ) {
                     drop(conn);
-                    let form =
-                        [("text", question_text), ("kind", question_type)];
+                    let form = [
+                        ("question", question),
+                        ("kind", question_type.to_string()),
+                        (
+                            "for_judges",
+                            if for_judges { "true" } else { "false" }
+                                .to_string(),
+                        ),
+                        (
+                            "for_teams",
+                            if for_teams { "true" } else { "false" }
+                                .to_string(),
+                        ),
+                    ];
                     client
                         .post(&format!(
                             "/tournaments/{}/feedback/manage/add",
@@ -1283,7 +1561,7 @@ impl Action {
                         question_idx,
                     ) {
                         drop(conn);
-                        let form = [("id", q_id)];
+                        let form = [("question_id", q_id)];
                         client
                             .post(&format!(
                                 "/tournaments/{}/feedback/manage/delete",
@@ -1298,7 +1576,11 @@ impl Action {
                 tournament_idx,
                 name,
                 category_idx,
+                seq,
             } => {
+                // map (deterministically) to [0,199]
+                let seq = seq % 200;
+                let name = normalize_name(name, 4, 32);
                 let mut conn = pool.get().unwrap();
                 if let Some(tid) = get_id_by_idx!(
                     &mut *conn,
@@ -1307,27 +1589,68 @@ impl Action {
                         .order_by(tournaments::id),
                     tournament_idx,
                 ) {
-                    if let Some(cat_id) = category_idx.and_then(|idx| {
-                        get_id_by_idx!(
-                            &mut *conn,
-                            break_categories::table
-                                .filter(
-                                    break_categories::tournament_id.eq(&tid)
-                                )
-                                .select(break_categories::id)
-                                .order_by(break_categories::id),
-                            idx,
-                        )
-                    }) {
-                        drop(conn);
-                        let form = [("name", name)];
-                        client
-                            .post(&format!(
-                                "/tournaments/{}/rounds/{}/create",
-                                tid, cat_id
+                    let category_id = category_idx
+                        .and_then(|idx| {
+                            get_id_by_idx!(
+                                &mut *conn,
+                                break_categories::table
+                                    .filter(
+                                        break_categories::tournament_id
+                                            .eq(&tid)
+                                    )
+                                    .select(break_categories::id)
+                                    .order_by(break_categories::id),
+                                idx,
+                            )
+                        })
+                        .unwrap_or_else(|| "in_round".to_string());
+                    drop(conn);
+                    let form = [("name", name), ("seq", seq.to_string())];
+                    client
+                        .post(&format!(
+                            "/tournaments/{}/rounds/{}/create",
+                            tid, category_id
+                        ))
+                        .form(&form)
+                        .await;
+                }
+            }
+            Action::CreateMotion {
+                tournament_idx,
+                round_idx,
+                motion,
+                infoslide,
+            } => {
+                let motion = normalize_name(motion, 8, 160);
+                let infoslide = infoslide.map(|s| normalize_name(s, 0, 160));
+                let mut conn = pool.get().unwrap();
+                if let Some(tid) = get_id_by_idx!(
+                    &mut *conn,
+                    tournaments::table
+                        .select(tournaments::id)
+                        .order_by(tournaments::id),
+                    tournament_idx,
+                ) {
+                    if let Some(rid) = get_id_by_idx!(
+                        &mut *conn,
+                        rounds::table
+                            .filter(rounds::tournament_id.eq(&tid))
+                            .select(rounds::id)
+                            .order_by(rounds::id),
+                        round_idx,
+                    ) {
+                        let _ = diesel::insert_into(motions_of_round::table)
+                            .values((
+                                motions_of_round::id
+                                    .eq(Uuid::now_v7().to_string()),
+                                motions_of_round::tournament_id.eq(tid),
+                                motions_of_round::round_id.eq(rid),
+                                motions_of_round::infoslide.eq(infoslide),
+                                motions_of_round::motion.eq(motion),
+                                motions_of_round::published_at
+                                    .eq(None::<chrono::NaiveDateTime>),
                             ))
-                            .form(&form)
-                            .await;
+                            .execute(&mut *conn);
                     }
                 }
             }
@@ -1364,8 +1687,10 @@ impl Action {
             Action::SetDrawPublished {
                 tournament_idx,
                 round_idx,
+                status,
                 published,
             } => {
+                let status = normalize_draw_status(status, published);
                 let mut conn = pool.get().unwrap();
                 if let Some(tid) = get_id_by_idx!(
                     &mut *conn,
@@ -1383,8 +1708,7 @@ impl Action {
                         round_idx,
                     ) {
                         drop(conn);
-                        let form =
-                            [("val", if published { "true" } else { "false" })];
+                        let form = [("status", status)];
                         client
                             .post(&format!(
                                 "/tournaments/{}/rounds/{}/draws/setreleased",
@@ -1417,8 +1741,10 @@ impl Action {
                         round_idx,
                     ) {
                         drop(conn);
-                        let form =
-                            [("val", if completed { "true" } else { "false" })];
+                        let form = [(
+                            "completed",
+                            if completed { "true" } else { "false" },
+                        )];
                         client
                             .post(&format!(
                                 "/tournaments/{}/rounds/{}/complete",
@@ -1480,11 +1806,13 @@ impl Action {
                         round_idx,
                     ) {
                         drop(conn);
+                        let form = [("published", "true")];
                         client
                             .post(&format!(
                                 "/tournaments/{}/rounds/{}/results/publish",
                                 tid, rid
                             ))
+                            .form(&form)
                             .await;
                     }
                 }
@@ -1523,8 +1851,11 @@ impl Action {
                     ) {
                         drop(conn);
                         let form = [
-                            ("val", if available { "true" } else { "false" }),
-                            ("judge_id", &jid),
+                            ("judge", jid),
+                            (
+                                "available",
+                                if available { "on" } else { "" }.to_string(),
+                            ),
                         ];
                         client.post(&format!("/tournaments/{}/rounds/{}/update_judge_availability", tid, rid)).form(&form).await;
                     }
@@ -1552,9 +1883,8 @@ impl Action {
                         round_idx,
                     ) {
                         drop(conn);
-                        let form =
-                            [("val", if available { "true" } else { "false" })];
-                        client.post(&format!("/tournaments/{}/rounds/{}/availability/judges/all", tid, rid)).form(&form).await;
+                        let check = if available { "in" } else { "out" };
+                        client.post(&format!("/tournaments/{}/rounds/{}/availability/judges/all?check={}", tid, rid, check)).await;
                     }
                 }
             }
@@ -1592,8 +1922,12 @@ impl Action {
                     ) {
                         drop(conn);
                         let form = [
-                            ("val", if eligible { "true" } else { "false" }),
-                            ("team_id", &team_id),
+                            ("team", team_id),
+                            (
+                                "available",
+                                if eligible { "true" } else { "false" }
+                                    .to_string(),
+                            ),
                         ];
                         client.post(&format!("/tournaments/{}/rounds/{}/update_team_eligibility", tid, rid)).form(&form).await;
                     }
@@ -1621,9 +1955,8 @@ impl Action {
                         round_idx,
                     ) {
                         drop(conn);
-                        let form =
-                            [("val", if eligible { "true" } else { "false" })];
-                        client.post(&format!("/tournaments/{}/rounds/{}/availability/teams/all", tid, rid)).form(&form).await;
+                        let check = if eligible { "in" } else { "out" };
+                        client.post(&format!("/tournaments/{}/rounds/{}/availability/teams/all?check={}", tid, rid, check)).await;
                     }
                 }
             }

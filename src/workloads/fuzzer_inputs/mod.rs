@@ -632,7 +632,6 @@ pub struct FuzzerBallotTeamEntry {
 #[derive(Default)]
 pub struct FuzzState {
     user_passwords: HashMap<String, String>,
-    logged_in: bool,
 }
 
 impl FuzzState {
@@ -804,7 +803,6 @@ impl Action {
                     .first::<String>(&mut *conn)
                 {
                     state.remember_user_password(user_id, password2);
-                    state.logged_in = true;
                 }
             }
             Action::LoginUser { user_idx } => {
@@ -827,15 +825,11 @@ impl Action {
                             ("password", password.to_string()),
                         ];
                         client.post("/login").form(&form).await;
-                        state.logged_in = true;
                     }
                 }
             }
             Action::LogoutUser => {
-                if state.logged_in {
-                    client.post("/logout").await;
-                    state.logged_in = false;
-                }
+                client.post("/logout").await;
             }
             Action::CreateTournament { name, abbrv, slug } => {
                 let name = normalize_name(name, 4, 32);

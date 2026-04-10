@@ -115,3 +115,45 @@ fn fuzz_regression_4() {
     .unwrap();
     (test_function)(&actions)
 }
+
+#[test]
+fn fuzz_regression_5() {
+    let _ = tracing_subscriber::fmt().try_init();
+
+    let test_function = make_test_function();
+    let actions: Vec<Action> = serde_json::from_str(
+        r#"
+        [
+            {"RegisterUser":{"username":"","email":"","password":""}},
+            {"RegisterUser":{"username":"","email":"","password":""}},
+            {"RegisterUser":{"username":"","email":"","password":""}},
+            {"RegisterUser":{"username":"","email":"","password":""}},
+            {"RegisterUser":{"username":"","email":"","password":""}},
+            {"RegisterUser":{"username":"","email":"","password":""}},
+            {"RegisterUser":{"username":"","email":"","password":""}},
+            {"RegisterUser":{"username":"","email":"","password":""}},
+            {"RegisterUser":{"username":"","email":"","password":""}},
+            {"RegisterUser":{"username":"","email":"","password":""}},
+            {"RegisterUser":{"username":"","email":"f@q.netcapybaraz@d.edumeerkatquetzalmeerkatfalconr@n.netpantherwcapybaran@f.orgg","password":""}},
+            {"RegisterUser":{"username":"","email":"","password":""}},
+            {"RegisterUser":{"username":"","email":"","password":""}},
+            {"RegisterUser":{"username":"","email":"","password":""}},
+            {"RegisterUser":{"username":"","email":"","password":""}},
+            {"RegisterUser":{"username":"","email":"","password":""}},
+            {"RegisterUser":{"username":"","email":"","password":""}},
+            {"RegisterUser":{"username":"","email":"","password":""}},
+            {"RegisterUser":{"username":"","email":"","password":""}},
+            {"RegisterUser":{"username":"tq@h.edu","email":"","password":""}},
+            {"RegisterUser":{"username":"","email":"","password":""}},
+            "LogoutUser",
+            {"RegisterUser":{"username":"","email":"","password":""}},
+            {"CreateTournament":{"name":"","abbrv":"","slug":""}},
+            {"RegisterUser":{"username":"","email":"","password":""}},
+            {"RegisterUser":{"username":"","email":"","password":""}},
+            {"RegisterUser":{"username":"X","email":"j","password":""}}
+        ]
+    "#,
+    )
+    .unwrap();
+    (test_function)(&actions)
+}

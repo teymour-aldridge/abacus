@@ -99,6 +99,86 @@ create table if not exists tournaments (
     exclude_from_speaker_standings_after integer
 );
 
+create table if not exists tournament_presets (
+    id text primary key not null,
+    name text not null unique,
+    description text not null,
+    config text not null
+);
+
+insert into tournament_presets (id, name, description, config)
+values
+(
+    'british-parliamentary',
+    'British Parliamentary',
+    'Four-team BP debates with two speakers per team, ranked by points and position counts.',
+    'team_tab_public = false
+speaker_tab_public = false
+standings_public = false
+show_round_results = true
+show_draws = true
+teams_per_side = 2
+substantive_speakers = 2
+reply_speakers = false
+reply_must_speak = true
+max_substantive_speech_index_for_reply = 2
+margin_includes_dissenters = true
+require_prelim_substantive_speaks = true
+require_prelim_speaker_order = true
+require_elim_substantive_speaks = false
+require_elim_speaker_order = true
+substantive_speech_min_speak = 50.0
+substantive_speech_max_speak = 99.0
+substantive_speech_step = 1.0
+pool_ballot_setup = "consensus"
+elim_ballot_setup = "consensus"
+require_elim_ballot_substantive_speaks = false
+institution_penalty = 0
+history_penalty = 0
+pullup_metrics = "[\"random\"]"
+repeat_pullup_penalty = 0
+team_standings_metrics = "[\"wins\",\"n_times_achieved_3\",\"n_times_achieved_2\",\"n_times_achieved_1\",\"draw_strength_by_wins\"]"
+speaker_standings_metrics = "[\"Avg\",\"StdDev\"]"
+exclude_from_speaker_standings_after = -1
+'
+),
+(
+    'wsdc',
+    'WSDC',
+    'Two-team WSDC debates with three substantive speakers, replies, and WSDC-style score ranges.',
+    'team_tab_public = false
+speaker_tab_public = false
+standings_public = false
+show_round_results = true
+show_draws = true
+teams_per_side = 1
+substantive_speakers = 3
+reply_speakers = true
+reply_must_speak = true
+max_substantive_speech_index_for_reply = 2
+margin_includes_dissenters = true
+require_prelim_substantive_speaks = true
+require_prelim_speaker_order = true
+require_elim_substantive_speaks = false
+require_elim_speaker_order = true
+substantive_speech_min_speak = 60.0
+substantive_speech_max_speak = 80.0
+substantive_speech_step = 1.0
+reply_speech_min_speak = 30.0
+reply_speech_max_speak = 40.0
+pool_ballot_setup = "consensus"
+elim_ballot_setup = "consensus"
+require_elim_ballot_substantive_speaks = false
+institution_penalty = 0
+history_penalty = 0
+pullup_metrics = "[\"random\"]"
+repeat_pullup_penalty = 0
+team_standings_metrics = "[\"wins\",\"ballots\",\"draw_strength_by_wins\"]"
+speaker_standings_metrics = "[\"Avg\",\"StdDev\"]"
+exclude_from_speaker_standings_after = -1
+'
+);
+
 -- A snapshot of a tournament at a given point in time.
 create table if not exists snapshots (
     id text not null primary key,

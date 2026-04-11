@@ -83,6 +83,8 @@ drop table if exists snapshots;
 
 drop table if exists action_logs;
 
+drop table if exists tournament_presets;
+
 drop table if exists tournaments;
 
 drop table if exists users;

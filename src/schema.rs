@@ -429,6 +429,15 @@ diesel::table! {
 }
 
 diesel::table! {
+    tournament_presets (id) {
+        id -> Text,
+        name -> Text,
+        description -> Text,
+        config -> Text,
+    }
+}
+
+diesel::table! {
     tournaments (id) {
         id -> Text,
         name -> Text,
@@ -613,6 +622,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     teams,
     teams_of_debate,
     tickets_of_round,
+    tournament_presets,
     tournaments,
     users,
 );

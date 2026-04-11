@@ -248,6 +248,8 @@ pub fn create_app(pool: DbPool) -> Router {
 
         // Configuration
         .route("/tournaments/:id/configuration", get(crate::tournaments::manage::config::view_tournament_configuration).post(crate::tournaments::manage::config::update_tournament_configuration))
+        .route("/tournaments/:id/configuration/custom", get(crate::tournaments::manage::config::view_custom_tournament_configuration))
+        .route("/tournaments/:id/configuration/preset", post(crate::tournaments::manage::config::apply_tournament_preset))
         .route("/tournaments/:id/manage", get(crate::tournaments::manage::view::admin_view_tournament))
 
         // Feedback

@@ -2,7 +2,7 @@ use axum::{
     extract::{Extension, Form, Path},
     response::Redirect,
 };
-use diesel::prelude::*;
+use diesel::{prelude::*, result::DatabaseErrorKind};
 use hypertext::prelude::*;
 use serde::Deserialize;
 
@@ -79,6 +79,17 @@ pub async fn do_create_speaker(
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
     let team = Team::fetch(&team_id, &tournament_id, &mut *conn)?;
 
+    if form.name.trim().is_empty() {
+        return bad_request(
+            Page::new()
+                .user(user)
+                .tournament(tournament)
+                .body(maud! {
+                    "Error: Name must not be empty."
+                })
+                .render(),
+        );
+    }
     if form.name.len() > 128 {
         return bad_request(
             Page::new()
@@ -117,7 +128,7 @@ pub async fn do_create_speaker(
         get_unique_private_url(&tournament.id, &mut *conn, &non_det);
 
     let speaker_id = non_det.uuid_now_v7().to_string();
-    let n = diesel::insert_into(speakers::table)
+    let res = diesel::insert_into(speakers::table)
         .values((
             speakers::id.eq(&speaker_id),
             speakers::tournament_id.eq(&tournament.id),
@@ -125,11 +136,28 @@ pub async fn do_create_speaker(
             speakers::email.eq(&form.email),
             speakers::private_url.eq(private_url),
         ))
-        .execute(&mut *conn)
-        .unwrap();
-    assert_eq!(n, 1);
+        .execute(&mut *conn);
 
-    diesel::insert_into(speakers_of_team::table)
+    match res {
+        Ok(n) => assert_eq!(n, 1),
+        Err(diesel::result::Error::DatabaseError(
+            DatabaseErrorKind::UniqueViolation,
+            _,
+        )) => {
+            return bad_request(
+                Page::new()
+                    .user(user)
+                    .tournament(tournament)
+                    .body(maud! {
+                        "Error: a speaker with that name already exists."
+                    })
+                    .render(),
+            );
+        }
+        Err(e) => return Err(e.into()),
+    }
+
+    let n = diesel::insert_into(speakers_of_team::table)
         .values((
             speakers_of_team::id.eq(non_det.uuid_now_v7().to_string()),
             speakers_of_team::team_id.eq(team.id),

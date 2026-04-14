@@ -1218,6 +1218,24 @@ fn fuzz_regression_13() {
 }
 
 #[test]
+fn fuzz_regression_14() {
+    let _ = tracing_subscriber::fmt().try_init();
+
+    let test_function = make_action_test_function();
+    let actions: Vec<Action> = serde_json::from_str(
+        r##"
+            [
+                {"RegisterUser":{"username":"otter","email":"y@o.edu","password":"5otter"}},
+                {"CreateTournament":{"name":"otter","abbrv":"ibex","slug":"otter"}},
+                {"AddFeedbackQuestion":{"tournament_idx":17941001772328693788,"question":"falcon","question_type":"text","for_judges":false,"for_teams":true}}
+            ]
+        "##,
+    )
+    .unwrap();
+    (test_function)(&actions)
+}
+
+#[test]
 fn determinism_regression_1() {
     let input = WorkloadInput {
         actions: serde_json::from_str(

@@ -164,10 +164,10 @@ impl Renderable for FeedbackFormRenderer {
                                         FeedbackQuestionKind::IntegerScale { .. } => {
                                             input type="number" class="form-control" name=(question.id) min="1" max="10" required;
                                         }
-                                        FeedbackQuestionKind::Text => {
+                                        FeedbackQuestionKind::Text { .. } => {
                                             textarea class="form-control" name=(question.id) rows="3" required {}
                                         }
-                                        FeedbackQuestionKind::Boolean => {
+                                        FeedbackQuestionKind::Boolean { .. } => {
                                             input type="checkbox" class="form-check-input" name=(question.id) required;
                                         }
                                     }

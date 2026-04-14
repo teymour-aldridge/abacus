@@ -213,10 +213,10 @@ impl Renderable for EditFeedbackQuestionRenderer {
                             option value="score" selected[matches!(kind, FeedbackQuestionKind::IntegerScale { .. })] {
                                 "Score (1-10)"
                             }
-                            option value="text" selected[matches!(kind, FeedbackQuestionKind::Text)] {
+                            option value="text" selected[matches!(kind, FeedbackQuestionKind::Text { .. })] {
                                 "Text"
                             }
-                            option value="bool" selected[matches!(kind, FeedbackQuestionKind::Boolean)] {
+                            option value="bool" selected[matches!(kind, FeedbackQuestionKind::Boolean { .. })] {
                                 "Yes/No"
                             }
                         }
@@ -251,8 +251,20 @@ pub struct AddQuestionForm {
 #[derive(Serialize, Deserialize)]
 pub enum FeedbackQuestionKind {
     IntegerScale { min: i64, max: i64 },
-    Text,
-    Boolean,
+    Text {},
+    Boolean {},
+}
+
+fn feedback_question_kind_from_form(
+    kind: &str,
+) -> Option<FeedbackQuestionKind> {
+    match kind {
+        // todo: should be possible to add non 1-10 scales
+        "score" => Some(FeedbackQuestionKind::IntegerScale { min: 1, max: 10 }),
+        "text" => Some(FeedbackQuestionKind::Text {}),
+        "bool" => Some(FeedbackQuestionKind::Boolean {}),
+        _ => None,
+    }
 }
 
 pub async fn add_feedback_question(
@@ -264,19 +276,15 @@ pub async fn add_feedback_question(
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
-    let feedback_q_kind = match form.kind.as_str() {
-        "score" => FeedbackQuestionKind::IntegerScale { min: 1, max: 10 },
-        "text" => FeedbackQuestionKind::Text,
-        "bool" => FeedbackQuestionKind::Boolean,
-        _ => {
-            // todo: proper error message
-            return bad_request(
-                maud! {
-                    "Error: invalid question kind."
-                }
-                .render(),
-            );
-        }
+    let Some(feedback_q_kind) = feedback_question_kind_from_form(&form.kind)
+    else {
+        // todo: proper error message
+        return bad_request(
+            maud! {
+                "Error: invalid question kind."
+            }
+            .render(),
+        );
     };
 
     let max_seq = feedback_questions::table
@@ -326,10 +334,22 @@ pub async fn edit_feedback_question(
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
+    let Some(feedback_q_kind) = feedback_question_kind_from_form(&form.kind)
+    else {
+        // todo: proper error message
+        return bad_request(
+            maud! {
+                "Error: invalid question kind."
+            }
+            .render(),
+        );
+    };
+
     diesel::update(feedback_questions::table.find(&form.question_id))
         .set((
             feedback_questions::question.eq(&form.question),
-            feedback_questions::kind.eq(&form.kind),
+            feedback_questions::kind
+                .eq(serde_json::to_string(&feedback_q_kind).unwrap()),
             feedback_questions::seq.eq(&form.seq),
         ))
         .execute(&mut *conn)

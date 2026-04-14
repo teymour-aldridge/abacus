@@ -133,6 +133,16 @@ pub async fn do_generate_draw(
             }
         };
 
+        if round.draw_status != "none" && !force {
+            return DrawResult::DrawError(
+                MakeDrawError::InvalidConfiguration(
+                    "a draw already exists for this round".to_string(),
+                ),
+                tournament,
+                round,
+            );
+        }
+
         if let Some(round) =
             round.find_first_preceding_incomplete_round(&mut conn)
         {

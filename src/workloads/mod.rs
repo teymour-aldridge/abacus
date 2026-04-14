@@ -1173,6 +1173,31 @@ fn fuzz_regression_11() {
 }
 
 #[test]
+fn fuzz_regression_12() {
+    let _ = tracing_subscriber::fmt().try_init();
+
+    let test_function = make_action_test_function();
+    let actions: Vec<Action> = serde_json::from_str(
+        r##"
+            [
+                {"RegisterUser":{"username":"ibex","email":"j@u.com","password":"badger"}},
+                {"CreateTournament":{"name":"lynx","abbrv":"#'","slug":""}},
+                {"CreateTeam":{"tournament_idx":3722362722439516023,"name":"otter","institution_idx":null}},
+                {"CreateRound":{"tournament_idx":17450235815526992768,"name":"otter","category_idx":null,"seq":3704891009}},
+                {"CreateTeam":{"tournament_idx":242422903909379060,"name":"gecko","institution_idx":13234450210839701354}},
+                {"CreateTeam":{"tournament_idx":242422903909379060,"name":"otterI","institution_idx":13234450210839701354}},
+                {"CreateTeam":{"tournament_idx":3722362722439516023,"name":"otter","institution_idx":null}},
+                {"UpdateAllTeamEligibility":{"tournament_idx":7396986980960405109,"round_idx":8133550729161990292,"eligible":true}},
+                {"GenerateDraw":{"tournament_idx":13551309544817346702,"round_idx":5011526869859920553}},
+                {"GenerateDraw":{"tournament_idx":13551309544817346702,"round_idx":5011526869859920553}}
+            ]
+        "##,
+    )
+    .unwrap();
+    (test_function)(&actions)
+}
+
+#[test]
 fn determinism_regression_1() {
     let input = WorkloadInput {
         actions: serde_json::from_str(

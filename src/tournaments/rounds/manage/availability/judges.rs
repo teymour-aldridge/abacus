@@ -484,6 +484,7 @@ pub async fn update_judge_availability(
             judge_availability::round_id.eq(&round.id),
             judge_availability::judge_id.eq(&judge.id),
             judge_availability::available.eq(!available),
+            judge_availability::tournament_id.eq(&tournament.id),
         ))
         .on_conflict((
             judge_availability::round_id,

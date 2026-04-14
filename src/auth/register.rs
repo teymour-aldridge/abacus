@@ -86,14 +86,8 @@ pub async fn do_register(
         );
     }
 
-    if let Err(e) = is_ascii_no_spaces(&form.username) {
+    if let Err(e) = is_valid_username(&form.username) {
         return (jar, bad_request(maud! {p {(e)}}.render()));
-    }
-    if form.username.chars().count() < 3 {
-        return (jar, bad_request(maud! {p {"Username too short"}}.render()));
-    }
-    if form.username.len() >= 128 {
-        return (jar, bad_request(maud! {p {"Username too long"}}.render()));
     }
     if let Err(e) = is_valid_email(&form.email) {
         return (jar, bad_request(maud! {p {(e)}}.render()));

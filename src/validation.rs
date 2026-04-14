@@ -9,6 +9,20 @@ pub fn is_ascii_no_spaces(username: &str) -> Result<(), String> {
     }
 }
 
+pub fn is_valid_username(username: &str) -> Result<(), String> {
+    is_ascii_no_spaces(username)?;
+
+    if username.chars().count() < 3 {
+        return Err("Username too short".to_string());
+    }
+
+    if username.len() >= 128 {
+        return Err("Username too long".to_string());
+    }
+
+    Ok(())
+}
+
 pub fn is_valid_email(string: &str) -> Result<(), String> {
     static RE: Lazy<Regex> = Lazy::new(|| {
         Regex::new(
@@ -36,4 +50,20 @@ pub fn is_valid_slug(string: &str) -> Result<(), String> {
 #[test]
 fn test_email() {
     assert!(is_valid_email("hello@example.com").is_ok())
+}
+
+#[cfg(test)]
+#[test]
+fn test_username() {
+    assert_eq!(is_valid_username("").unwrap_err(), "Username too short");
+    assert_eq!(is_valid_username("ab").unwrap_err(), "Username too short");
+    assert!(is_valid_username("abc").is_ok());
+    assert_eq!(
+        is_valid_username("hello world").unwrap_err(),
+        "should be an ascii string without spaces"
+    );
+    assert_eq!(
+        is_valid_username(&"a".repeat(128)).unwrap_err(),
+        "Username too long"
+    );
 }

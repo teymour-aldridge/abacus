@@ -24,6 +24,7 @@ use crate::{
     //     register::{do_register, register_page},
     // },
     auth::User,
+    non_det::NonDet,
     // msg::Msg,
     schema::{org, tournaments},
     state::{Conn, DbPool},
@@ -151,6 +152,10 @@ async fn store_css() -> impl IntoResponse {
 }
 
 pub fn create_app(pool: DbPool) -> Router {
+    create_app_with_non_det(pool, NonDet::production())
+}
+
+pub fn create_app_with_non_det(pool: DbPool, non_det: NonDet) -> Router {
     let secret_str = std::env::var("SECRET_KEY").ok();
     let key = if let Some(secret) = secret_str.filter(|s| s.len() >= 64) {
         Key::from(secret.as_bytes())
@@ -164,7 +169,7 @@ pub fn create_app(pool: DbPool) -> Router {
 
     let (tx, _rx) = tokio::sync::broadcast::channel::<crate::msg::Msg>(1000);
 
-    let state = crate::state::AppState { pool, key };
+    let state = crate::state::AppState { pool, key, non_det };
 
     Router::new()
         .route("/", get(home))
@@ -336,6 +341,7 @@ pub fn create_app(pool: DbPool) -> Router {
         )
         .layer(axum::Extension(tx))
         .layer(axum::Extension(state.pool.clone()))
+        .layer(axum::Extension(state.non_det.clone()))
         .with_state(state)
         .layer(
             ServiceBuilder::new()

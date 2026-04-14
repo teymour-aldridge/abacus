@@ -1,18 +1,17 @@
 use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
-use rand::{Rng, distr::Alphanumeric};
 
-use crate::schema::{judges, speakers};
+use crate::{
+    non_det::NonDet,
+    schema::{judges, speakers},
+};
 
 pub fn get_unique_private_url(
     tournament: &str,
     conn: &mut impl LoadConnection<Backend = Sqlite>,
+    non_det: &NonDet,
 ) -> String {
     loop {
-        let random_string: String = rand::rng()
-            .sample_iter(&Alphanumeric)
-            .take(12)
-            .map(char::from)
-            .collect();
+        let random_string = non_det.alphanumeric_string(12);
 
         let is_duplicate = diesel::dsl::select(diesel::dsl::exists(
             speakers::table

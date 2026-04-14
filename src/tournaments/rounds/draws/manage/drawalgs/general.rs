@@ -52,7 +52,9 @@ pub type TeamsOfRoom = (Vec<Team>, Vec<Team>);
 ///
 /// Additional description can be found here:
 /// https://www.overleaf.com/read/sstwcyfjbrhx#1c6d64
-pub fn make_draw(input: DrawInput) -> Result<Vec<TeamsOfRoom>, MakeDrawError> {
+pub fn make_draw(
+    mut input: DrawInput,
+) -> Result<Vec<TeamsOfRoom>, MakeDrawError> {
     if input.teams.is_empty() {
         return Err(MakeDrawError::InvalidTeamCount(
             "There are no teams!".to_string(),
@@ -359,7 +361,7 @@ pub fn make_draw(input: DrawInput) -> Result<Vec<TeamsOfRoom>, MakeDrawError> {
                     // add small pertubation to ensure that pull ups are random
                     // (this should break ties where we could pull up multiple
                     //  teams)
-                    + rand::rng().sample(
+                    + input.rng.sample(
                         rand::distr::Uniform::new(0.0f64, 0.1f64).unwrap(),
                     ))
                     * *variable_map
@@ -387,7 +389,7 @@ pub fn make_draw(input: DrawInput) -> Result<Vec<TeamsOfRoom>, MakeDrawError> {
                     obj += (*position_cost as f64
                         // add small random value to ensure sufficient
                         // randomness in generation
-                        + rand::rng().sample(
+                        + input.rng.sample(
                             rand::distr::Uniform::new(0.0f64, 0.1f64).unwrap(),
                         ))
                         * *variable_map

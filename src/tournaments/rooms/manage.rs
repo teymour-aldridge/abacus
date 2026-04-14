@@ -1,5 +1,6 @@
 use crate::{
     auth::User,
+    non_det::NonDet,
     schema::{room_categories, rooms, rooms_of_category},
     state::Conn,
     template::Page,
@@ -11,7 +12,11 @@ use crate::{
     },
     util_resp::{FailureResponse, StandardResponse, see_other_ok, success},
 };
-use axum::{Form, extract::Path, response::Redirect};
+use axum::{
+    Form,
+    extract::{Extension, Path},
+    response::Redirect,
+};
 use diesel::prelude::*;
 use hypertext::prelude::*;
 use serde::Deserialize;
@@ -247,6 +252,7 @@ pub async fn create_room(
     Path(tid): Path<String>,
     user: User<true>,
     mut conn: Conn<true>,
+    Extension(non_det): Extension<NonDet>,
     Form(form): Form<CreateRoomForm>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
@@ -255,7 +261,7 @@ pub async fn create_room(
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
     let new_room = Room {
-        id: uuid::Uuid::now_v7().to_string(),
+        id: non_det.uuid_now_v7().to_string(),
         tournament_id: tid.clone(),
         name: form.name,
         url: None,
@@ -298,13 +304,14 @@ pub async fn create_category(
     Path(tid): Path<String>,
     user: User<true>,
     mut conn: Conn<true>,
+    Extension(non_det): Extension<NonDet>,
     Form(form): Form<CreateCategoryForm>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
     let new_cat = RoomCategory {
-        id: uuid::Uuid::new_v4().to_string(),
+        id: non_det.uuid_v4().to_string(),
         tournament_id: tid.clone(),
         private_name: form.private_name,
         public_name: form.public_name,
@@ -340,6 +347,7 @@ pub async fn add_room_to_category(
     Path((tid, cat_id)): Path<(String, String)>,
     user: User<true>,
     mut conn: Conn<true>,
+    Extension(non_det): Extension<NonDet>,
     Form(form): Form<AddRoomToCategoryForm>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
@@ -357,7 +365,7 @@ pub async fn add_room_to_category(
 
     if exists.is_none() {
         let new_rel = RoomsOfRoomCategory {
-            id: uuid::Uuid::new_v4().to_string(),
+            id: non_det.uuid_v4().to_string(),
             category_id: cat_id,
             room_id: form.room_id,
         };

@@ -1,12 +1,14 @@
-use axum::{extract::Form, response::Redirect};
-use chrono::Utc;
-use diesel::prelude::*;
+use axum::{
+    extract::{Extension, Form},
+    response::Redirect,
+};
+use diesel::{prelude::*, result::DatabaseErrorKind};
 use hypertext::prelude::*;
 use serde::Deserialize;
-use uuid::Uuid;
 
 use crate::util_resp::bad_request;
 
+use crate::non_det::NonDet;
 use crate::schema::{org, tournaments};
 use crate::state::Conn;
 use crate::template::Page;
@@ -90,9 +92,10 @@ pub struct CreateTournamentForm {
 pub async fn do_create_tournament(
     user: User<true>,
     mut conn: Conn<true>,
+    Extension(non_det): Extension<NonDet>,
     Form(form): Form<CreateTournamentForm>,
 ) -> StandardResponse {
-    let tid = Uuid::now_v7().to_string();
+    let tid = non_det.uuid_now_v7().to_string();
 
     if !(4..=32).contains(&form.name.len()) {
         return bad_request(
@@ -107,13 +110,13 @@ pub async fn do_create_tournament(
         return bad_request(maud! {p {(e)}}.render());
     }
 
-    let n = diesel::insert_into(tournaments::table)
+    let res = diesel::insert_into(tournaments::table)
         .values((
             tournaments::id.eq(&tid),
             tournaments::name.eq(&form.name),
             tournaments::abbrv.eq(&form.abbrv),
             tournaments::slug.eq(&form.slug),
-            tournaments::created_at.eq(Utc::now().naive_utc()),
+            tournaments::created_at.eq(non_det.now_utc_naive()),
             tournaments::team_tab_public.eq(false),
             tournaments::speaker_tab_public.eq(false),
             tournaments::standings_public.eq(false),
@@ -147,13 +150,27 @@ pub async fn do_create_tournament(
             tournaments::repeat_pullup_penalty.eq(0),
             tournaments::exclude_from_speaker_standings_after.eq(-1),
         ))
-        .execute(&mut *conn)
-        .unwrap();
-    assert_eq!(n, 1);
+        .execute(&mut *conn);
+
+    match res {
+        Ok(n) => {
+            assert_eq!(n, 1);
+        }
+        Err(diesel::result::Error::DatabaseError(e, _))
+            if e == DatabaseErrorKind::UniqueViolation =>
+        {
+            return bad_request(
+                maud! {p {"Tournament already exists."}}.render(),
+            );
+        }
+        Err(e) => {
+            panic!("unexpected error creating tournament: {e:?}")
+        }
+    }
 
     let n = diesel::insert_into(org::table)
         .values((
-            org::id.eq(Uuid::now_v7().to_string()),
+            org::id.eq(non_det.uuid_now_v7().to_string()),
             org::user_id.eq(user.id),
             org::tournament_id.eq(&tid),
             org::is_superuser.eq(true),

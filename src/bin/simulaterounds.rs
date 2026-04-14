@@ -3,6 +3,7 @@
 use std::collections::HashSet;
 
 use abacus::{
+    non_det::NonDet,
     schema::{
         ballots, debates, judges, judges_of_debate, motions_of_round, rounds,
         speaker_scores_of_ballot, team_availability, teams, tournaments,
@@ -30,7 +31,6 @@ use diesel::{
 };
 use itertools::Itertools;
 use rand::{Rng, distr::Uniform};
-use uuid::Uuid;
 
 #[derive(Parser)]
 pub struct Import {
@@ -62,6 +62,7 @@ fn main() {
 
     let all_rounds =
         TournamentRounds::fetch(&tournament.id, &mut conn).unwrap();
+    let non_det = NonDet::production();
 
     let rounds_to_simulate_seqs = if let Some(mut r) = args.rounds {
         r.sort();
@@ -108,6 +109,7 @@ fn main() {
         simulate_concurrent_in_rounds(
             &tournament,
             rounds.as_slice(),
+            &non_det,
             &mut conn,
         );
     }
@@ -118,6 +120,7 @@ fn main() {
 fn simulate_concurrent_in_rounds(
     tournament: &Tournament,
     rounds: &[Round],
+    non_det: &NonDet,
     conn: &mut impl LoadConnection<Backend = Sqlite>,
 ) {
     tracing::info!(
@@ -141,7 +144,7 @@ fn simulate_concurrent_in_rounds(
         for team in teams {
             diesel::insert_into(team_availability::table)
                 .values((
-                    team_availability::id.eq(Uuid::now_v7().to_string()),
+                    team_availability::id.eq(non_det.uuid_now_v7().to_string()),
                     team_availability::round_id.eq(&round.id),
                     team_availability::team_id.eq(&team.id),
                     team_availability::available.eq(true),
@@ -163,6 +166,7 @@ fn simulate_concurrent_in_rounds(
             &round,
             Box::new(drawalgs::general::make_draw),
             conn,
+            non_det,
             true,
         )
         .expect("failed to create draw");
@@ -227,7 +231,7 @@ fn simulate_concurrent_in_rounds(
                                            speaks: &[i64],
                                            conn: &mut _|
              -> String {
-                let ballot_id = Uuid::now_v7().to_string();
+                let ballot_id = non_det.uuid_now_v7().to_string();
                 diesel::insert_into(ballots::table)
                     .values((
                         ballots::id.eq(&ballot_id),
@@ -261,7 +265,7 @@ fn simulate_concurrent_in_rounds(
 
                         speaker_scores.push((
                             speaker_scores_of_ballot::id
-                                .eq(Uuid::now_v7().to_string()),
+                                .eq(non_det.uuid_now_v7().to_string()),
                             speaker_scores_of_ballot::ballot_id.eq(&ballot_id),
                             speaker_scores_of_ballot::team_id.eq(&team.team_id),
                             speaker_scores_of_ballot::speaker_id
@@ -272,7 +276,7 @@ fn simulate_concurrent_in_rounds(
                         ));
                         speaker_scores.push((
                             speaker_scores_of_ballot::id
-                                .eq(Uuid::now_v7().to_string()),
+                                .eq(non_det.uuid_now_v7().to_string()),
                             speaker_scores_of_ballot::ballot_id.eq(&ballot_id),
                             speaker_scores_of_ballot::team_id.eq(&team.team_id),
                             speaker_scores_of_ballot::speaker_id
@@ -294,7 +298,8 @@ fn simulate_concurrent_in_rounds(
             let speaks = loop {
                 let speaks: Vec<i64> = (0..8)
                     .map(|_| {
-                        rand::rng()
+                        non_det
+                            .rng()
                             .sample(Uniform::new_inclusive(50, 99).unwrap())
                     })
                     .collect();

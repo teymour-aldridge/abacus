@@ -6,14 +6,18 @@
 //!
 //! todo: document this
 
-use axum::{Form, extract::Path, response::Redirect};
-use diesel::prelude::*;
+use axum::{
+    Form,
+    extract::{Extension, Path},
+    response::Redirect,
+};
+use diesel::{prelude::*, result::DatabaseErrorKind};
 use hypertext::prelude::*;
 use serde::Deserialize;
-use uuid::Uuid;
 
 use crate::{
     auth::User,
+    non_det::NonDet,
     schema::{break_categories, rounds},
     state::Conn,
     template::Page,
@@ -168,6 +172,7 @@ pub async fn do_create_new_round_of_specific_category(
     Path((tid, category_id)): Path<(String, String)>,
     user: User<true>,
     mut conn: Conn<true>,
+    Extension(non_det): Extension<NonDet>,
     Form(form): Form<CreateNewRoundForm>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
@@ -200,9 +205,9 @@ pub async fn do_create_new_round_of_specific_category(
         Some(cat)
     };
 
-    diesel::insert_into(rounds::table)
+    let res = diesel::insert_into(rounds::table)
         .values((
-            rounds::id.eq(Uuid::now_v7().to_string()),
+            rounds::id.eq(non_det.uuid_now_v7().to_string()),
             rounds::tournament_id.eq(&tournament.id),
             rounds::seq.eq(form.seq as i64),
             rounds::name.eq(&form.name),
@@ -210,8 +215,22 @@ pub async fn do_create_new_round_of_specific_category(
             rounds::break_category.eq(break_cat.map(|c| c.id)),
             rounds::completed.eq(false),
         ))
-        .execute(&mut *conn)
-        .unwrap();
+        .execute(&mut *conn);
+
+    match res {
+        Ok(n) => assert_eq!(n, 1),
+        Err(diesel::result::Error::DatabaseError(kind, _))
+            if kind == DatabaseErrorKind::UniqueViolation =>
+        {
+            return crate::util_resp::bad_request(
+                maud! {
+                    p { "A round with this name already exists in this tournament." }
+                }
+                .render(),
+            );
+        }
+        Err(e) => return Err(e.into()),
+    }
 
     see_other_ok(Redirect::to(&format!(
         "/tournaments/{}/rounds",

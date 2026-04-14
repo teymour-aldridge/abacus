@@ -6,11 +6,12 @@ use axum::{
 };
 use axum_extra::extract::cookie::Cookie;
 use axum_extra::extract::{PrivateCookieJar, cookie::Key};
-use chrono::{Days, NaiveDateTime, Utc};
+use chrono::{Days, NaiveDateTime};
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    non_det::NonDet,
     schema::{self},
     state::{DbPool, ThreadSafeConn},
 };
@@ -76,6 +77,7 @@ where
     S: Send + Sync,
     DbPool: FromRef<S>,
     axum_extra::extract::cookie::Key: FromRef<S>,
+    NonDet: FromRef<S>,
 {
     type Rejection = AuthError;
 
@@ -103,9 +105,10 @@ where
             None => return Err(AuthError::Unauthorized),
         };
 
+        let non_det = NonDet::from_ref(state);
         let login: LoginSession =
             match serde_json::from_str::<LoginSession>(login_cookie.value()) {
-                Ok(t) if chrono::Utc::now().naive_utc() < t.expiry => t,
+                Ok(t) if non_det.now_utc_naive() < t.expiry => t,
                 _ => {
                     return Err(AuthError::Unauthorized);
                 }
@@ -128,13 +131,17 @@ where
     }
 }
 
-pub fn set_login_cookie(id: String, jar: PrivateCookieJar) -> PrivateCookieJar {
+pub fn set_login_cookie(
+    id: String,
+    jar: PrivateCookieJar,
+    non_det: &NonDet,
+) -> PrivateCookieJar {
     jar.add(Cookie::new(
         LOGIN_COOKIE,
         serde_json::to_string(&LoginSession {
             id,
-            expiry: Utc::now()
-                .naive_utc()
+            expiry: non_det
+                .now_utc_naive()
                 .checked_add_days(Days::new(7))
                 .unwrap(),
         })

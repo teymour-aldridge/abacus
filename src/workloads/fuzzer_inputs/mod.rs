@@ -1,4 +1,4 @@
-use crate::schema::*;
+use crate::{non_det::NonDet, schema::*};
 use axum::body::Bytes;
 use axum_test::TestServer;
 use diesel::prelude::*;
@@ -10,7 +10,6 @@ use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
-use uuid::Uuid;
 
 const TABDA_DICTIONARY_ANIMALS: [&str; 12] = [
     "otter", "badger", "lynx", "falcon", "gecko", "narwhal", "wombat",
@@ -372,7 +371,7 @@ macro_rules! get_id_by_idx {
     }};
 }
 
-#[derive(DefaultMutator, Clone, Debug, Serialize, Deserialize)]
+#[derive(DefaultMutator, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum Action {
     // Auth
     RegisterUser {
@@ -616,20 +615,20 @@ fn default_round_seq() -> u32 {
     1
 }
 
-#[derive(DefaultMutator, Clone, Debug, Serialize, Deserialize)]
+#[derive(DefaultMutator, Clone, Debug, Hash, Serialize, Deserialize)]
 pub struct FuzzerBallotForm {
     pub motion_idx: usize,
     pub teams: Vec<FuzzerBallotTeamEntry>,
     pub expected_version: i64,
 }
 
-#[derive(DefaultMutator, Clone, Debug, Serialize, Deserialize)]
+#[derive(DefaultMutator, Clone, Debug, Hash, Serialize, Deserialize)]
 pub struct FuzzerBallotTeamEntry {
     pub speaker_indices: Vec<(usize, Option<i32>)>,
     pub points: Option<usize>,
 }
 
-#[derive(Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FuzzState {
     user_passwords: HashMap<String, String>,
 }
@@ -644,120 +643,6 @@ impl FuzzState {
     }
 }
 
-fn normalize_username(input: String) -> String {
-    let mut value: String = input
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
-        .collect();
-    if value.is_empty() {
-        value = "user".to_string();
-    }
-    if value.len() > 32 {
-        value.truncate(32);
-    }
-    value
-}
-
-fn normalize_email(input: String) -> String {
-    let lower = input.to_ascii_lowercase();
-    let filtered: String = lower
-        .chars()
-        .filter(|c| {
-            c.is_ascii_alphanumeric() || matches!(c, '@' | '.' | '_' | '-')
-        })
-        .collect();
-    let parts: Vec<_> = filtered.split('@').collect();
-    if parts.len() == 2 && parts[1].contains('.') && !parts[0].is_empty() {
-        return filtered;
-    }
-    let stem: String = filtered
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric())
-        .collect();
-    let stem = if stem.is_empty() { "otter" } else { &stem };
-    format!("{stem}@tabda.org")
-}
-
-fn normalize_password(input: String) -> String {
-    let mut value: String =
-        input.chars().filter(|c| c.is_ascii_graphic()).collect();
-    if value.len() < 6 {
-        value.push_str("wombat");
-    }
-    if value.len() > 32 {
-        value.truncate(32);
-    }
-    value
-}
-
-fn normalize_name(input: String, min_len: usize, max_len: usize) -> String {
-    let mut value: String = input
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || *c == ' ')
-        .collect();
-    if value.trim().is_empty() {
-        value = "tabda".to_string();
-    }
-    while value.len() < min_len {
-        value.push('a');
-    }
-    if value.len() > max_len {
-        value.truncate(max_len);
-    }
-    value
-}
-
-fn normalize_slug(input: String) -> String {
-    let mut value: String = input
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric())
-        .collect();
-    if value.is_empty() {
-        value = "tabda1".to_string();
-    }
-    if value.len() > 16 {
-        value.truncate(16);
-    }
-    value
-}
-
-fn normalize_participant_kind(input: String) -> &'static str {
-    if input.eq_ignore_ascii_case("speaker")
-        || input.eq_ignore_ascii_case("speakers")
-    {
-        "speaker"
-    } else {
-        "judge"
-    }
-}
-
-fn normalize_feedback_kind(input: String) -> &'static str {
-    match input.to_ascii_lowercase().as_str() {
-        "score" => "score",
-        "text" => "text",
-        "bool" => "bool",
-        _ => "score",
-    }
-}
-
-fn normalize_draw_status(
-    input: String,
-    published: Option<bool>,
-) -> &'static str {
-    match input.as_str() {
-        "confirmed" => "confirmed",
-        "released_teams" => "released_teams",
-        "released_full" => "released_full",
-        _ => {
-            if published.unwrap_or(false) {
-                "released_full"
-            } else {
-                "confirmed"
-            }
-        }
-    }
-}
-
 impl Action {
     #[tracing::instrument(skip_all)]
     pub async fn run(
@@ -765,17 +650,16 @@ impl Action {
         pool: &Pool<ConnectionManager<SqliteConnection>>,
         client: &mut TestServer,
         state: &mut FuzzState,
+        non_det: &NonDet,
     ) {
         tracing::info!("Running Action::run");
+
         match self {
             Action::RegisterUser {
                 username,
                 email,
                 password,
             } => {
-                let username = normalize_username(username);
-                let email = normalize_email(email);
-                let password = normalize_password(password);
                 let password2 = password.clone();
                 let lookup_username = username.clone();
                 let lookup_email = email.clone();
@@ -832,16 +716,6 @@ impl Action {
                 client.post("/logout").await;
             }
             Action::CreateTournament { name, abbrv, slug } => {
-                let name = normalize_name(name, 4, 32);
-                let abbrv = normalize_slug(abbrv);
-                let abbrv = if abbrv.len() < 2 {
-                    format!("{abbrv}x")
-                } else if abbrv.len() > 8 {
-                    abbrv[..8].to_string()
-                } else {
-                    abbrv
-                };
-                let slug = normalize_slug(slug);
                 let form = [("name", name), ("abbrv", abbrv), ("slug", slug)];
                 let res = client.post("/tournaments/create").form(&form).await;
                 assert!(
@@ -855,7 +729,6 @@ impl Action {
                 name,
                 priority,
             } => {
-                let name = normalize_name(name, 4, 32);
                 let mut conn = pool.get().unwrap();
                 if let Some(tid) = get_id_by_idx!(
                     &mut *conn,
@@ -867,7 +740,8 @@ impl Action {
                     let next_priority = if priority < 0 { 0 } else { priority };
                     let _ = diesel::insert_into(break_categories::table)
                         .values((
-                            break_categories::id.eq(Uuid::now_v7().to_string()),
+                            break_categories::id
+                                .eq(non_det.uuid_now_v7().to_string()),
                             break_categories::tournament_id.eq(tid),
                             break_categories::name.eq(name),
                             break_categories::priority.eq(next_priority),
@@ -923,7 +797,6 @@ impl Action {
                 name,
                 institution_idx,
             } => {
-                let name = normalize_name(name, 4, 32);
                 let mut conn = pool.get().unwrap();
                 if let Some(tid) = get_id_by_idx!(
                     &mut *conn,
@@ -961,7 +834,6 @@ impl Action {
                 name,
                 institution_idx,
             } => {
-                let name = normalize_name(name, 4, 32);
                 let mut conn = pool.get().unwrap();
                 if let Some(tid) = get_id_by_idx!(
                     &mut *conn,
@@ -1012,8 +884,6 @@ impl Action {
                 email,
                 institution_idx,
             } => {
-                let name = normalize_name(name, 1, 64);
-                let email = normalize_email(email);
                 let mut conn = pool.get().unwrap();
                 if let Some(tid) = get_id_by_idx!(
                     &mut *conn,
@@ -1056,8 +926,6 @@ impl Action {
                 email,
                 institution_idx,
             } => {
-                let name = normalize_name(name, 1, 64);
-                let email = normalize_email(email);
                 let mut conn = pool.get().unwrap();
                 if let Some(tid) = get_id_by_idx!(
                     &mut *conn,
@@ -1111,8 +979,6 @@ impl Action {
                 name,
                 email,
             } => {
-                let name = normalize_name(name, 1, 64);
-                let email = normalize_email(email);
                 let mut conn = pool.get().unwrap();
                 if let Some(tid) = get_id_by_idx!(
                     &mut *conn,
@@ -1147,7 +1013,6 @@ impl Action {
                 pid_idx,
                 category_idx,
             } => {
-                let ptype = normalize_participant_kind(ptype);
                 let mut conn = pool.get().unwrap();
                 if let Some(tid) = get_id_by_idx!(
                     &mut *conn,
@@ -1199,7 +1064,6 @@ impl Action {
                 pid_idx,
                 constraint_idx,
             } => {
-                let ptype = normalize_participant_kind(ptype);
                 let mut conn = pool.get().unwrap();
                 if let Some(tid) = get_id_by_idx!(
                     &mut *conn,
@@ -1285,7 +1149,6 @@ impl Action {
                 name,
                 priority,
             } => {
-                let name = normalize_name(name, 1, 64);
                 let mut conn = pool.get().unwrap();
                 if let Some(tid) = get_id_by_idx!(
                     &mut *conn,
@@ -1341,25 +1204,16 @@ impl Action {
                 description,
             } => {
                 let legacy_name = name.unwrap_or_default();
-                let private_name = normalize_name(
-                    if private_name.is_empty() {
-                        legacy_name.clone()
-                    } else {
-                        private_name
-                    },
-                    1,
-                    64,
-                );
-                let public_name = normalize_name(
-                    if public_name.is_empty() {
-                        legacy_name
-                    } else {
-                        public_name
-                    },
-                    1,
-                    64,
-                );
-                let description = normalize_name(description, 0, 128);
+                let private_name = if private_name.is_empty() {
+                    legacy_name.clone()
+                } else {
+                    private_name
+                };
+                let public_name = if public_name.is_empty() {
+                    legacy_name
+                } else {
+                    public_name
+                };
                 let mut conn = pool.get().unwrap();
                 if let Some(tid) = get_id_by_idx!(
                     &mut *conn,
@@ -1500,8 +1354,6 @@ impl Action {
                 for_judges,
                 for_teams,
             } => {
-                let question = normalize_name(question, 4, 128);
-                let question_type = normalize_feedback_kind(question_type);
                 let mut conn = pool.get().unwrap();
                 if let Some(tid) = get_id_by_idx!(
                     &mut *conn,
@@ -1574,7 +1426,6 @@ impl Action {
             } => {
                 // map (deterministically) to [0,199]
                 let seq = seq % 200;
-                let name = normalize_name(name, 4, 32);
                 let mut conn = pool.get().unwrap();
                 if let Some(tid) = get_id_by_idx!(
                     &mut *conn,
@@ -1615,8 +1466,6 @@ impl Action {
                 motion,
                 infoslide,
             } => {
-                let motion = normalize_name(motion, 8, 160);
-                let infoslide = infoslide.map(|s| normalize_name(s, 0, 160));
                 let mut conn = pool.get().unwrap();
                 if let Some(tid) = get_id_by_idx!(
                     &mut *conn,
@@ -1636,7 +1485,7 @@ impl Action {
                         let _ = diesel::insert_into(motions_of_round::table)
                             .values((
                                 motions_of_round::id
-                                    .eq(Uuid::now_v7().to_string()),
+                                    .eq(non_det.uuid_now_v7().to_string()),
                                 motions_of_round::tournament_id.eq(tid),
                                 motions_of_round::round_id.eq(rid),
                                 motions_of_round::infoslide.eq(infoslide),
@@ -1684,7 +1533,7 @@ impl Action {
                 status,
                 published,
             } => {
-                let status = normalize_draw_status(status, published);
+                let _ = published;
                 let mut conn = pool.get().unwrap();
                 if let Some(tid) = get_id_by_idx!(
                     &mut *conn,

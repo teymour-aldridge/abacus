@@ -4,9 +4,8 @@ use std::panic::{UnwindSafe, catch_unwind};
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use diesel::{connection::LoadConnection, sqlite::Sqlite};
-use rand::SeedableRng;
-use uuid::Uuid;
 
+use crate::non_det::NonDet;
 use crate::schema::{
     debates, judges_of_debate, rounds, team_availability, teams_of_debate,
     tickets_of_round,
@@ -60,6 +59,7 @@ pub fn do_draw(
             + UnwindSafe,
     >,
     conn: &mut impl LoadConnection<Backend = Sqlite>,
+    non_det: &NonDet,
     force: bool,
 ) -> Result<(), MakeDrawError> {
     let ticket_id = conn
@@ -85,14 +85,14 @@ pub fn do_draw(
             if let Some(previous_ticket_seq) = previous_ticket_seq
                 && force
             {
-                let id = Uuid::now_v7().to_string();
+                let id = non_det.uuid_now_v7().to_string();
                 diesel::insert_into(tickets_of_round::table)
                     .values((
                         tickets_of_round::id.eq(&id),
                         tickets_of_round::round_id.eq(&round.id),
                         tickets_of_round::seq.eq(previous_ticket_seq + 1),
                         tickets_of_round::kind.eq("draw"),
-                        tickets_of_round::acquired.eq(diesel::dsl::now),
+                        tickets_of_round::acquired.eq(non_det.now_utc_naive()),
                         tickets_of_round::released.eq(false),
                     ))
                     .execute(conn)
@@ -101,14 +101,14 @@ pub fn do_draw(
             } else if previous_ticket_seq.is_some() && !force {
                 return Ok(Err(MakeDrawError::AlreadyInProgress));
             } else {
-                let id = Uuid::now_v7().to_string();
+                let id = non_det.uuid_now_v7().to_string();
                 diesel::insert_into(tickets_of_round::table)
                     .values((
                         tickets_of_round::id.eq(&id),
                         tickets_of_round::round_id.eq(&round.id),
                         tickets_of_round::seq.eq(0),
                         tickets_of_round::kind.eq("draw"),
-                        tickets_of_round::acquired.eq(diesel::dsl::now),
+                        tickets_of_round::acquired.eq(non_det.now_utc_naive()),
                         tickets_of_round::released.eq(false),
                     ))
                     .execute(conn)
@@ -137,7 +137,7 @@ pub fn do_draw(
     let standings = TeamStandings::fetch(&tournament.id, conn);
     let history = TeamHistory::fetch(&tournament.id, conn);
 
-    let rng = rand_chacha::ChaCha20Rng::from_os_rng();
+    let rng = non_det.fork_rng();
 
     let input = DrawInput {
         tournament: tournament.clone(),
@@ -273,7 +273,7 @@ pub fn do_draw(
 
                 let mut debate_no = 1;
                 for room in draw {
-                    let debate_id = Uuid::now_v7().to_string();
+                    let debate_id = non_det.uuid_now_v7().to_string();
                     debates.push((
                         debates::id.eq(debate_id.clone()),
                         debates::tournament_id.eq(&tournament.id),
@@ -289,7 +289,7 @@ pub fn do_draw(
                     for (i, prop_team) in room.0.iter().enumerate() {
                         debate_teams.push((
                             teams_of_debate::id
-                                .eq(Uuid::now_v7().to_string()),
+                                .eq(non_det.uuid_now_v7().to_string()),
                             teams_of_debate::debate_id
                                 .eq(debate_id.clone()),
                             teams_of_debate::team_id
@@ -302,7 +302,7 @@ pub fn do_draw(
                     for (i, opp_team) in room.1.iter().enumerate() {
                         debate_teams.push((
                             teams_of_debate::id
-                                .eq(Uuid::now_v7().to_string()),
+                                .eq(non_det.uuid_now_v7().to_string()),
                             teams_of_debate::debate_id
                                 .eq(debate_id.clone()),
                             teams_of_debate::team_id

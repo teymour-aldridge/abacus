@@ -1,6 +1,6 @@
 use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use axum::{
-    extract::{Form, Query},
+    extract::{Extension, Form, Query},
     response::Redirect,
 };
 use axum_extra::extract::{PrivateCookieJar, cookie::Key};
@@ -13,6 +13,7 @@ use url::Url;
 
 use crate::{
     auth::{User, clear_login_cookie, set_login_cookie},
+    non_det::NonDet,
     schema::users,
     state::Conn,
     template::Page,
@@ -68,6 +69,7 @@ pub async fn do_login(
     Query(params): Query<NextParams>,
     mut conn: Conn<true>,
     jar: PrivateCookieJar<Key>,
+    Extension(non_det): Extension<NonDet>,
     // note: MUST be skipped in tracing for security reasons!
     Form(form): Form<LoginForm>,
 ) -> (PrivateCookieJar<Key>, StandardResponse) {
@@ -100,7 +102,7 @@ pub async fn do_login(
     let wrong_password = {
         let hash = user1.password_hash.clone();
         let r = spawn_blocking(move || {
-            if !cfg!(fuzzing) {
+            if !cfg!(test) {
                 let parsed_hash = PasswordHash::new(&hash).unwrap();
 
                 Argon2::default()
@@ -110,9 +112,9 @@ pub async fn do_login(
                 tracing::error!(
                     "Not using password hashing. This should never
                     occur in a release build (hashing is disabled to speed up
-                    the process of fuzzing)."
+                    the test workload)."
                 );
-                // disable hashing to speed up fuzzing process
+                // disable hashing to speed up the test workload
                 hash != form.password
             }
         })
@@ -140,7 +142,7 @@ pub async fn do_login(
         ));
     }
 
-    let jar = set_login_cookie(user1.id, jar);
+    let jar = set_login_cookie(user1.id, jar, &non_det);
 
     (
         jar,

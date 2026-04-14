@@ -1,19 +1,19 @@
 use argon2::Argon2;
 use argon2::PasswordHasher;
-use argon2::password_hash::SaltString;
-use argon2::password_hash::rand_core::OsRng;
-use axum::{extract::Form, response::Redirect};
+use axum::{
+    extract::{Extension, Form},
+    response::Redirect,
+};
 use axum_extra::extract::{PrivateCookieJar, cookie::Key};
-use chrono::Utc;
 use diesel::{insert_into, prelude::*};
 use hypertext::prelude::*;
 use serde::Deserialize;
 use tokio::task::spawn_blocking;
 use tracing::Instrument;
 use tracing::Level;
-use uuid::Uuid;
 
 use crate::auth::set_login_cookie;
+use crate::non_det::NonDet;
 use crate::state::Conn;
 use crate::util_resp::StandardResponse;
 use crate::util_resp::bad_request;
@@ -74,6 +74,7 @@ pub async fn do_register(
     user: Option<User<true>>,
     mut conn: Conn<true>,
     jar: PrivateCookieJar<Key>,
+    Extension(non_det): Extension<NonDet>,
     // note: MUST be skipped in tracing for security reasons!
     Form(form): Form<RegisterForm>,
 ) -> (PrivateCookieJar<Key>, StandardResponse) {
@@ -87,6 +88,9 @@ pub async fn do_register(
 
     if let Err(e) = is_ascii_no_spaces(&form.username) {
         return (jar, bad_request(maud! {p {(e)}}.render()));
+    }
+    if form.username.chars().count() < 3 {
+        return (jar, bad_request(maud! {p {"Username too short"}}.render()));
     }
     if form.username.len() >= 128 {
         return (jar, bad_request(maud! {p {"Username too long"}}.render()));
@@ -132,15 +136,14 @@ pub async fn do_register(
             ))
         }
         None => {
-            let id = Uuid::now_v7().to_string();
+            let id = non_det.uuid_now_v7().to_string();
 
+            let password_salt = non_det.password_salt();
             let password_hash = spawn_blocking(move || {
-                if !cfg!(fuzzing) {
-                    let salt = SaltString::generate(&mut OsRng);
-
+                if !cfg!(test) {
                     let argon2 = Argon2::default();
                     argon2
-                        .hash_password(form.password.as_bytes(), &salt)
+                        .hash_password(form.password.as_bytes(), &password_salt)
                         .unwrap()
                         .to_string()
                 } else {
@@ -157,12 +160,12 @@ pub async fn do_register(
                     users::email.eq(form.email),
                     users::username.eq(form.username),
                     users::password_hash.eq(password_hash),
-                    users::created_at.eq(Utc::now().naive_utc()),
+                    users::created_at.eq(non_det.now_utc_naive()),
                 ))
                 .execute(&mut *conn)
                 .unwrap();
 
-            let jar = set_login_cookie(id.clone(), jar);
+            let jar = set_login_cookie(id.clone(), jar, &non_det);
 
             (jar, see_other_ok(Redirect::to("/user")))
         }

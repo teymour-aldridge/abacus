@@ -17,12 +17,15 @@ use diesel::{
     r2d2::{ConnectionManager, Pool, PooledConnection},
 };
 
+use crate::non_det::NonDet;
+
 pub type DbPool = Pool<ConnectionManager<SqliteConnection>>;
 
 #[derive(Clone)]
 pub struct AppState {
     pub pool: DbPool,
     pub key: Key,
+    pub non_det: NonDet,
 }
 
 impl FromRef<AppState> for DbPool {
@@ -34,6 +37,12 @@ impl FromRef<AppState> for DbPool {
 impl FromRef<AppState> for Key {
     fn from_ref(state: &AppState) -> Self {
         state.key.clone()
+    }
+}
+
+impl FromRef<AppState> for NonDet {
+    fn from_ref(state: &AppState) -> Self {
+        state.non_det.clone()
     }
 }
 

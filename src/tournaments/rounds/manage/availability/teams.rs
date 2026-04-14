@@ -337,7 +337,7 @@ async fn handle_socket(
 
 #[derive(Deserialize)]
 pub struct UpdateTeamAvailabilityForm {
-    available: Option<String>,
+    available: Option<bool>,
     team: String,
 }
 
@@ -464,7 +464,7 @@ pub async fn update_team_eligibility(
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
-    let available_bool = form.available.as_deref() == Some("true");
+    let available_bool = form.available.unwrap_or(false);
 
     let team = match teams::table
         .filter(
@@ -520,6 +520,7 @@ pub async fn update_team_eligibility(
             team_availability::round_id.eq(&round.id),
             team_availability::team_id.eq(&team.id),
             team_availability::available.eq(available_bool),
+            team_availability::tournament_id.eq(&tournament.id),
         ))
         .on_conflict((team_availability::round_id, team_availability::team_id))
         .do_update()

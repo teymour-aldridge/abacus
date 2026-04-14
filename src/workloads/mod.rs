@@ -1113,6 +1113,26 @@ fn fuzz_regression_8() {
 }
 
 #[test]
+fn fuzz_regression_9() {
+    let _ = tracing_subscriber::fmt().try_init();
+
+    let test_function = make_action_test_function();
+    let actions: Vec<Action> = serde_json::from_str(
+        r##"
+            [
+                {"RegisterUser":{"username":"lynx","email":"n@t.net","password":"otterm"}},
+                {"CreateTournament":{"name":"lynx","abbrv":"#'","slug":"5"}},
+                {"CreateRound":{"tournament_idx":17450235815526992768,"name":"ibex","category_idx":null,"seq":3704891009}},
+                {"CreateTeam":{"tournament_idx":12859288371916044276,"name":"m@zxa.edu","institution_idx":6096518413307153036}},
+                {"UpdateTeamEligibility":{"tournament_idx":5276348018414723978,"round_idx":1789480561640248358,"team_idx":2272482804264980819,"eligible":true}}
+            ]
+        "##,
+    )
+    .unwrap();
+    (test_function)(&actions)
+}
+
+#[test]
 fn determinism_regression_1() {
     let input = WorkloadInput {
         actions: serde_json::from_str(

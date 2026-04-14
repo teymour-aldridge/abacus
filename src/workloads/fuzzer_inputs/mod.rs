@@ -6,6 +6,7 @@ use diesel::r2d2::{ConnectionManager, Pool};
 use diesel::sqlite::SqliteConnection;
 use fuzzcheck::DefaultMutator;
 use fuzzcheck::Mutator;
+use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::collections::HashMap;
@@ -643,6 +644,10 @@ impl FuzzState {
     }
 }
 
+fn path_segment(value: &str) -> String {
+    utf8_percent_encode(value, NON_ALPHANUMERIC).to_string()
+}
+
 impl Action {
     #[tracing::instrument(skip_all)]
     pub async fn run(
@@ -1054,6 +1059,7 @@ impl Action {
                     ) {
                         drop(conn);
                         let form = [("category_id", cat_id)];
+                        let ptype = path_segment(&ptype);
                         client.post(&format!("/tournaments/{}/participants/{}/{}/constraints/add", tid, ptype, pid)).form(&form).await;
                     }
                 }

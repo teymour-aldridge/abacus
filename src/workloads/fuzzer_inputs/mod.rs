@@ -12,9 +12,40 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
-const TABDA_DICTIONARY_ANIMALS: [&str; 12] = [
-    "otter", "badger", "lynx", "falcon", "gecko", "narwhal", "wombat",
-    "panther", "meerkat", "ibex", "quetzal", "capybara",
+const TABDA_DICTIONARY_STRINGS: [&str; 33] = [
+    "otter",
+    "badger",
+    "lynx",
+    "falcon",
+    "gecko",
+    "narwhal",
+    "wombat",
+    "panther",
+    "meerkat",
+    "ibex",
+    "quetzal",
+    "capybara",
+    "speaker",
+    "speakers",
+    "judge",
+    "judges",
+    "score",
+    "text",
+    "bool",
+    "none",
+    "draft",
+    "confirmed",
+    "released_teams",
+    "released_full",
+    "up",
+    "down",
+    "in",
+    "out",
+    "on",
+    "true",
+    "false",
+    "in_round",
+    "-----",
 ];
 
 type InnerStringMutator = fuzzcheck::mutators::grammar::ASTMutator;
@@ -126,11 +157,11 @@ fn literal_string(value: &str) -> Rc<fuzzcheck::mutators::grammar::Grammar> {
     )
 }
 
-fn animal_grammar() -> Rc<fuzzcheck::mutators::grammar::Grammar> {
+fn dictionary_grammar() -> Rc<fuzzcheck::mutators::grammar::Grammar> {
     fuzzcheck::mutators::grammar::alternation(
-        TABDA_DICTIONARY_ANIMALS
+        TABDA_DICTIONARY_STRINGS
             .iter()
-            .map(|animal| literal_string(animal)),
+            .map(|value| literal_string(value)),
     )
 }
 
@@ -146,15 +177,15 @@ fn tabda_dictionary_string_grammar() -> Rc<fuzzcheck::mutators::grammar::Grammar
         alternation, concatenation, recurse, recursive, regex,
     };
 
-    let animal = animal_grammar();
+    let dictionary = dictionary_grammar();
     let email = email_grammar();
     let ascii = regex("[ -~]");
 
     recursive(|whole: &Weak<fuzzcheck::mutators::grammar::Grammar>| {
         alternation([
-            animal.clone(),
-            animal.clone(),
-            animal.clone(),
+            dictionary.clone(),
+            dictionary.clone(),
+            dictionary.clone(),
             email.clone(),
             ascii.clone(),
             concatenation([recurse(whole), recurse(whole)]),

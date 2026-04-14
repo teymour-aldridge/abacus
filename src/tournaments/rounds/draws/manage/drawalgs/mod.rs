@@ -4,6 +4,7 @@ use std::panic::{UnwindSafe, catch_unwind};
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use diesel::{connection::LoadConnection, sqlite::Sqlite};
+use serde::{Deserialize, Serialize};
 
 use crate::non_det::NonDet;
 use crate::schema::{
@@ -26,7 +27,7 @@ pub mod random;
 
 /// The error messages will be shown on the application page, and therefore
 /// should be readable.
-#[derive(Debug)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum MakeDrawError {
     InvalidConfiguration(String),
     InvalidTeamCount(String),
@@ -44,6 +45,123 @@ pub struct DrawInput {
     pub standings: TeamStandings,
     pub history: TeamHistory,
     pub rng: rand_chacha::ChaCha20Rng,
+}
+
+#[derive(Hash)]
+struct DrawReplayInput {
+    tournament: String,
+    round: String,
+    metrics: Vec<(String, String, u32)>,
+    teams: Vec<String>,
+    standings_metrics: Vec<String>,
+    ranked_metrics_of_team: Vec<(String, Vec<(String, String)>)>,
+    pullup_metrics: Vec<(String, String, String)>,
+    teams_in_rank_order: Vec<Vec<String>>,
+    rank_of_team: Vec<(String, i64)>,
+    history: Vec<(String, Vec<usize>)>,
+}
+
+impl DrawReplayInput {
+    fn new(input: &DrawInput) -> Self {
+        let mut metrics = input
+            .metrics
+            .iter()
+            .map(|((team, metric), value)| {
+                (
+                    team.clone(),
+                    serde_json::to_string(metric).unwrap(),
+                    value.to_bits(),
+                )
+            })
+            .collect::<Vec<_>>();
+        metrics.sort();
+
+        let mut teams = input
+            .teams
+            .iter()
+            .map(|team| format!("{team:?}"))
+            .collect::<Vec<_>>();
+        teams.sort();
+
+        let standings_metrics = input
+            .standings
+            .metrics
+            .iter()
+            .map(|metric| serde_json::to_string(metric).unwrap())
+            .collect();
+
+        let mut ranked_metrics_of_team = input
+            .standings
+            .ranked_metrics_of_team
+            .iter()
+            .map(|(team, metrics)| {
+                (
+                    team.clone(),
+                    metrics
+                        .iter()
+                        .map(|(metric, value)| {
+                            (
+                                serde_json::to_string(metric).unwrap(),
+                                value.to_string(),
+                            )
+                        })
+                        .collect(),
+                )
+            })
+            .collect::<Vec<_>>();
+        ranked_metrics_of_team.sort();
+
+        let mut pullup_metrics = input
+            .standings
+            .pullup_metrics
+            .iter()
+            .map(|((team, metric), value)| {
+                (
+                    team.clone(),
+                    serde_json::to_string(metric).unwrap(),
+                    value.to_string(),
+                )
+            })
+            .collect::<Vec<_>>();
+        pullup_metrics.sort();
+
+        let teams_in_rank_order = input
+            .standings
+            .teams_in_rank_order
+            .iter()
+            .map(|teams| {
+                teams
+                    .iter()
+                    .map(|team| format!("{team:?}"))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+
+        let mut rank_of_team = input
+            .standings
+            .rank_of_team
+            .iter()
+            .map(|(team, rank)| (team.clone(), *rank))
+            .collect::<Vec<_>>();
+        rank_of_team.sort();
+
+        let mut history =
+            input.history.0.clone().into_iter().collect::<Vec<_>>();
+        history.sort();
+
+        Self {
+            tournament: format!("{:?}", input.tournament),
+            round: format!("{:?}", input.round),
+            metrics,
+            teams,
+            standings_metrics,
+            ranked_metrics_of_team,
+            pullup_metrics,
+            teams_in_rank_order,
+            rank_of_team,
+            history,
+        }
+    }
 }
 
 /// Draws a round using the provided draw generation function.
@@ -150,7 +268,10 @@ pub fn do_draw(
         history,
     };
 
-    let generated = match catch_unwind(move || (draw_generator)(input)) {
+    let replay_input = DrawReplayInput::new(&input);
+    let generated = match catch_unwind(move || {
+        non_det.wrap(&replay_input, || (draw_generator)(input))
+    }) {
         Ok(generated) => generated,
         Err(e) => {
             tracing::error!("Draw generator panicked: {e:?}");

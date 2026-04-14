@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{schema::teams, util_resp::FailureResponse};
 
-#[derive(Serialize, Deserialize, Queryable, Clone, Debug)]
+#[derive(Serialize, Deserialize, Queryable, Clone, Debug, PartialEq)]
 pub struct Team {
     pub id: String,
     pub tournament_id: String,

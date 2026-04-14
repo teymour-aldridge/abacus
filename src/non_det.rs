@@ -1,11 +1,13 @@
 use std::{
     fmt::{self, Debug},
-    hash::Hash,
     sync::{Arc, Mutex, MutexGuard},
 };
 
 #[cfg(test)]
-use std::{collections::hash_map::DefaultHasher, hash::Hasher};
+use std::{
+    collections::hash_map::DefaultHasher,
+    hash::{Hash, Hasher},
+};
 
 use argon2::password_hash::SaltString;
 #[cfg(test)]
@@ -13,6 +15,7 @@ use chrono::{Duration, NaiveDate};
 use chrono::{NaiveDateTime, Utc};
 use rand::{Rng, RngCore, SeedableRng, distr::Alphanumeric};
 use rand_chacha::ChaCha20Rng;
+#[cfg(test)]
 use serde::{Serialize, de::DeserializeOwned};
 use uuid::{Builder, Uuid};
 
@@ -211,7 +214,17 @@ impl NonDet {
         SaltString::encode_b64(&bytes).unwrap()
     }
 
+    #[cfg(not(test))]
     pub fn wrap<I, T, F>(&self, _inputs: &I, f: F) -> T
+    where
+        I: ?Sized,
+        F: FnOnce() -> T,
+    {
+        f()
+    }
+
+    #[cfg(test)]
+    pub fn wrap<I, T, F>(&self, inputs: &I, f: F) -> T
     where
         I: Hash + ?Sized,
         T: Clone + Debug + PartialEq + Serialize + DeserializeOwned,
@@ -219,9 +232,8 @@ impl NonDet {
     {
         self.with_inner(|inner| match inner {
             NonDetInner::Production => f(),
-            #[cfg(test)]
             NonDetInner::Deterministic(det) => {
-                let input_hash = hash_input(_inputs);
+                let input_hash = hash_input(inputs);
                 let tick = det.tick;
                 det.tick += 1;
                 match &mut det.capture {

@@ -19,8 +19,18 @@ use crate::{
         manage::sidebar::SidebarWrapper,
         rounds::{Round, TournamentRounds},
     },
-    util_resp::{StandardResponse, err_not_found, see_other_ok, success},
+    util_resp::{
+        StandardResponse, bad_request, err_not_found, see_other_ok, success,
+    },
 };
+
+const VALID_DRAW_STATUSES: &[&str] = &[
+    "none",
+    "draft",
+    "confirmed",
+    "released_teams",
+    "released_full",
+];
 
 #[derive(Clone)]
 struct BriefingRoomView {
@@ -192,6 +202,10 @@ pub async fn set_draw_published(
     tracing::info!("Publishing draw");
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+
+    if !VALID_DRAW_STATUSES.contains(&form.status.as_str()) {
+        return bad_request(maud! { p { "Invalid draw status" } }.render());
+    }
 
     let round = match rounds::table
         .filter(rounds::id.eq(round_id))

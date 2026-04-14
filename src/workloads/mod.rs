@@ -53,19 +53,6 @@ struct WorkloadInput {
     turmoil_seed: u64,
 }
 
-#[derive(DefaultMutator, Clone, Debug, Hash, Serialize, Deserialize)]
-struct FuzzWorkloadInput {
-    actions: Vec<Action>,
-    #[field_mutator(fuzzcheck::mutators::unit::UnitMutator<u64> = {
-        fuzzcheck::mutators::unit::UnitMutator::new(DEFAULT_NON_DET_SEED, 0.0)
-    })]
-    non_det_seed: u64,
-    #[field_mutator(fuzzcheck::mutators::unit::UnitMutator<u64> = {
-        fuzzcheck::mutators::unit::UnitMutator::new(DEFAULT_TURMOIL_SEED, 0.0)
-    })]
-    turmoil_seed: u64,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct WorkloadOutput {
     captured_inputs: Vec<crate::non_det::CapturedInput>,

@@ -290,10 +290,11 @@ pub fn create_app_with_non_det(pool: DbPool, non_det: NonDet) -> Router {
         .route("/tournaments/:id/rounds/:round_id/update_judge_availability", post(crate::tournaments::rounds::manage::availability::judges::update_judge_availability))
         .route("/tournaments/:id/rounds/:round_id/availability/judges/all", post(crate::tournaments::rounds::manage::availability::judges::update_judge_availability_for_all))
         .route("/tournaments/:id/rounds/:round_seq/availability/teams", get(crate::tournaments::rounds::manage::availability::teams::view_team_availability))
-        .route("/tournaments/:id/rounds/:round_seq/availability/teams/ws", get(crate::tournaments::rounds::manage::availability::teams::team_availability_updates))        .route("/tournaments/:id/rounds/:round_id/update_team_eligibility", post(crate::tournaments::rounds::manage::availability::teams::update_team_eligibility))
+        .route("/tournaments/:id/rounds/:round_seq/availability/teams/ws", get(crate::tournaments::rounds::manage::availability::teams::team_availability_updates))
+        .route("/tournaments/:id/rounds/:round_id/update_team_eligibility", post(crate::tournaments::rounds::manage::availability::teams::update_team_availability_for_round))
         .route("/tournaments/:id/rounds/:round_id/availability/teams/all", post(crate::tournaments::rounds::manage::availability::teams::update_eligibility_for_all))
 
-        // Draw Edit
+        // Draw editing
         .route("/draw_editor.js", get(draw_editor_js))
         .route("/draw_editor.css", get(draw_editor_css))
         .route("/tournaments/:id/rounds/draws/edit", get(crate::tournaments::rounds::manage::draw_edit::edit_multiple_draws_page).post(crate::tournaments::rounds::manage::draw_edit::submit_cmd))
@@ -302,7 +303,7 @@ pub fn create_app_with_non_det(pool: DbPool, non_det: NonDet) -> Router {
         .route("/tournaments/:id/rounds/draws/edit/move_team", post(crate::tournaments::rounds::manage::draw_edit::move_team))
         .route("/tournaments/:id/rounds/draws/edit/role", post(crate::tournaments::rounds::manage::draw_edit::change_judge_role))
 
-        // Draw Room Allocator
+        // Draw room allocation
         .route("/draw_room_allocator.js", get(draw_room_allocator_js))
         .route("/draw_room_allocator.css", get(draw_room_allocator_css))
         .route("/store.js", get(store_js))
@@ -311,7 +312,7 @@ pub fn create_app_with_non_det(pool: DbPool, non_det: NonDet) -> Router {
         .route("/tournaments/:id/rounds/draws/rooms/edit/ws", get(crate::tournaments::rounds::manage::room_allocator::room_allocator_updates))
         .route("/tournaments/:id/rounds/draws/rooms/edit/move", post(crate::tournaments::rounds::draws::rooms::rooms::move_room))
 
-        // Draw Generation
+        // Draw generation
         .route("/tournaments/:id/rounds/:round_id/draws/create", get(crate::tournaments::rounds::draws::manage::create::generate_draw_page).post(crate::tournaments::rounds::draws::manage::create::do_generate_draw))
 
         // Standings

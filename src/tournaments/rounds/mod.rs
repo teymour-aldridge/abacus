@@ -155,7 +155,7 @@ impl Round {
         ret
     }
 
-    pub fn find_first_preceding_incomplete_round(
+    pub fn preceeding_incomplete_round_of_lowest_seq(
         &self,
         conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Option<Round> {

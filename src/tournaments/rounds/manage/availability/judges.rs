@@ -453,7 +453,8 @@ pub async fn update_judge_availability(
         }.render());
     }
 
-    if let Some(prev) = round.find_first_preceding_incomplete_round(&mut *conn)
+    if let Some(prev) =
+        round.preceeding_incomplete_round_of_lowest_seq(&mut *conn)
     {
         return bad_request(
             maud! {

@@ -365,7 +365,8 @@ pub async fn update_eligibility_for_all(
         }.render());
     }
 
-    if let Some(prev) = round.find_first_preceding_incomplete_round(&mut *conn)
+    if let Some(prev) =
+        round.preceeding_incomplete_round_of_lowest_seq(&mut *conn)
     {
         return bad_request(
             maud! {
@@ -454,7 +455,7 @@ pub async fn update_eligibility_for_all(
     )))
 }
 
-pub async fn update_team_eligibility(
+pub async fn update_team_availability_for_round(
     Path((tournament_id, round_id)): Path<(String, String)>,
     user: User<true>,
     mut conn: Conn<true>,
@@ -501,7 +502,8 @@ pub async fn update_team_eligibility(
         }.render());
     }
 
-    if let Some(prev) = round.find_first_preceding_incomplete_round(&mut *conn)
+    if let Some(prev) =
+        round.preceeding_incomplete_round_of_lowest_seq(&mut *conn)
     {
         return bad_request(
             maud! {

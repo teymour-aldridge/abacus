@@ -144,7 +144,7 @@ pub async fn do_generate_draw(
         }
 
         if let Some(round) =
-            round.find_first_preceding_incomplete_round(&mut conn)
+            round.preceeding_incomplete_round_of_lowest_seq(&mut conn)
         {
             return DrawResult::PriorIncompleteRoundError(round, tournament);
         }

@@ -1236,6 +1236,34 @@ fn fuzz_regression_14() {
 }
 
 #[test]
+fn fuzz_regression_15() {
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::TRACE)
+        .try_init();
+
+    let test_function = make_action_test_function();
+    let actions: Vec<Action> = serde_json::from_str(
+        r##"
+        [
+            {"RegisterUser":{"username":"otter","email":"y@z.org","password":":5bool"}},
+            {"CreateTournament":{"name":"lynx","abbrv":"up","slug":""}},
+            {"CreateRound":{"tournament_idx":61,"name":"text","category_idx":null,"seq":745458067}},
+            {"CreateTeam":{"tournament_idx":127,"name":"otter","institution_idx":null}},
+            {"CreateTeam":{"tournament_idx":127,"name":"draft","institution_idx":null}},
+            {"CreateTeam":{"tournament_idx":91,"name":"ibex","institution_idx":null}},
+            {"CreateTeam":{"tournament_idx":52,"name":"ibex","institution_idx":null}},
+            {"UpdateAllTeamEligibility":{"tournament_idx":81,"round_idx":83,"eligible":true}},
+            {"GenerateDraw":{"tournament_idx":10,"round_idx":39}},
+            {"SetDrawPublished":{"tournament_idx":197,"round_idx":70,"status":"none"}},
+            {"GenerateDraw":{"tournament_idx":41,"round_idx":49}}
+        ]
+        "##,
+    )
+    .unwrap();
+    (test_function)(&actions)
+}
+
+#[test]
 fn determinism_regression_1() {
     let input = WorkloadInput {
         actions: serde_json::from_str(

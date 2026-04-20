@@ -270,7 +270,10 @@ pub fn do_draw(
 
     let replay_input = DrawReplayInput::new(&input);
     let generated = match catch_unwind(move || {
-        non_det.wrap(&replay_input, || (draw_generator)(input))
+        non_det.wrap(&replay_input, || {
+            tracing::trace!("Now invoking draw generator.");
+            (draw_generator)(input)
+        })
     }) {
         Ok(generated) => generated,
         Err(e) => {

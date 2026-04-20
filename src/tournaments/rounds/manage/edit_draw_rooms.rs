@@ -33,7 +33,7 @@ pub struct RoundsQuery {
 }
 
 #[tracing::instrument(skip(conn))]
-pub async fn load_room_allocator_page(
+pub async fn draw_room_manual_allocation_page(
     Path(tournament_id): Path<String>,
     axum_extra::extract::Query(query): axum_extra::extract::Query<RoundsQuery>,
     user: User<true>,
@@ -104,7 +104,7 @@ pub struct ChannelQuery {
     rounds: Option<String>,
 }
 
-pub async fn room_allocator_updates(
+pub async fn draw_room_manual_updates(
     ws: WebSocketUpgrade,
     Path(tournament_id): Path<String>,
     Query(query): Query<ChannelQuery>,

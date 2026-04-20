@@ -308,8 +308,8 @@ pub fn create_app_with_non_det(pool: DbPool, non_det: NonDet) -> Router {
         .route("/draw_room_allocator.css", get(draw_room_allocator_css))
         .route("/store.js", get(store_js))
         .route("/store.css", get(store_css))
-        .route("/tournaments/:id/rounds/draws/rooms/edit", get(crate::tournaments::rounds::manage::room_allocator::load_room_allocator_page))
-        .route("/tournaments/:id/rounds/draws/rooms/edit/ws", get(crate::tournaments::rounds::manage::room_allocator::room_allocator_updates))
+        .route("/tournaments/:id/rounds/draws/rooms/edit", get(crate::tournaments::rounds::manage::edit_draw_rooms::draw_room_manual_allocation_page))
+        .route("/tournaments/:id/rounds/draws/rooms/edit/ws", get(crate::tournaments::rounds::manage::edit_draw_rooms::draw_room_manual_updates))
         .route("/tournaments/:id/rounds/draws/rooms/edit/move", post(crate::tournaments::rounds::draws::rooms::rooms::move_room))
 
         // Draw generation

@@ -203,7 +203,11 @@ pub async fn set_draw_published(
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
-    if !VALID_DRAW_STATUSES.contains(&form.status.as_str()) {
+    // Note: "none" is not a valid status for an extant draw (i.e. must delete
+    // the draw to have status "none")
+    if !VALID_DRAW_STATUSES.contains(&form.status.as_str())
+        || form.status.as_str() == "none"
+    {
         return bad_request(maud! { p { "Invalid draw status" } }.render());
     }
 

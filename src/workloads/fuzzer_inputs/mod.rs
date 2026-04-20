@@ -6,6 +6,8 @@ use diesel::r2d2::{ConnectionManager, Pool};
 use diesel::sqlite::SqliteConnection;
 use fuzzcheck::DefaultMutator;
 use fuzzcheck::Mutator;
+use fuzzcheck::mutators::integer_within_range::U64WithinRangeMutator;
+use fuzzcheck::mutators::map::MapMutator;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use serde::{Deserialize, Serialize};
 use std::any::Any;
@@ -403,6 +405,18 @@ macro_rules! get_id_by_idx {
     }};
 }
 
+pub type UsizeMutator = impl Mutator<usize>;
+
+#[define_opaque(UsizeMutator)]
+pub fn make_usize_mutator() -> UsizeMutator {
+    MapMutator::<u64, usize, _, _, _, _>::new(
+        U64WithinRangeMutator::new(0..=250),
+        |output: &usize| Some(*output as u64),
+        |x: &u64| *x as usize,
+        |_: &usize, cplx| cplx,
+    )
+}
+
 #[derive(DefaultMutator, Clone, Debug, Hash, Serialize, Deserialize)]
 pub enum Action {
     // Auth
@@ -416,6 +430,7 @@ pub enum Action {
     },
     LogoutUser,
     LoginUser {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         user_idx: usize,
     },
     // Tournaments
@@ -428,12 +443,14 @@ pub enum Action {
         slug: String,
     },
     CreateBreakCategory {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
         #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         name: String,
         priority: i64,
     },
     UpdateTournamentConfiguration {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         name: Option<String>,
@@ -455,20 +472,25 @@ pub enum Action {
 
     // Participants
     CreateTeam {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
         #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         name: String,
         institution_idx: Option<usize>,
     },
     EditTeam {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         team_idx: usize,
         #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         name: String,
         institution_idx: Option<usize>,
     },
     CreateSpeaker {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         team_idx: usize,
         #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         name: String,
@@ -476,6 +498,7 @@ pub enum Action {
         email: String,
     },
     CreateJudge {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
         #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         name: String,
@@ -484,7 +507,9 @@ pub enum Action {
         institution_idx: Option<usize>,
     },
     EditJudge {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         judge_idx: usize,
         #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         name: String,
@@ -495,32 +520,42 @@ pub enum Action {
 
     // Constraints
     AddConstraint {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
         #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         ptype: String,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         pid_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         category_idx: usize,
     },
     RemoveConstraint {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
         #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         ptype: String,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         pid_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         constraint_idx: usize,
     },
 
     // Rooms
     CreateRoom {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
         #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         name: String,
         priority: i64,
     },
     DeleteRoom {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         room_idx: usize,
     },
     CreateRoomCategory {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         name: Option<String>,
@@ -535,22 +570,31 @@ pub enum Action {
         description: String,
     },
     DeleteRoomCategory {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         category_idx: usize,
     },
     AddRoomToCategory {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         category_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         room_idx: usize,
     },
     RemoveRoomFromCategory {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         category_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         room_idx: usize,
     },
 
     // Feedback
     AddFeedbackQuestion {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
         #[serde(alias = "question_text")]
         #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
@@ -563,12 +607,15 @@ pub enum Action {
         for_teams: bool,
     },
     DeleteFeedbackQuestion {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         question_idx: usize,
     },
 
     // Rounds & Draws
     CreateRound {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
         #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         name: String,
@@ -577,18 +624,24 @@ pub enum Action {
         seq: u32,
     },
     CreateMotion {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         round_idx: usize,
         #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         motion: String,
         infoslide: Option<String>,
     },
     GenerateDraw {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         round_idx: usize,
     },
     SetDrawPublished {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         round_idx: usize,
         #[serde(default)]
         #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
@@ -597,47 +650,66 @@ pub enum Action {
         published: Option<bool>,
     },
     SetRoundCompleted {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         round_idx: usize,
         completed: bool,
     },
     PublishMotions {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         round_idx: usize,
     },
     PublishResults {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         round_idx: usize,
     },
 
     // Availability & Eligibility
     UpdateJudgeAvailability {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         round_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         judge_idx: usize,
         available: bool,
     },
     UpdateAllJudgeAvailability {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         round_idx: usize,
         available: bool,
     },
     UpdateTeamEligibility {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         round_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         team_idx: usize,
         eligible: bool,
     },
     UpdateAllTeamEligibility {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         round_idx: usize,
         eligible: bool,
     },
 
     // Ballots
     SubmitBallot {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         private_url_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         round_idx: usize,
         form: FuzzerBallotForm,
     },

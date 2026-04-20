@@ -45,7 +45,7 @@ impl ParticipantType {
 #[derive(Deserialize)]
 pub struct MoveConstraintForm {
     category_id: String,
-    direction: String, // "up" or "down"
+    direction: String,
 }
 
 #[derive(Deserialize)]
@@ -58,8 +58,8 @@ pub struct RemoveConstraintForm {
     category_id: String,
 }
 
-struct ConstraintData {
-    active_constraints: Vec<(RoomCategory, i64)>, // (category, preference)
+struct ConstraintsOfSpeaker {
+    active_constraints: Vec<(RoomCategory, i64)>,
     available_categories: Vec<RoomCategory>,
     all_categories: Vec<RoomCategory>,
 }
@@ -68,7 +68,7 @@ fn fetch_speaker_constraints(
     speaker_id: &str,
     tid: &str,
     conn: &mut SqliteConnection,
-) -> Result<ConstraintData, FailureResponse> {
+) -> Result<ConstraintsOfSpeaker, FailureResponse> {
     let all_categories = room_categories::table
         .filter(room_categories::tournament_id.eq(tid))
         .load::<RoomCategory>(conn)
@@ -100,7 +100,7 @@ fn fetch_speaker_constraints(
         })
         .collect();
 
-    Ok(ConstraintData {
+    Ok(ConstraintsOfSpeaker {
         active_constraints,
         available_categories,
         all_categories,
@@ -111,7 +111,7 @@ fn fetch_judge_constraints(
     judge_id: &str,
     tid: &str,
     conn: &mut SqliteConnection,
-) -> Result<ConstraintData, FailureResponse> {
+) -> Result<ConstraintsOfSpeaker, FailureResponse> {
     let all_categories = room_categories::table
         .filter(room_categories::tournament_id.eq(tid))
         .load::<RoomCategory>(conn)
@@ -143,7 +143,7 @@ fn fetch_judge_constraints(
         })
         .collect();
 
-    Ok(ConstraintData {
+    Ok(ConstraintsOfSpeaker {
         active_constraints,
         available_categories,
         all_categories,

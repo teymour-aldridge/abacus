@@ -1,5 +1,5 @@
 #![allow(clippy::let_unit_value)]
-#![cfg_attr(test, feature(coverage_attribute))]
+#![cfg_attr(test, feature(coverage_attribute, type_alias_impl_trait))]
 
 use diesel_migrations::EmbeddedMigrations;
 use lalrpop_util::lalrpop_mod;

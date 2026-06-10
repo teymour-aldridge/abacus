@@ -1,6 +1,6 @@
 use crate::schema::*;
 use axum::body::Bytes;
-use axum_test::TestServer;
+use axum_test::{TestResponse, TestServer};
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
 use diesel::sqlite::SqliteConnection;
@@ -504,13 +504,6 @@ pub enum Action {
         #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         slug: String,
     },
-    CreateBreakCategory {
-        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
-        tournament_idx: usize,
-        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
-        name: String,
-        priority: i64,
-    },
     UpdateTournamentConfiguration {
         #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
@@ -685,15 +678,6 @@ pub enum Action {
         #[serde(default = "default_round_seq")]
         seq: u32,
     },
-    CreateMotion {
-        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
-        tournament_idx: usize,
-        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
-        round_idx: usize,
-        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
-        motion: String,
-        infoslide: Option<String>,
-    },
     GenerateDraw {
         #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
@@ -813,6 +797,151 @@ fn path_segment(value: &str) -> String {
     utf8_percent_encode(value, NON_ALPHANUMERIC).to_string()
 }
 
+struct ActionContext<'a> {
+    pool: &'a Pool<ConnectionManager<SqliteConnection>>,
+    client: &'a mut TestServer,
+    state: &'a mut FuzzState,
+}
+
+impl<'a> ActionContext<'a> {
+    fn new(
+        pool: &'a Pool<ConnectionManager<SqliteConnection>>,
+        client: &'a mut TestServer,
+        state: &'a mut FuzzState,
+    ) -> Self {
+        Self {
+            pool,
+            client,
+            state,
+        }
+    }
+
+    fn conn(
+        &self,
+    ) -> diesel::r2d2::PooledConnection<ConnectionManager<SqliteConnection>>
+    {
+        self.pool.get().unwrap()
+    }
+
+    fn tournament_id(&self, idx: usize) -> Option<String> {
+        let mut conn = self.conn();
+        get_id_by_idx!(
+            &mut *conn,
+            tournaments::table
+                .select(tournaments::id)
+                .order_by(tournaments::id),
+            idx,
+        )
+    }
+
+    fn round_id(&self, tournament_id: &str, idx: usize) -> Option<String> {
+        let mut conn = self.conn();
+        get_id_by_idx!(
+            &mut *conn,
+            rounds::table
+                .filter(rounds::tournament_id.eq(tournament_id))
+                .select(rounds::id)
+                .order_by(rounds::id),
+            idx,
+        )
+    }
+
+    fn team_id(&self, tournament_id: &str, idx: usize) -> Option<String> {
+        let mut conn = self.conn();
+        get_id_by_idx!(
+            &mut *conn,
+            teams::table
+                .filter(teams::tournament_id.eq(tournament_id))
+                .select(teams::id)
+                .order_by(teams::id),
+            idx,
+        )
+    }
+
+    fn judge_id(&self, tournament_id: &str, idx: usize) -> Option<String> {
+        let mut conn = self.conn();
+        get_id_by_idx!(
+            &mut *conn,
+            judges::table
+                .filter(judges::tournament_id.eq(tournament_id))
+                .select(judges::id)
+                .order_by(judges::id),
+            idx,
+        )
+    }
+
+    fn room_id(&self, tournament_id: &str, idx: usize) -> Option<String> {
+        let mut conn = self.conn();
+        get_id_by_idx!(
+            &mut *conn,
+            rooms::table
+                .filter(rooms::tournament_id.eq(tournament_id))
+                .select(rooms::id)
+                .order_by(rooms::id),
+            idx,
+        )
+    }
+
+    fn room_category_id(
+        &self,
+        tournament_id: &str,
+        idx: usize,
+    ) -> Option<String> {
+        let mut conn = self.conn();
+        get_id_by_idx!(
+            &mut *conn,
+            room_categories::table
+                .filter(room_categories::tournament_id.eq(tournament_id))
+                .select(room_categories::id)
+                .order_by(room_categories::id),
+            idx,
+        )
+    }
+
+    fn feedback_question_id(
+        &self,
+        tournament_id: &str,
+        idx: usize,
+    ) -> Option<String> {
+        let mut conn = self.conn();
+        get_id_by_idx!(
+            &mut *conn,
+            feedback_questions::table
+                .filter(feedback_questions::tournament_id.eq(tournament_id))
+                .select(feedback_questions::id)
+                .order_by(feedback_questions::id),
+            idx,
+        )
+    }
+
+    async fn post(&mut self, action: &str, path: String) {
+        let response = self.client.post(&path).await;
+        assert_response_no_5xx(action, &path, &response);
+    }
+
+    async fn post_form<F>(&mut self, action: &str, path: String, form: &F)
+    where
+        F: ?Sized + Serialize,
+    {
+        let response = self.client.post(&path).form(form).await;
+        assert_response_no_5xx(action, &path, &response);
+    }
+
+    async fn post_bytes(&mut self, action: &str, path: String, bytes: Vec<u8>) {
+        let response = self.client.post(&path).bytes(Bytes::from(bytes)).await;
+        assert_response_no_5xx(action, &path, &response);
+    }
+}
+
+fn assert_response_no_5xx(action: &str, path: &str, response: &TestResponse) {
+    assert!(
+        !response.status_code().is_server_error(),
+        "{action} POST {path} returned {}\n{}",
+        response.status_code(),
+        response.text(),
+    );
+}
+
 impl Action {
     #[tracing::instrument(skip_all)]
     pub async fn run(
@@ -822,6 +951,7 @@ impl Action {
         state: &mut FuzzState,
     ) {
         tracing::info!("Running Action::run");
+        let mut ctx = ActionContext::new(pool, client, state);
 
         match self {
             Action::RegisterUser {
@@ -838,12 +968,8 @@ impl Action {
                     ("password", password),
                     ("password2", password2.clone()),
                 ];
-                let res = client.post("/register").form(&form).await;
-                assert!(
-                    !res.status_code().is_server_error(),
-                    "{:?}",
-                    res.status_code()
-                );
+                ctx.post_form("RegisterUser", "/register".to_string(), &form)
+                    .await;
 
                 let mut conn = pool.get().unwrap();
                 if let Ok(user_id) = users::table
@@ -855,7 +981,7 @@ impl Action {
                     .select(users::id)
                     .first::<String>(&mut *conn)
                 {
-                    state.remember_user_password(user_id, password2);
+                    ctx.state.remember_user_password(user_id, password2);
                 }
             }
             Action::LoginUser { user_idx } => {
@@ -872,51 +998,29 @@ impl Action {
                         .unwrap();
                     drop(conn);
 
-                    if let Some(password) = state.password_for_user(&user_id) {
+                    if let Some(password) =
+                        ctx.state.password_for_user(&user_id)
+                    {
                         let form = [
                             ("id", login_id),
                             ("password", password.to_string()),
                         ];
-                        client.post("/login").form(&form).await;
+                        ctx.post_form("LoginUser", "/login".to_string(), &form)
+                            .await;
                     }
                 }
             }
             Action::LogoutUser => {
-                client.post("/logout").await;
+                ctx.post("LogoutUser", "/logout".to_string()).await;
             }
             Action::CreateTournament { name, abbrv, slug } => {
                 let form = [("name", name), ("abbrv", abbrv), ("slug", slug)];
-                let res = client.post("/tournaments/create").form(&form).await;
-                assert!(
-                    !res.status_code().is_server_error(),
-                    "{:?}",
-                    res.status_code()
-                );
-            }
-            Action::CreateBreakCategory {
-                tournament_idx,
-                name,
-                priority,
-            } => {
-                let mut conn = pool.get().unwrap();
-                if let Some(tid) = get_id_by_idx!(
-                    &mut *conn,
-                    tournaments::table
-                        .select(tournaments::id)
-                        .order_by(tournaments::id),
-                    tournament_idx,
-                ) {
-                    let next_priority = if priority < 0 { 0 } else { priority };
-                    let _ = diesel::insert_into(break_categories::table)
-                        .values((
-                            break_categories::id
-                                .eq(uuid::Uuid::now_v7().to_string()),
-                            break_categories::tournament_id.eq(tid),
-                            break_categories::name.eq(name),
-                            break_categories::priority.eq(next_priority),
-                        ))
-                        .execute(&mut *conn);
-                }
+                ctx.post_form(
+                    "CreateTournament",
+                    "/tournaments/create".to_string(),
+                    &form,
+                )
+                .await;
             }
             Action::UpdateTournamentConfiguration {
                 tournament_idx,
@@ -951,13 +1055,12 @@ impl Action {
                         let config = toml::to_string(&config).unwrap();
                         drop(conn);
                         let form = [("config", config)];
-                        client
-                            .post(&format!(
-                                "/tournaments/{}/configuration",
-                                tid
-                            ))
-                            .form(&form)
-                            .await;
+                        ctx.post_form(
+                            "UpdateTournamentConfiguration",
+                            format!("/tournaments/{}/configuration", tid),
+                            &form,
+                        )
+                        .await;
                     }
                 }
             }
@@ -991,10 +1094,12 @@ impl Action {
                     drop(conn);
 
                     let form = [("name", name), ("institution_id", inst_id)];
-                    client
-                        .post(&format!("/tournaments/{}/teams/create", tid))
-                        .form(&form)
-                        .await;
+                    ctx.post_form(
+                        "CreateTeam",
+                        format!("/tournaments/{}/teams/create", tid),
+                        &form,
+                    )
+                    .await;
                 }
             }
             Action::EditTeam {
@@ -1037,13 +1142,15 @@ impl Action {
                         drop(conn);
                         let form =
                             [("name", name), ("institution_id", inst_id)];
-                        client
-                            .post(&format!(
+                        ctx.post_form(
+                            "EditTeam",
+                            format!(
                                 "/tournaments/{}/teams/{}/edit",
                                 tid, team_id
-                            ))
-                            .form(&form)
-                            .await;
+                            ),
+                            &form,
+                        )
+                        .await;
                     }
                 }
             }
@@ -1082,10 +1189,12 @@ impl Action {
                         ("email", email),
                         ("institution_id", inst_id),
                     ];
-                    client
-                        .post(&format!("/tournaments/{}/judges/create", tid))
-                        .form(&form)
-                        .await;
+                    ctx.post_form(
+                        "CreateJudge",
+                        format!("/tournaments/{}/judges/create", tid),
+                        &form,
+                    )
+                    .await;
                 }
             }
             Action::EditJudge {
@@ -1132,13 +1241,15 @@ impl Action {
                             ("email", email),
                             ("institution_id", inst_id),
                         ];
-                        client
-                            .post(&format!(
+                        ctx.post_form(
+                            "EditJudge",
+                            format!(
                                 "/tournaments/{}/judges/{}/edit",
                                 tid, judge_id
-                            ))
-                            .form(&form)
-                            .await;
+                            ),
+                            &form,
+                        )
+                        .await;
                     }
                 }
             }
@@ -1166,13 +1277,15 @@ impl Action {
                     ) {
                         drop(conn);
                         let form = [("name", name), ("email", email)];
-                        client
-                            .post(&format!(
+                        ctx.post_form(
+                            "CreateSpeaker",
+                            format!(
                                 "/tournaments/{}/teams/{}/speakers/create",
                                 tid, team_id
-                            ))
-                            .form(&form)
-                            .await;
+                            ),
+                            &form,
+                        )
+                        .await;
                     }
                 }
             }
@@ -1224,7 +1337,15 @@ impl Action {
                         drop(conn);
                         let form = [("category_id", cat_id)];
                         let ptype = path_segment(&ptype);
-                        client.post(&format!("/tournaments/{}/participants/{}/{}/constraints/add", tid, ptype, pid)).form(&form).await;
+                        ctx.post_form(
+                            "AddConstraint",
+                            format!(
+                                "/tournaments/{}/participants/{}/{}/constraints/add",
+                                tid, ptype, pid
+                            ),
+                            &form,
+                        )
+                        .await;
                     }
                 }
             }
@@ -1279,13 +1400,15 @@ impl Action {
                             ) {
                                 drop(conn);
                                 let form = [("category_id", cat_id)];
-                                client
-                                    .post(&format!(
+                                ctx.post_form(
+                                    "RemoveConstraint",
+                                    format!(
                                         "/tournaments/{}/participants/speaker/{}/constraints/remove",
                                         tid, pid
-                                    ))
-                                    .form(&form)
-                                    .await;
+                                    ),
+                                    &form,
+                                )
+                                .await;
                             }
                         } else {
                             let query = judge_room_constraints::table
@@ -1302,13 +1425,15 @@ impl Action {
                             ) {
                                 drop(conn);
                                 let form = [("category_id", cat_id)];
-                                client
-                                    .post(&format!(
+                                ctx.post_form(
+                                    "RemoveConstraint",
+                                    format!(
                                         "/tournaments/{}/participants/judge/{}/constraints/remove",
                                         tid, pid
-                                    ))
-                                    .form(&form)
-                                    .await;
+                                    ),
+                                    &form,
+                                )
+                                .await;
                             }
                         }
                     }
@@ -1330,10 +1455,12 @@ impl Action {
                     drop(conn);
                     let form =
                         [("name", name), ("priority", priority.to_string())];
-                    client
-                        .post(&format!("/tournaments/{}/rooms/create", tid))
-                        .form(&form)
-                        .await;
+                    ctx.post_form(
+                        "CreateRoom",
+                        format!("/tournaments/{}/rooms/create", tid),
+                        &form,
+                    )
+                    .await;
                 }
             }
             Action::DeleteRoom {
@@ -1357,12 +1484,14 @@ impl Action {
                         room_idx,
                     ) {
                         drop(conn);
-                        client
-                            .post(&format!(
+                        ctx.post(
+                            "DeleteRoom",
+                            format!(
                                 "/tournaments/{}/rooms/{}/delete",
                                 tid, room_id
-                            ))
-                            .await;
+                            ),
+                        )
+                        .await;
                     }
                 }
             }
@@ -1398,13 +1527,12 @@ impl Action {
                         ("public_name", public_name),
                         ("description", description),
                     ];
-                    client
-                        .post(&format!(
-                            "/tournaments/{}/rooms/categories/create",
-                            tid
-                        ))
-                        .form(&form)
-                        .await;
+                    ctx.post_form(
+                        "CreateRoomCategory",
+                        format!("/tournaments/{}/rooms/categories/create", tid),
+                        &form,
+                    )
+                    .await;
                 }
             }
             Action::DeleteRoomCategory {
@@ -1428,12 +1556,14 @@ impl Action {
                         category_idx,
                     ) {
                         drop(conn);
-                        client
-                            .post(&format!(
+                        ctx.post(
+                            "DeleteRoomCategory",
+                            format!(
                                 "/tournaments/{}/rooms/categories/{}/delete",
                                 tid, cat_id
-                            ))
-                            .await;
+                            ),
+                        )
+                        .await;
                     }
                 }
             }
@@ -1470,13 +1600,15 @@ impl Action {
                     ) {
                         drop(conn);
                         let form = [("room_id", room_id)];
-                        client
-                            .post(&format!(
+                        ctx.post_form(
+                            "AddRoomToCategory",
+                            format!(
                                 "/tournaments/{}/rooms/categories/{}/add_room",
                                 tid, cat_id
-                            ))
-                            .form(&form)
-                            .await;
+                            ),
+                            &form,
+                        )
+                        .await;
                     }
                 }
             }
@@ -1513,7 +1645,15 @@ impl Action {
                     ) {
                         drop(conn);
                         let form = [("room_id", room_id)];
-                        client.post(&format!("/tournaments/{}/rooms/categories/{}/remove_room", tid, cat_id)).form(&form).await;
+                        ctx.post_form(
+                            "RemoveRoomFromCategory",
+                            format!(
+                                "/tournaments/{}/rooms/categories/{}/remove_room",
+                                tid, cat_id
+                            ),
+                            &form,
+                        )
+                        .await;
                     }
                 }
             }
@@ -1547,13 +1687,12 @@ impl Action {
                                 .to_string(),
                         ),
                     ];
-                    client
-                        .post(&format!(
-                            "/tournaments/{}/feedback/manage/add",
-                            tid
-                        ))
-                        .form(&form)
-                        .await;
+                    ctx.post_form(
+                        "AddFeedbackQuestion",
+                        format!("/tournaments/{}/feedback/manage/add", tid),
+                        &form,
+                    )
+                    .await;
                 }
             }
             Action::DeleteFeedbackQuestion {
@@ -1578,13 +1717,15 @@ impl Action {
                     ) {
                         drop(conn);
                         let form = [("question_id", q_id)];
-                        client
-                            .post(&format!(
+                        ctx.post_form(
+                            "DeleteFeedbackQuestion",
+                            format!(
                                 "/tournaments/{}/feedback/manage/delete",
                                 tid
-                            ))
-                            .form(&form)
-                            .await;
+                            ),
+                            &form,
+                        )
+                        .await;
                     }
                 }
             }
@@ -1621,50 +1762,15 @@ impl Action {
                         .unwrap_or_else(|| "in_round".to_string());
                     drop(conn);
                     let form = [("name", name), ("seq", seq.to_string())];
-                    client
-                        .post(&format!(
+                    ctx.post_form(
+                        "CreateRound",
+                        format!(
                             "/tournaments/{}/rounds/{}/create",
                             tid, category_id
-                        ))
-                        .form(&form)
-                        .await;
-                }
-            }
-            Action::CreateMotion {
-                tournament_idx,
-                round_idx,
-                motion,
-                infoslide,
-            } => {
-                let mut conn = pool.get().unwrap();
-                if let Some(tid) = get_id_by_idx!(
-                    &mut *conn,
-                    tournaments::table
-                        .select(tournaments::id)
-                        .order_by(tournaments::id),
-                    tournament_idx,
-                ) {
-                    if let Some(rid) = get_id_by_idx!(
-                        &mut *conn,
-                        rounds::table
-                            .filter(rounds::tournament_id.eq(&tid))
-                            .select(rounds::id)
-                            .order_by(rounds::id),
-                        round_idx,
-                    ) {
-                        let _ = diesel::insert_into(motions_of_round::table)
-                            .values((
-                                motions_of_round::id
-                                    .eq(uuid::Uuid::now_v7().to_string()),
-                                motions_of_round::tournament_id.eq(tid),
-                                motions_of_round::round_id.eq(rid),
-                                motions_of_round::infoslide.eq(infoslide),
-                                motions_of_round::motion.eq(motion),
-                                motions_of_round::published_at
-                                    .eq(None::<chrono::NaiveDateTime>),
-                            ))
-                            .execute(&mut *conn);
-                    }
+                        ),
+                        &form,
+                    )
+                    .await;
                 }
             }
             Action::GenerateDraw {
@@ -1688,12 +1794,14 @@ impl Action {
                         round_idx,
                     ) {
                         drop(conn);
-                        client
-                            .post(&format!(
+                        ctx.post(
+                            "GenerateDraw",
+                            format!(
                                 "/tournaments/{}/rounds/{}/draws/create",
                                 tid, rid
-                            ))
-                            .await;
+                            ),
+                        )
+                        .await;
                     }
                 }
             }
@@ -1722,13 +1830,15 @@ impl Action {
                     ) {
                         drop(conn);
                         let form = [("status", status)];
-                        client
-                            .post(&format!(
+                        ctx.post_form(
+                            "SetDrawPublished",
+                            format!(
                                 "/tournaments/{}/rounds/{}/draws/setreleased",
                                 tid, rid
-                            ))
-                            .form(&form)
-                            .await;
+                            ),
+                            &form,
+                        )
+                        .await;
                     }
                 }
             }
@@ -1758,13 +1868,15 @@ impl Action {
                             "completed",
                             if completed { "true" } else { "false" },
                         )];
-                        client
-                            .post(&format!(
+                        ctx.post_form(
+                            "SetRoundCompleted",
+                            format!(
                                 "/tournaments/{}/rounds/{}/complete",
                                 tid, rid
-                            ))
-                            .form(&form)
-                            .await;
+                            ),
+                            &form,
+                        )
+                        .await;
                     }
                 }
             }
@@ -1789,12 +1901,14 @@ impl Action {
                         round_idx,
                     ) {
                         drop(conn);
-                        client
-                            .post(&format!(
+                        ctx.post(
+                            "PublishMotions",
+                            format!(
                                 "/tournaments/{}/rounds/{}/motions/publish",
                                 tid, rid
-                            ))
-                            .await;
+                            ),
+                        )
+                        .await;
                     }
                 }
             }
@@ -1820,13 +1934,15 @@ impl Action {
                     ) {
                         drop(conn);
                         let form = [("published", "true")];
-                        client
-                            .post(&format!(
+                        ctx.post_form(
+                            "PublishResults",
+                            format!(
                                 "/tournaments/{}/rounds/{}/results/publish",
                                 tid, rid
-                            ))
-                            .form(&form)
-                            .await;
+                            ),
+                            &form,
+                        )
+                        .await;
                     }
                 }
             }
@@ -1870,7 +1986,15 @@ impl Action {
                                 if available { "on" } else { "" }.to_string(),
                             ),
                         ];
-                        client.post(&format!("/tournaments/{}/rounds/{}/update_judge_availability", tid, rid)).form(&form).await;
+                        ctx.post_form(
+                            "UpdateJudgeAvailability",
+                            format!(
+                                "/tournaments/{}/rounds/{}/update_judge_availability",
+                                tid, rid
+                            ),
+                            &form,
+                        )
+                        .await;
                     }
                 }
             }
@@ -1897,7 +2021,14 @@ impl Action {
                     ) {
                         drop(conn);
                         let check = if available { "in" } else { "out" };
-                        client.post(&format!("/tournaments/{}/rounds/{}/availability/judges/all?check={}", tid, rid, check)).await;
+                        ctx.post(
+                            "UpdateAllJudgeAvailability",
+                            format!(
+                                "/tournaments/{}/rounds/{}/availability/judges/all?check={}",
+                                tid, rid, check
+                            ),
+                        )
+                        .await;
                     }
                 }
             }
@@ -1942,7 +2073,15 @@ impl Action {
                                     .to_string(),
                             ),
                         ];
-                        client.post(&format!("/tournaments/{}/rounds/{}/update_team_eligibility", tid, rid)).form(&form).await;
+                        ctx.post_form(
+                            "UpdateTeamEligibility",
+                            format!(
+                                "/tournaments/{}/rounds/{}/update_team_eligibility",
+                                tid, rid
+                            ),
+                            &form,
+                        )
+                        .await;
                     }
                 }
             }
@@ -1969,7 +2108,14 @@ impl Action {
                     ) {
                         drop(conn);
                         let check = if eligible { "in" } else { "out" };
-                        client.post(&format!("/tournaments/{}/rounds/{}/availability/teams/all?check={}", tid, rid, check)).await;
+                        ctx.post(
+                            "UpdateAllTeamEligibility",
+                            format!(
+                                "/tournaments/{}/rounds/{}/availability/teams/all?check={}",
+                                tid, rid, check
+                            ),
+                        )
+                        .await;
                     }
                 }
             }
@@ -2009,7 +2155,15 @@ impl Action {
                                 &mut *conn, &tid, &rid, judge_id, f_form,
                             );
                             drop(conn);
-                            client.post(&format!("/tournaments/{}/privateurls/{}/rounds/{}/submit", tid, private_url, rid)).bytes(Bytes::from(bytes)).await;
+                            ctx.post_bytes(
+                                "SubmitBallot",
+                                format!(
+                                    "/tournaments/{}/privateurls/{}/rounds/{}/submit",
+                                    tid, private_url, rid
+                                ),
+                                bytes,
+                            )
+                            .await;
                         }
                     }
                 }

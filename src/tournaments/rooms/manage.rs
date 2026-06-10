@@ -9,7 +9,9 @@ use crate::{
         rooms::{Room, RoomCategory},
         rounds::TournamentRounds,
     },
-    util_resp::{FailureResponse, StandardResponse, see_other_ok, success},
+    util_resp::{
+        FailureResponse, StandardResponse, bad_request, see_other_ok, success,
+    },
 };
 use axum::{Form, extract::Path, response::Redirect};
 use diesel::prelude::*;
@@ -253,6 +255,12 @@ pub async fn create_room(
 
     // Check permission
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+
+    if form.priority < 0 {
+        return bad_request(
+            maud! {p {"Room priority must be non-negative."}}.render(),
+        );
+    }
 
     let new_room = Room {
         id: uuid::Uuid::now_v7().to_string(),

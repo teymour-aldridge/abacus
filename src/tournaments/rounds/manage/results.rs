@@ -6,13 +6,20 @@ use serde::Deserialize;
 
 use crate::{
     auth::User,
-    schema::rounds,
+    schema::{
+        agg_speaker_results_of_debate, agg_team_results_of_debate, debates,
+        rounds,
+    },
     state::Conn,
     template::Page,
     tournaments::{
         Tournament,
         manage::sidebar::SidebarWrapper,
-        rounds::{Round, TournamentRounds},
+        rounds::{
+            Round, TournamentRounds,
+            ballots::{BallotRepr, aggregate::aggregate_ballot_set},
+            draws::{DebateRepr, RoundDrawRepr},
+        },
     },
     util_resp::{
         StandardResponse, bad_request, err_not_found, see_other_ok, success,
@@ -183,10 +190,7 @@ pub async fn set_round_completed(
     } else {
         // Enforce invariant: can only complete if all non-trainee judges have submitted ballots
         // and there are no conflicts.
-        let draw = crate::tournaments::rounds::draws::RoundDrawRepr::of_round(
-            round.clone(),
-            &mut *conn,
-        );
+        let draw = RoundDrawRepr::of_round(round.clone(), &mut *conn);
         for debate in draw.debates {
             let ballots = debate.latest_ballots(&mut *conn);
             let non_trainee_judges: Vec<_> = debate
@@ -214,11 +218,8 @@ pub async fn set_round_completed(
                 );
             }
 
-            let problems = crate::tournaments::rounds::ballots::BallotRepr::problems_of_set(
-                &ballots,
-                &tournament,
-                &debate,
-            );
+            let problems =
+                BallotRepr::problems_of_set(&ballots, &tournament, &debate);
             if !problems.is_empty() {
                 return bad_request(
                     Page::new()
@@ -236,6 +237,44 @@ pub async fn set_round_completed(
             .set(rounds::completed.eq(true))
             .execute(&mut *conn)
             .unwrap();
+
+        // Aggregate ballot results for all debates in this round.
+        // First, clear any existing aggregated data for these debates.
+        let debate_ids: Vec<String> = debates::table
+            .filter(debates::round_id.eq(&round.id))
+            .select(debates::id)
+            .load(&mut *conn)
+            .unwrap();
+
+        diesel::delete(agg_speaker_results_of_debate::table.filter(
+            agg_speaker_results_of_debate::debate_id.eq_any(&debate_ids),
+        ))
+        .execute(&mut *conn)
+        .unwrap();
+
+        diesel::delete(
+            agg_team_results_of_debate::table.filter(
+                agg_team_results_of_debate::debate_id.eq_any(&debate_ids),
+            ),
+        )
+        .execute(&mut *conn)
+        .unwrap();
+
+        // Re-fetch and aggregate each debate's ballots.
+        // (The validation loop above consumed `draw.debates`.)
+        for debate_id in &debate_ids {
+            let debate_repr = DebateRepr::fetch(debate_id, &mut *conn);
+            let ballots = debate_repr.latest_ballots(&mut *conn);
+            if ballots.is_empty() {
+                continue;
+            }
+            aggregate_ballot_set(
+                &ballots,
+                &tournament,
+                &debate_repr,
+                &mut *conn,
+            );
+        }
     }
 
     see_other_ok(Redirect::to(&format!(

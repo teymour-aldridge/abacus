@@ -6,18 +6,13 @@
 //!
 //! todo: document this
 
-use axum::{
-    Form,
-    extract::{Extension, Path},
-    response::Redirect,
-};
+use axum::{Form, extract::Path, response::Redirect};
 use diesel::{prelude::*, result::DatabaseErrorKind};
 use hypertext::prelude::*;
 use serde::Deserialize;
 
 use crate::{
     auth::User,
-    non_det::NonDet,
     schema::{break_categories, rounds},
     state::Conn,
     template::Page,
@@ -172,7 +167,6 @@ pub async fn do_create_new_round_of_specific_category(
     Path((tid, category_id)): Path<(String, String)>,
     user: User<true>,
     mut conn: Conn<true>,
-    Extension(non_det): Extension<NonDet>,
     Form(form): Form<CreateNewRoundForm>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
@@ -207,7 +201,7 @@ pub async fn do_create_new_round_of_specific_category(
 
     let res = diesel::insert_into(rounds::table)
         .values((
-            rounds::id.eq(non_det.uuid_now_v7().to_string()),
+            rounds::id.eq(uuid::Uuid::now_v7().to_string()),
             rounds::tournament_id.eq(&tournament.id),
             rounds::seq.eq(form.seq as i64),
             rounds::name.eq(&form.name),

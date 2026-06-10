@@ -3,6 +3,8 @@ use std::path::Path;
 use std::process::Command;
 
 fn main() {
+    println!("cargo:rustc-check-cfg=cfg(fuzzing)");
+
     // Check for bootstrap
     let bootstrap_dir = Path::new("assets/bootstrap");
     if !bootstrap_dir.exists() {

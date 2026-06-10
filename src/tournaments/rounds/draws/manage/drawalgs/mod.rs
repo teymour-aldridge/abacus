@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 use std::panic::{UnwindSafe, catch_unwind};
 
-use chrono::NaiveDateTime;
+use chrono::{NaiveDateTime, Utc};
 use diesel::prelude::*;
 use diesel::{connection::LoadConnection, sqlite::Sqlite};
+use rand::SeedableRng;
 use serde::{Deserialize, Serialize};
 
-use crate::non_det::NonDet;
 use crate::schema::{
     debates, judges_of_debate, rounds, team_availability, teams_of_debate,
     tickets_of_round,
@@ -47,123 +47,6 @@ pub struct DrawInput {
     pub rng: rand_chacha::ChaCha20Rng,
 }
 
-#[derive(Hash)]
-struct DrawReplayInput {
-    tournament: String,
-    round: String,
-    metrics: Vec<(String, String, u32)>,
-    teams: Vec<String>,
-    standings_metrics: Vec<String>,
-    ranked_metrics_of_team: Vec<(String, Vec<(String, String)>)>,
-    pullup_metrics: Vec<(String, String, String)>,
-    teams_in_rank_order: Vec<Vec<String>>,
-    rank_of_team: Vec<(String, i64)>,
-    history: Vec<(String, Vec<usize>)>,
-}
-
-impl DrawReplayInput {
-    fn new(input: &DrawInput) -> Self {
-        let mut metrics = input
-            .metrics
-            .iter()
-            .map(|((team, metric), value)| {
-                (
-                    team.clone(),
-                    serde_json::to_string(metric).unwrap(),
-                    value.to_bits(),
-                )
-            })
-            .collect::<Vec<_>>();
-        metrics.sort();
-
-        let mut teams = input
-            .teams
-            .iter()
-            .map(|team| format!("{team:?}"))
-            .collect::<Vec<_>>();
-        teams.sort();
-
-        let standings_metrics = input
-            .standings
-            .metrics
-            .iter()
-            .map(|metric| serde_json::to_string(metric).unwrap())
-            .collect();
-
-        let mut ranked_metrics_of_team = input
-            .standings
-            .ranked_metrics_of_team
-            .iter()
-            .map(|(team, metrics)| {
-                (
-                    team.clone(),
-                    metrics
-                        .iter()
-                        .map(|(metric, value)| {
-                            (
-                                serde_json::to_string(metric).unwrap(),
-                                value.to_string(),
-                            )
-                        })
-                        .collect(),
-                )
-            })
-            .collect::<Vec<_>>();
-        ranked_metrics_of_team.sort();
-
-        let mut pullup_metrics = input
-            .standings
-            .pullup_metrics
-            .iter()
-            .map(|((team, metric), value)| {
-                (
-                    team.clone(),
-                    serde_json::to_string(metric).unwrap(),
-                    value.to_string(),
-                )
-            })
-            .collect::<Vec<_>>();
-        pullup_metrics.sort();
-
-        let teams_in_rank_order = input
-            .standings
-            .teams_in_rank_order
-            .iter()
-            .map(|teams| {
-                teams
-                    .iter()
-                    .map(|team| format!("{team:?}"))
-                    .collect::<Vec<_>>()
-            })
-            .collect();
-
-        let mut rank_of_team = input
-            .standings
-            .rank_of_team
-            .iter()
-            .map(|(team, rank)| (team.clone(), *rank))
-            .collect::<Vec<_>>();
-        rank_of_team.sort();
-
-        let mut history =
-            input.history.0.clone().into_iter().collect::<Vec<_>>();
-        history.sort();
-
-        Self {
-            tournament: format!("{:?}", input.tournament),
-            round: format!("{:?}", input.round),
-            metrics,
-            teams,
-            standings_metrics,
-            ranked_metrics_of_team,
-            pullup_metrics,
-            teams_in_rank_order,
-            rank_of_team,
-            history,
-        }
-    }
-}
-
 /// Draws a round using the provided draw generation function.
 ///
 /// **Important**: this function is long-running and should always be executed
@@ -177,7 +60,6 @@ pub fn do_draw(
             + UnwindSafe,
     >,
     conn: &mut impl LoadConnection<Backend = Sqlite>,
-    non_det: &NonDet,
     force: bool,
 ) -> Result<(), MakeDrawError> {
     let ticket_id = conn
@@ -203,14 +85,14 @@ pub fn do_draw(
             if let Some(previous_ticket_seq) = previous_ticket_seq
                 && force
             {
-                let id = non_det.uuid_now_v7().to_string();
+                let id = uuid::Uuid::now_v7().to_string();
                 diesel::insert_into(tickets_of_round::table)
                     .values((
                         tickets_of_round::id.eq(&id),
                         tickets_of_round::round_id.eq(&round.id),
                         tickets_of_round::seq.eq(previous_ticket_seq + 1),
                         tickets_of_round::kind.eq("draw"),
-                        tickets_of_round::acquired.eq(non_det.now_utc_naive()),
+                        tickets_of_round::acquired.eq(Utc::now().naive_utc()),
                         tickets_of_round::released.eq(false),
                     ))
                     .execute(conn)
@@ -219,14 +101,14 @@ pub fn do_draw(
             } else if previous_ticket_seq.is_some() && !force {
                 return Ok(Err(MakeDrawError::AlreadyInProgress));
             } else {
-                let id = non_det.uuid_now_v7().to_string();
+                let id = uuid::Uuid::now_v7().to_string();
                 diesel::insert_into(tickets_of_round::table)
                     .values((
                         tickets_of_round::id.eq(&id),
                         tickets_of_round::round_id.eq(&round.id),
                         tickets_of_round::seq.eq(0),
                         tickets_of_round::kind.eq("draw"),
-                        tickets_of_round::acquired.eq(non_det.now_utc_naive()),
+                        tickets_of_round::acquired.eq(Utc::now().naive_utc()),
                         tickets_of_round::released.eq(false),
                     ))
                     .execute(conn)
@@ -255,25 +137,20 @@ pub fn do_draw(
     let standings = TeamStandings::fetch(&tournament.id, conn);
     let history = TeamHistory::fetch(&tournament.id, conn);
 
-    let rng = non_det.fork_rng();
-
     let input = DrawInput {
         tournament: tournament.clone(),
         round: round.clone(),
         // todo: compute the metrics
         metrics: HashMap::new(),
         teams: available_teams,
-        rng,
+        rng: rand_chacha::ChaCha20Rng::from_os_rng(),
         standings,
         history,
     };
 
-    let replay_input = DrawReplayInput::new(&input);
     let generated = match catch_unwind(move || {
-        non_det.wrap(&replay_input, || {
-            tracing::trace!("Now invoking draw generator.");
-            (draw_generator)(input)
-        })
+        tracing::trace!("Now invoking draw generator.");
+        (draw_generator)(input)
     }) {
         Ok(generated) => generated,
         Err(e) => {
@@ -397,7 +274,7 @@ pub fn do_draw(
 
                 let mut debate_no = 1;
                 for room in draw {
-                    let debate_id = non_det.uuid_now_v7().to_string();
+                    let debate_id = uuid::Uuid::now_v7().to_string();
                     debates.push((
                         debates::id.eq(debate_id.clone()),
                         debates::tournament_id.eq(&tournament.id),
@@ -413,7 +290,7 @@ pub fn do_draw(
                     for (i, prop_team) in room.0.iter().enumerate() {
                         debate_teams.push((
                             teams_of_debate::id
-                                .eq(non_det.uuid_now_v7().to_string()),
+                                .eq(uuid::Uuid::now_v7().to_string()),
                             teams_of_debate::debate_id
                                 .eq(debate_id.clone()),
                             teams_of_debate::team_id
@@ -426,7 +303,7 @@ pub fn do_draw(
                     for (i, opp_team) in room.1.iter().enumerate() {
                         debate_teams.push((
                             teams_of_debate::id
-                                .eq(non_det.uuid_now_v7().to_string()),
+                                .eq(uuid::Uuid::now_v7().to_string()),
                             teams_of_debate::debate_id
                                 .eq(debate_id.clone()),
                             teams_of_debate::team_id

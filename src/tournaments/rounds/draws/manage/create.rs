@@ -11,7 +11,6 @@ use tokio::{sync::broadcast::Sender, task::spawn_blocking};
 use crate::{
     auth::User,
     msg::{Msg, MsgContents},
-    non_det::NonDet,
     schema::rounds,
     state::{Conn, DbPool},
     template::Page,
@@ -92,7 +91,6 @@ pub async fn do_generate_draw(
     user: User<false>,
     Extension(pool): Extension<DbPool>,
     Extension(tx): Extension<Sender<Msg>>,
-    Extension(non_det): Extension<NonDet>,
 ) -> StandardResponse {
     let pool: DbPool = pool.clone();
     let round_id_clone = round_id.to_string();
@@ -154,7 +152,6 @@ pub async fn do_generate_draw(
             &round,
             Box::new(drawalgs::general::make_draw),
             &mut conn,
-            &non_det,
             force,
         );
 

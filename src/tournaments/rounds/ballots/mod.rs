@@ -551,22 +551,23 @@ impl<'a> BallotBuilder<'a> {
         mut metadata: BallotMetadata,
         expected_version: i64,
         prior_version: i64,
+        has_prior_ballot: bool,
         conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Result<Self, String> {
-        if expected_version != prior_version {
+        let required_version = if has_prior_ballot {
+            prior_version + 1
+        } else {
+            0
+        };
+
+        if expected_version != required_version {
             return Err("Error: The ballot has been modified since you started editing. Please reload the page to see the latest version.".into());
         }
         if !debate.motions.contains_key(&metadata.motion_id) {
             return Err("Error: invalid motion".into());
         }
 
-        if prior_version == 0 {
-            assert_eq!(expected_version, 0);
-        } else {
-            assert_eq!(expected_version, prior_version + 1);
-        }
-
-        metadata.version = expected_version;
+        metadata.version = required_version;
 
         let num_advancing = if round.is_elim() {
             Some(num_advancing_for_elim_round(tournament, round, conn))

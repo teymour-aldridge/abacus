@@ -1,4 +1,4 @@
-use crate::{non_det::NonDet, schema::*};
+use crate::schema::*;
 use axum::body::Bytes;
 use axum_test::TestServer;
 use diesel::prelude::*;
@@ -64,92 +64,122 @@ type InnerStringUnmutateToken = <InnerStringMutator as Mutator<
 >>::UnmutateToken;
 type InnerStringAst = fuzzcheck::mutators::grammar::AST;
 
+#[allow(dead_code)]
+pub struct NameStringMutator {
+    inner: InnerStringMutator,
+}
+
+#[allow(dead_code)]
+pub struct MotionStringMutator {
+    inner: InnerStringMutator,
+}
+
 pub struct TabdaDictionaryStringMutator {
     inner: InnerStringMutator,
 }
 
 #[derive(Clone)]
-pub struct TabdaDictionaryStringCache {
+pub struct GrammarStringCache {
     ast: Option<InnerStringAst>,
     ast_cache: Option<InnerStringCache>,
 }
 
 #[derive(Clone)]
-pub struct TabdaDictionaryStringArbitraryStep {
+pub struct GrammarStringArbitraryStep {
     inner: InnerStringArbitraryStep,
 }
 
 #[derive(Clone)]
-pub struct TabdaDictionaryStringMutationStep {
+pub struct GrammarStringMutationStep {
     inner: Option<InnerStringMutationStep>,
     arbitrary: InnerStringArbitraryStep,
 }
 
-pub enum TabdaDictionaryStringUnmutateToken {
+pub enum GrammarStringUnmutateToken {
     ReplaceWhole {
         old_value: String,
-        old_cache: TabdaDictionaryStringCache,
+        old_cache: GrammarStringCache,
     },
     Inner(InnerStringUnmutateToken),
 }
 
+impl NameStringMutator {
+    #[allow(dead_code)]
+    pub fn new() -> Self {
+        Self {
+            inner: fuzzcheck::mutators::grammar::grammar_based_ast_mutator(
+                name_string_grammar(),
+            ),
+        }
+    }
+}
+
+impl MotionStringMutator {
+    #[allow(dead_code)]
+    pub fn new() -> Self {
+        Self {
+            inner: fuzzcheck::mutators::grammar::grammar_based_ast_mutator(
+                motion_string_grammar(),
+            ),
+        }
+    }
+}
+
 impl TabdaDictionaryStringMutator {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             inner: fuzzcheck::mutators::grammar::grammar_based_ast_mutator(
                 tabda_dictionary_string_grammar(),
             ),
         }
     }
+}
 
-    fn ast_to_string(ast: &InnerStringAst) -> String {
-        ast.to_string()
-    }
+fn ast_to_string(ast: &InnerStringAst) -> String {
+    ast.to_string()
+}
 
-    fn arbitrary_value_from_step(
-        &self,
-        step: &mut InnerStringArbitraryStep,
-        max_cplx: f64,
-    ) -> Option<(String, TabdaDictionaryStringCache, f64)> {
-        let (ast, cplx) = self.inner.ordered_arbitrary(step, max_cplx)?;
-        let ast_cache = self
-            .inner
-            .validate_value(&ast)
-            .expect("grammar mutator should validate its own AST output");
-        Some((
-            Self::ast_to_string(&ast),
-            TabdaDictionaryStringCache {
-                ast: Some(ast),
-                ast_cache: Some(ast_cache),
-            },
-            cplx,
-        ))
-    }
+fn ordered_grammar_value(
+    inner: &InnerStringMutator,
+    step: &mut InnerStringArbitraryStep,
+    max_cplx: f64,
+) -> Option<(String, GrammarStringCache, f64)> {
+    let (ast, cplx) = inner.ordered_arbitrary(step, max_cplx)?;
+    let ast_cache = inner
+        .validate_value(&ast)
+        .expect("grammar mutator should validate its own AST output");
+    Some((
+        ast_to_string(&ast),
+        GrammarStringCache {
+            ast: Some(ast),
+            ast_cache: Some(ast_cache),
+        },
+        cplx,
+    ))
+}
 
-    fn random_value(
-        &self,
-        max_cplx: f64,
-    ) -> (String, TabdaDictionaryStringCache, f64) {
-        let (ast, cplx) = self.inner.random_arbitrary(max_cplx);
-        let ast_cache = self
-            .inner
-            .validate_value(&ast)
-            .expect("grammar mutator should validate its own AST output");
-        (
-            Self::ast_to_string(&ast),
-            TabdaDictionaryStringCache {
-                ast: Some(ast),
-                ast_cache: Some(ast_cache),
-            },
-            cplx,
-        )
-    }
+fn random_grammar_value(
+    inner: &InnerStringMutator,
+    max_cplx: f64,
+) -> (String, GrammarStringCache, f64) {
+    let (ast, cplx) = inner.random_arbitrary(max_cplx);
+    let ast_cache = inner
+        .validate_value(&ast)
+        .expect("grammar mutator should validate its own AST output");
+    (
+        ast_to_string(&ast),
+        GrammarStringCache {
+            ast: Some(ast),
+            ast_cache: Some(ast_cache),
+        },
+        cplx,
+    )
+}
 
-    fn fallback_cache() -> TabdaDictionaryStringCache {
-        TabdaDictionaryStringCache {
-            ast: None,
-            ast_cache: None,
-        }
+fn fallback_grammar_cache() -> GrammarStringCache {
+    GrammarStringCache {
+        ast: None,
+        ast_cache: None,
     }
 }
 
@@ -170,6 +200,20 @@ fn dictionary_grammar() -> Rc<fuzzcheck::mutators::grammar::Grammar> {
 fn email_grammar() -> Rc<fuzzcheck::mutators::grammar::Grammar> {
     fuzzcheck::mutators::grammar::regex(
         "[a-z]{1,12}@[a-z]{1,10}\\.(com|org|net|edu)",
+    )
+}
+
+#[allow(dead_code)]
+fn name_string_grammar() -> Rc<fuzzcheck::mutators::grammar::Grammar> {
+    fuzzcheck::mutators::grammar::regex(
+        "[A-Za-z0-9][A-Za-z0-9 ]{2,22}[A-Za-z0-9]",
+    )
+}
+
+#[allow(dead_code)]
+fn motion_string_grammar() -> Rc<fuzzcheck::mutators::grammar::Grammar> {
+    fuzzcheck::mutators::grammar::regex(
+        "[A-Za-z0-9][A-Za-z0-9 ,.'-]{6,46}[A-Za-z0-9.]",
     )
 }
 
@@ -195,199 +239,217 @@ fn tabda_dictionary_string_grammar() -> Rc<fuzzcheck::mutators::grammar::Grammar
     })
 }
 
-impl Mutator<String> for TabdaDictionaryStringMutator {
-    type Cache = TabdaDictionaryStringCache;
-    type MutationStep = TabdaDictionaryStringMutationStep;
-    type ArbitraryStep = TabdaDictionaryStringArbitraryStep;
-    type UnmutateToken = TabdaDictionaryStringUnmutateToken;
+macro_rules! impl_ascii_string_mutator {
+    ($mutator:ty) => {
+        impl Mutator<String> for $mutator {
+            type Cache = GrammarStringCache;
+            type MutationStep = GrammarStringMutationStep;
+            type ArbitraryStep = GrammarStringArbitraryStep;
+            type UnmutateToken = GrammarStringUnmutateToken;
 
-    fn initialize(&self) {
-        self.inner.initialize();
-    }
-
-    fn default_arbitrary_step(&self) -> Self::ArbitraryStep {
-        Self::ArbitraryStep {
-            inner: self.inner.default_arbitrary_step(),
-        }
-    }
-
-    fn is_valid(&self, value: &String) -> bool {
-        value.is_ascii()
-    }
-
-    fn validate_value(&self, value: &String) -> Option<Self::Cache> {
-        if self.is_valid(value) {
-            Some(Self::fallback_cache())
-        } else {
-            None
-        }
-    }
-
-    fn default_mutation_step(
-        &self,
-        _value: &String,
-        cache: &Self::Cache,
-    ) -> Self::MutationStep {
-        Self::MutationStep {
-            inner: cache.ast.as_ref().zip(cache.ast_cache.as_ref()).map(
-                |(ast, ast_cache)| {
-                    self.inner.default_mutation_step(ast, ast_cache)
-                },
-            ),
-            arbitrary: self.inner.default_arbitrary_step(),
-        }
-    }
-
-    fn global_search_space_complexity(&self) -> f64 {
-        self.inner.global_search_space_complexity()
-    }
-
-    fn max_complexity(&self) -> f64 {
-        self.inner.max_complexity()
-    }
-
-    fn min_complexity(&self) -> f64 {
-        self.inner.min_complexity()
-    }
-
-    fn complexity(&self, value: &String, cache: &Self::Cache) -> f64 {
-        match (cache.ast.as_ref(), cache.ast_cache.as_ref()) {
-            (Some(ast), Some(ast_cache)) => {
-                self.inner.complexity(ast, ast_cache)
+            fn initialize(&self) {
+                self.inner.initialize();
             }
-            _ => (value.len() * 8) as f64,
-        }
-    }
 
-    fn ordered_arbitrary(
-        &self,
-        step: &mut Self::ArbitraryStep,
-        max_cplx: f64,
-    ) -> Option<(String, f64)> {
-        self.arbitrary_value_from_step(&mut step.inner, max_cplx)
-            .map(|(value, _, cplx)| (value, cplx))
-    }
+            fn default_arbitrary_step(&self) -> Self::ArbitraryStep {
+                Self::ArbitraryStep {
+                    inner: self.inner.default_arbitrary_step(),
+                }
+            }
 
-    fn random_arbitrary(&self, max_cplx: f64) -> (String, f64) {
-        let (value, _, cplx) = self.random_value(max_cplx);
-        (value, cplx)
-    }
+            fn is_valid(&self, value: &String) -> bool {
+                value.is_ascii()
+            }
 
-    fn ordered_mutate(
-        &self,
-        value: &mut String,
-        cache: &mut Self::Cache,
-        step: &mut Self::MutationStep,
-        subvalue_provider: &dyn fuzzcheck::SubValueProvider,
-        max_cplx: f64,
-    ) -> Option<(Self::UnmutateToken, f64)> {
-        if let (Some(ast), Some(ast_cache), Some(ast_step)) = (
-            cache.ast.as_mut(),
-            cache.ast_cache.as_mut(),
-            step.inner.as_mut(),
-        ) {
-            if let Some((token, cplx)) = self.inner.ordered_mutate(
-                ast,
-                ast_cache,
-                ast_step,
-                subvalue_provider,
-                max_cplx,
-            ) {
-                *value = Self::ast_to_string(ast);
-                return Some((
-                    TabdaDictionaryStringUnmutateToken::Inner(token),
+            fn validate_value(&self, value: &String) -> Option<Self::Cache> {
+                if self.is_valid(value) {
+                    Some(fallback_grammar_cache())
+                } else {
+                    None
+                }
+            }
+
+            fn default_mutation_step(
+                &self,
+                _value: &String,
+                cache: &Self::Cache,
+            ) -> Self::MutationStep {
+                Self::MutationStep {
+                    inner: cache
+                        .ast
+                        .as_ref()
+                        .zip(cache.ast_cache.as_ref())
+                        .map(|(ast, ast_cache)| {
+                            self.inner.default_mutation_step(ast, ast_cache)
+                        }),
+                    arbitrary: self.inner.default_arbitrary_step(),
+                }
+            }
+
+            fn global_search_space_complexity(&self) -> f64 {
+                self.inner.global_search_space_complexity()
+            }
+
+            fn max_complexity(&self) -> f64 {
+                self.inner.max_complexity()
+            }
+
+            fn min_complexity(&self) -> f64 {
+                self.inner.min_complexity()
+            }
+
+            fn complexity(&self, value: &String, cache: &Self::Cache) -> f64 {
+                match (cache.ast.as_ref(), cache.ast_cache.as_ref()) {
+                    (Some(ast), Some(ast_cache)) => {
+                        self.inner.complexity(ast, ast_cache)
+                    }
+                    _ => (value.len() * 8) as f64,
+                }
+            }
+
+            fn ordered_arbitrary(
+                &self,
+                step: &mut Self::ArbitraryStep,
+                max_cplx: f64,
+            ) -> Option<(String, f64)> {
+                ordered_grammar_value(&self.inner, &mut step.inner, max_cplx)
+                    .map(|(value, _, cplx)| (value, cplx))
+            }
+
+            fn random_arbitrary(&self, max_cplx: f64) -> (String, f64) {
+                let (value, _, cplx) =
+                    random_grammar_value(&self.inner, max_cplx);
+                (value, cplx)
+            }
+
+            fn ordered_mutate(
+                &self,
+                value: &mut String,
+                cache: &mut Self::Cache,
+                step: &mut Self::MutationStep,
+                subvalue_provider: &dyn fuzzcheck::SubValueProvider,
+                max_cplx: f64,
+            ) -> Option<(Self::UnmutateToken, f64)> {
+                if let (Some(ast), Some(ast_cache), Some(ast_step)) = (
+                    cache.ast.as_mut(),
+                    cache.ast_cache.as_mut(),
+                    step.inner.as_mut(),
+                ) {
+                    if let Some((token, cplx)) = self.inner.ordered_mutate(
+                        ast,
+                        ast_cache,
+                        ast_step,
+                        subvalue_provider,
+                        max_cplx,
+                    ) {
+                        *value = ast_to_string(ast);
+                        return Some((
+                            GrammarStringUnmutateToken::Inner(token),
+                            cplx,
+                        ));
+                    }
+                }
+
+                let old_value = value.clone();
+                let old_cache = cache.clone();
+                let (new_value, new_cache, cplx) = ordered_grammar_value(
+                    &self.inner,
+                    &mut step.arbitrary,
+                    max_cplx,
+                )?;
+                *value = new_value;
+                *cache = new_cache;
+                step.inner =
+                    cache.ast.as_ref().zip(cache.ast_cache.as_ref()).map(
+                        |(ast, ast_cache)| {
+                            self.inner.default_mutation_step(ast, ast_cache)
+                        },
+                    );
+                Some((
+                    GrammarStringUnmutateToken::ReplaceWhole {
+                        old_value,
+                        old_cache,
+                    },
                     cplx,
-                ));
+                ))
             }
-        }
 
-        let old_value = value.clone();
-        let old_cache = cache.clone();
-        let (new_value, new_cache, cplx) =
-            self.arbitrary_value_from_step(&mut step.arbitrary, max_cplx)?;
-        *value = new_value;
-        *cache = new_cache;
-        step.inner = cache.ast.as_ref().zip(cache.ast_cache.as_ref()).map(
-            |(ast, ast_cache)| self.inner.default_mutation_step(ast, ast_cache),
-        );
-        Some((
-            TabdaDictionaryStringUnmutateToken::ReplaceWhole {
-                old_value,
-                old_cache,
-            },
-            cplx,
-        ))
-    }
-
-    fn random_mutate(
-        &self,
-        value: &mut String,
-        cache: &mut Self::Cache,
-        max_cplx: f64,
-    ) -> (Self::UnmutateToken, f64) {
-        if let (Some(ast), Some(ast_cache)) =
-            (cache.ast.as_mut(), cache.ast_cache.as_mut())
-        {
-            let (token, cplx) =
-                self.inner.random_mutate(ast, ast_cache, max_cplx);
-            *value = Self::ast_to_string(ast);
-            (TabdaDictionaryStringUnmutateToken::Inner(token), cplx)
-        } else {
-            let old_value = value.clone();
-            let old_cache = cache.clone();
-            let (new_value, new_cache, cplx) = self.random_value(max_cplx);
-            *value = new_value;
-            *cache = new_cache;
-            (
-                TabdaDictionaryStringUnmutateToken::ReplaceWhole {
-                    old_value,
-                    old_cache,
-                },
-                cplx,
-            )
-        }
-    }
-
-    fn unmutate(
-        &self,
-        value: &mut String,
-        cache: &mut Self::Cache,
-        t: Self::UnmutateToken,
-    ) {
-        match t {
-            TabdaDictionaryStringUnmutateToken::ReplaceWhole {
-                old_value,
-                old_cache,
-            } => {
-                *value = old_value;
-                *cache = old_cache;
-            }
-            TabdaDictionaryStringUnmutateToken::Inner(token) => {
+            fn random_mutate(
+                &self,
+                value: &mut String,
+                cache: &mut Self::Cache,
+                max_cplx: f64,
+            ) -> (Self::UnmutateToken, f64) {
                 if let (Some(ast), Some(ast_cache)) =
                     (cache.ast.as_mut(), cache.ast_cache.as_mut())
                 {
-                    self.inner.unmutate(ast, ast_cache, token);
-                    *value = Self::ast_to_string(ast);
+                    let (token, cplx) =
+                        self.inner.random_mutate(ast, ast_cache, max_cplx);
+                    *value = ast_to_string(ast);
+                    (GrammarStringUnmutateToken::Inner(token), cplx)
+                } else {
+                    let old_value = value.clone();
+                    let old_cache = cache.clone();
+                    let (new_value, new_cache, cplx) =
+                        random_grammar_value(&self.inner, max_cplx);
+                    *value = new_value;
+                    *cache = new_cache;
+                    (
+                        GrammarStringUnmutateToken::ReplaceWhole {
+                            old_value,
+                            old_cache,
+                        },
+                        cplx,
+                    )
+                }
+            }
+
+            fn unmutate(
+                &self,
+                value: &mut String,
+                cache: &mut Self::Cache,
+                t: Self::UnmutateToken,
+            ) {
+                match t {
+                    GrammarStringUnmutateToken::ReplaceWhole {
+                        old_value,
+                        old_cache,
+                    } => {
+                        *value = old_value;
+                        *cache = old_cache;
+                    }
+                    GrammarStringUnmutateToken::Inner(token) => {
+                        if let (Some(ast), Some(ast_cache)) =
+                            (cache.ast.as_mut(), cache.ast_cache.as_mut())
+                        {
+                            self.inner.unmutate(ast, ast_cache, token);
+                            *value = ast_to_string(ast);
+                        }
+                    }
+                }
+            }
+
+            fn visit_subvalues<'a>(
+                &self,
+                value: &'a String,
+                cache: &'a Self::Cache,
+                visit: &mut dyn FnMut(&'a dyn Any, f64),
+            ) {
+                if let (Some(ast), Some(ast_cache)) =
+                    (cache.ast.as_ref(), cache.ast_cache.as_ref())
+                {
+                    self.inner.visit_subvalues(ast, ast_cache, visit);
+                } else {
+                    visit(value, self.complexity(value, cache));
                 }
             }
         }
-    }
-
-    fn visit_subvalues<'a>(
-        &self,
-        value: &'a String,
-        cache: &'a Self::Cache,
-        visit: &mut dyn FnMut(&'a dyn Any, f64),
-    ) {
-        if let (Some(ast), Some(ast_cache)) =
-            (cache.ast.as_ref(), cache.ast_cache.as_ref())
-        {
-            self.inner.visit_subvalues(ast, ast_cache, visit);
-        } else {
-            visit(value, self.complexity(value, cache));
-        }
-    }
+    };
 }
+
+impl_ascii_string_mutator!(NameStringMutator);
+impl_ascii_string_mutator!(MotionStringMutator);
+impl_ascii_string_mutator!(TabdaDictionaryStringMutator);
 
 macro_rules! get_id_by_idx {
     ($conn:expr, $query:expr, $idx:expr $(,)?) => {{
@@ -758,7 +820,6 @@ impl Action {
         pool: &Pool<ConnectionManager<SqliteConnection>>,
         client: &mut TestServer,
         state: &mut FuzzState,
-        non_det: &NonDet,
     ) {
         tracing::info!("Running Action::run");
 
@@ -849,7 +910,7 @@ impl Action {
                     let _ = diesel::insert_into(break_categories::table)
                         .values((
                             break_categories::id
-                                .eq(non_det.uuid_now_v7().to_string()),
+                                .eq(uuid::Uuid::now_v7().to_string()),
                             break_categories::tournament_id.eq(tid),
                             break_categories::name.eq(name),
                             break_categories::priority.eq(next_priority),
@@ -1594,7 +1655,7 @@ impl Action {
                         let _ = diesel::insert_into(motions_of_round::table)
                             .values((
                                 motions_of_round::id
-                                    .eq(non_det.uuid_now_v7().to_string()),
+                                    .eq(uuid::Uuid::now_v7().to_string()),
                                 motions_of_round::tournament_id.eq(tid),
                                 motions_of_round::round_id.eq(rid),
                                 motions_of_round::infoslide.eq(infoslide),

@@ -18,7 +18,7 @@ use crate::{
             Round,
             ballots::{
                 BallotMetadata, BallotRepr, form::fields_of_single_ballot_form,
-                update_debate_status,
+                manage::edit::BallotForm, update_debate_status,
             },
             draws::{Debate, DebateRepr},
         },
@@ -29,8 +29,6 @@ use crate::{
     },
     widgets::alert::ErrorAlert,
 };
-
-use super::super::manage::edit::BallotForm;
 
 /// Page judges use to submit ballots. They are directed here from their private
 /// URL page.
@@ -69,10 +67,18 @@ pub async fn submit_ballot_page(
 
     let current_rounds = Round::current_rounds(&tournament_id, &mut *conn);
 
+    let existing_ballot = debate_repr
+        .latest_ballots(&mut *conn)
+        .into_iter()
+        .find(|ballot| ballot.metadata.judge_id == judge.id);
+    let existing_form = existing_ballot
+        .as_ref()
+        .map(|ballot| BallotForm::from_repr(ballot, &debate_repr, &tournament));
+
     let ballot_form = fields_of_single_ballot_form(
         &tournament,
         &debate_repr,
-        None,
+        existing_form.as_ref(),
         &mut *conn,
     );
 
@@ -161,6 +167,7 @@ fn build_submit_ballot(
     new_metadata: BallotMetadata,
     expected_version: i64,
     prior_version: i64,
+    has_prior_ballot: bool,
 ) -> Result<BallotRepr, FailureResponse> {
     tracing::debug!("form = {form:?}");
 
@@ -174,6 +181,7 @@ fn build_submit_ballot(
         new_metadata,
         expected_version,
         prior_version,
+        has_prior_ballot,
         conn,
     )
     .map_err(bad_request_from_string)?;
@@ -257,6 +265,7 @@ pub async fn do_submit_ballot(
 
     let expected_version = form.expected_version;
     let prior_version = prior.as_ref().map(|b| b.version).unwrap_or(0);
+    let has_prior_ballot = prior.is_some();
 
     let participants = TournamentParticipants::load(&tournament.id, &mut *conn);
 
@@ -282,6 +291,7 @@ pub async fn do_submit_ballot(
         new_metadata,
         expected_version,
         prior_version,
+        has_prior_ballot,
     )?;
 
     repr.insert(&mut *conn);

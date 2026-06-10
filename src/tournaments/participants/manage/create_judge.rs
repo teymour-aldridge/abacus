@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Extension, Form, Path},
+    extract::{Form, Path},
     response::Redirect,
 };
 use diesel::prelude::*;
@@ -8,7 +8,6 @@ use serde::Deserialize;
 
 use crate::{
     auth::User,
-    non_det::NonDet,
     schema::{institutions, judges},
     state::Conn,
     template::Page,
@@ -109,7 +108,6 @@ pub async fn do_create_judge(
     Path(tournament_id): Path<String>,
     user: User<true>,
     mut conn: Conn<true>,
-    Extension(non_det): Extension<NonDet>,
     Form(form): Form<CreateJudgeForm>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
@@ -188,8 +186,7 @@ pub async fn do_create_judge(
         None => None,
     };
 
-    let private_url =
-        get_unique_private_url(&tournament.id, &mut *conn, &non_det);
+    let private_url = get_unique_private_url(&tournament.id, &mut *conn);
 
     let next_number = judges::table
         .filter(judges::tournament_id.eq(&tournament_id))
@@ -203,7 +200,7 @@ pub async fn do_create_judge(
 
     let n = diesel::insert_into(judges::table)
         .values((
-            judges::id.eq(non_det.uuid_now_v7().to_string()),
+            judges::id.eq(uuid::Uuid::now_v7().to_string()),
             judges::tournament_id.eq(&tournament.id),
             judges::name.eq(&form.name),
             judges::email.eq(&form.email),

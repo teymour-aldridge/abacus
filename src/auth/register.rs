@@ -1,19 +1,18 @@
 use argon2::Argon2;
 use argon2::PasswordHasher;
-use axum::{
-    extract::{Extension, Form},
-    response::Redirect,
-};
+use argon2::password_hash::SaltString;
+use axum::{extract::Form, response::Redirect};
 use axum_extra::extract::{PrivateCookieJar, cookie::Key};
+use chrono::Utc;
 use diesel::{insert_into, prelude::*};
 use hypertext::prelude::*;
 use serde::Deserialize;
 use tokio::task::spawn_blocking;
 use tracing::Instrument;
 use tracing::Level;
+use uuid::Uuid;
 
 use crate::auth::set_login_cookie;
-use crate::non_det::NonDet;
 use crate::state::Conn;
 use crate::util_resp::StandardResponse;
 use crate::util_resp::bad_request;
@@ -74,7 +73,6 @@ pub async fn do_register(
     user: Option<User<true>>,
     mut conn: Conn<true>,
     jar: PrivateCookieJar<Key>,
-    Extension(non_det): Extension<NonDet>,
     // note: MUST be skipped in tracing for security reasons!
     Form(form): Form<RegisterForm>,
 ) -> (PrivateCookieJar<Key>, StandardResponse) {
@@ -130,9 +128,12 @@ pub async fn do_register(
             ))
         }
         None => {
-            let id = non_det.uuid_now_v7().to_string();
+            let id = Uuid::now_v7().to_string();
 
-            let password_salt = non_det.password_salt();
+            let password_salt = {
+                let bytes: [u8; 16] = rand::random();
+                SaltString::encode_b64(&bytes).unwrap()
+            };
             let password_hash = spawn_blocking(move || {
                 if !cfg!(test) {
                     let argon2 = Argon2::default();
@@ -154,12 +155,12 @@ pub async fn do_register(
                     users::email.eq(form.email),
                     users::username.eq(form.username),
                     users::password_hash.eq(password_hash),
-                    users::created_at.eq(non_det.now_utc_naive()),
+                    users::created_at.eq(Utc::now().naive_utc()),
                 ))
                 .execute(&mut *conn)
                 .unwrap();
 
-            let jar = set_login_cookie(id.clone(), jar, &non_det);
+            let jar = set_login_cookie(id.clone(), jar);
 
             (jar, see_other_ok(Redirect::to("/user")))
         }

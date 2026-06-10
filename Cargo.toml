@@ -45,6 +45,7 @@ serde_json = "1.0"
 
 [dev-dependencies]
 fuzzcheck = { git = "https://github.com/loiclec/fuzzcheck-rs" }
+hegeltest = "0.14.0"
 axum-test = "15.7.0"
 scheduled-thread-pool = "0.2.7"
 turmoil = "0.7"

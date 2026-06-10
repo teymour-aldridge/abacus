@@ -47,7 +47,19 @@ pub fn aggregate_ballot_set(
     conn: &mut impl LoadConnection<Backend = Sqlite>,
 ) {
     assert!(!ballots.is_empty());
-    let method = tournament.agg_method_for_current_round(conn);
+    let round = Round::fetch(&debate.debate.round_id, conn).unwrap();
+    let is_elim = round.kind == "E";
+    let method = if is_elim {
+        if tournament.elim_is_consensus() {
+            BallotAggregationMethod::Consensus
+        } else {
+            BallotAggregationMethod::Individual
+        }
+    } else if tournament.pool_is_consensus() {
+        BallotAggregationMethod::Consensus
+    } else {
+        BallotAggregationMethod::Individual
+    };
 
     for a in ballots {
         for b in ballots {
@@ -55,18 +67,17 @@ pub fn aggregate_ballot_set(
         }
     }
 
-    // todo: we very often conduct numerous highly unnecessary queries like
-    // this one
-    let is_elim =
-        Round::fetch(&debate.debate.round_id, conn).unwrap().kind == "E";
-
     match method {
         BallotAggregationMethod::Consensus => {
             let canonical = &ballots[0];
             if is_elim {
                 aggregate_consensus_elimination(canonical, debate, conn);
             } else {
-                aggregate_consensus_prelim(canonical, tournament, conn);
+                aggregate_consensus_prelim(
+                    canonical,
+                    tournament.round_requires_speaks(&round),
+                    conn,
+                );
             }
         }
         BallotAggregationMethod::Individual => {
@@ -80,7 +91,7 @@ pub fn aggregate_ballot_set(
 
             insert_two_team_results(ballots, debate, did_prop_win, conn);
 
-            if !is_elim && tournament.current_round_requires_speaks(conn) {
+            if !is_elim && tournament.round_requires_speaks(&round) {
                 let speaker_points = compute_averaged_speaker_scores(
                     ballots,
                     &ballots[0].metadata.tournament_id,
@@ -98,7 +109,7 @@ pub fn aggregate_ballot_set(
 
 fn aggregate_consensus_prelim(
     canonical: &BallotRepr,
-    tournament: &Tournament,
+    requires_speaks: bool,
     conn: &mut impl LoadConnection<Backend = Sqlite>,
 ) {
     let team_points: Vec<_> = canonical
@@ -122,7 +133,7 @@ fn aggregate_consensus_prelim(
         .execute(conn)
         .unwrap();
 
-    if tournament.current_round_requires_speaks(conn) {
+    if requires_speaks {
         let speaker_points: Vec<_> = canonical
             .scores
             .iter()

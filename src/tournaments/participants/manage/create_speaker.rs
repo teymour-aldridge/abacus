@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Extension, Form, Path},
+    extract::{Form, Path},
     response::Redirect,
 };
 use diesel::{prelude::*, result::DatabaseErrorKind};
@@ -8,7 +8,6 @@ use serde::Deserialize;
 
 use crate::{
     auth::User,
-    non_det::NonDet,
     schema::{speakers, speakers_of_team},
     state::Conn,
     template::Page,
@@ -70,7 +69,6 @@ pub async fn do_create_speaker(
     Path((tournament_id, team_id)): Path<(String, String)>,
     user: User<true>,
     mut conn: Conn<true>,
-    Extension(non_det): Extension<NonDet>,
     Form(form): Form<CreateSpeakerForm>,
 ) -> StandardResponse {
     tracing::trace!("Create speaker route");
@@ -124,10 +122,9 @@ pub async fn do_create_speaker(
         );
     }
 
-    let private_url =
-        get_unique_private_url(&tournament.id, &mut *conn, &non_det);
+    let private_url = get_unique_private_url(&tournament.id, &mut *conn);
 
-    let speaker_id = non_det.uuid_now_v7().to_string();
+    let speaker_id = uuid::Uuid::now_v7().to_string();
     let res = diesel::insert_into(speakers::table)
         .values((
             speakers::id.eq(&speaker_id),
@@ -159,7 +156,7 @@ pub async fn do_create_speaker(
 
     let n = diesel::insert_into(speakers_of_team::table)
         .values((
-            speakers_of_team::id.eq(non_det.uuid_now_v7().to_string()),
+            speakers_of_team::id.eq(uuid::Uuid::now_v7().to_string()),
             speakers_of_team::team_id.eq(team.id),
             speakers_of_team::speaker_id.eq(speaker_id),
         ))

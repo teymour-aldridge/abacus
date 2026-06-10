@@ -121,7 +121,7 @@ impl BallotForm {
         Self {
             teams,
             motion_id: repr.metadata.motion_id.clone(),
-            expected_version: repr.metadata.version,
+            expected_version: repr.metadata.version + 1,
         }
     }
 }
@@ -145,6 +145,7 @@ fn build_edit_ballot(
     new_metadata: BallotMetadata,
     expected_version: i64,
     prior_version: i64,
+    has_prior_ballot: bool,
     conn: &mut impl LoadConnection<Backend = Sqlite>,
 ) -> Result<BallotRepr, crate::util_resp::FailureResponse> {
     tracing::trace!("form = {form:?}");
@@ -159,6 +160,7 @@ fn build_edit_ballot(
         new_metadata,
         expected_version,
         prior_version,
+        has_prior_ballot,
         conn,
     )
     .map_err(bad_request_from_string)?;
@@ -277,6 +279,7 @@ pub async fn do_edit_ballot(
 
     let expected_version = form.expected_version;
     let prior_version = prior.as_ref().map(|b| b.metadata.version).unwrap_or(0);
+    let has_prior_ballot = prior.is_some();
 
     let participants =
         crate::tournaments::participants::TournamentParticipants::load(
@@ -291,8 +294,8 @@ pub async fn do_edit_ballot(
         judge_id: judge_id.clone(),
         submitted_at: Utc::now().naive_utc(),
         motion_id: form.motion_id.clone(),
-        version: 0,   // Set later by builder based on prior_version
-        change: None, // You could populate this with e.g. "Admin Override"
+        version: 0, // Set later by builder based on prior_version
+        change: Some("Admin override".to_string()),
         editor_id: Some(user.id.clone()),
     };
 
@@ -305,6 +308,7 @@ pub async fn do_edit_ballot(
         new_metadata,
         expected_version,
         prior_version,
+        has_prior_ballot,
         &mut *conn,
     )?;
 

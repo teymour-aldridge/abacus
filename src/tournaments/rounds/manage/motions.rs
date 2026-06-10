@@ -1,5 +1,6 @@
-use axum::{extract::Path, response::Redirect};
+use axum::{Form, extract::Path, response::Redirect};
 use diesel::prelude::*;
+use serde::Deserialize;
 
 use crate::{
     auth::User,
@@ -11,6 +12,56 @@ use crate::{
     widgets::alert::ErrorAlert,
 };
 use hypertext::{Renderable, maud};
+
+#[derive(Deserialize)]
+pub struct CreateMotionForm {
+    motion: String,
+    infoslide: Option<String>,
+}
+
+pub async fn create_motion(
+    Path((tid, rid)): Path<(String, String)>,
+    user: User<true>,
+    mut conn: Conn<true>,
+    Form(form): Form<CreateMotionForm>,
+) -> StandardResponse {
+    let tournament = Tournament::fetch(&tid, &mut *conn)?;
+    tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+
+    let motion = form.motion.trim();
+    if motion.is_empty() {
+        return bad_request(maud! { "Motion must not be empty." }.render());
+    }
+
+    let infoslide = form
+        .infoslide
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+
+    diesel::insert_into(motions_of_round::table)
+        .values((
+            motions_of_round::id.eq(uuid::Uuid::now_v7().to_string()),
+            motions_of_round::tournament_id.eq(&tid),
+            motions_of_round::round_id.eq(&rid),
+            motions_of_round::motion.eq(motion),
+            motions_of_round::infoslide.eq(infoslide),
+            motions_of_round::published_at.eq(None::<chrono::NaiveDateTime>),
+        ))
+        .execute(&mut *conn)
+        .unwrap();
+
+    let round_seq: i64 = rounds::table
+        .filter(rounds::id.eq(&rid))
+        .select(rounds::seq)
+        .first(&mut *conn)
+        .unwrap();
+
+    see_other_ok(Redirect::to(&format!(
+        "/tournaments/{}/rounds/{}/briefing",
+        tid, round_seq
+    )))
+}
 
 pub async fn publish_motions(
     Path((tid, rid)): Path<(String, String)>,

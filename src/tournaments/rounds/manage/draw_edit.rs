@@ -581,9 +581,11 @@ fn apply_move(
         if let Some(alloc) = debate_to_alloc_to {
             diesel::insert_into(judges_of_debate::table)
                 .values((
+                    judges_of_debate::id.eq(Uuid::now_v7().to_string()),
                     judges_of_debate::debate_id.eq(alloc.id),
                     judges_of_debate::judge_id.eq(judge.id),
                     judges_of_debate::status.eq(role.to_string()),
+                    judges_of_debate::tournament_id.eq(judge.tournament_id),
                 ))
                 .execute(&mut *conn)
                 .unwrap();

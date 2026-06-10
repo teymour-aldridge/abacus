@@ -1,14 +1,11 @@
-use axum::{
-    extract::{Extension, Form},
-    response::Redirect,
-};
+use axum::{extract::Form, response::Redirect};
+use chrono::Utc;
 use diesel::{prelude::*, result::DatabaseErrorKind};
 use hypertext::prelude::*;
 use serde::Deserialize;
 
 use crate::util_resp::bad_request;
 
-use crate::non_det::NonDet;
 use crate::schema::{org, tournaments};
 use crate::state::Conn;
 use crate::template::Page;
@@ -92,10 +89,9 @@ pub struct CreateTournamentForm {
 pub async fn do_create_tournament(
     user: User<true>,
     mut conn: Conn<true>,
-    Extension(non_det): Extension<NonDet>,
     Form(form): Form<CreateTournamentForm>,
 ) -> StandardResponse {
-    let tid = non_det.uuid_now_v7().to_string();
+    let tid = uuid::Uuid::now_v7().to_string();
 
     if !(4..=32).contains(&form.name.len()) {
         return bad_request(
@@ -116,7 +112,7 @@ pub async fn do_create_tournament(
             tournaments::name.eq(&form.name),
             tournaments::abbrv.eq(&form.abbrv),
             tournaments::slug.eq(&form.slug),
-            tournaments::created_at.eq(non_det.now_utc_naive()),
+            tournaments::created_at.eq(Utc::now().naive_utc()),
             tournaments::team_tab_public.eq(false),
             tournaments::speaker_tab_public.eq(false),
             tournaments::standings_public.eq(false),
@@ -170,7 +166,7 @@ pub async fn do_create_tournament(
 
     let n = diesel::insert_into(org::table)
         .values((
-            org::id.eq(non_det.uuid_now_v7().to_string()),
+            org::id.eq(uuid::Uuid::now_v7().to_string()),
             org::user_id.eq(user.id),
             org::tournament_id.eq(&tid),
             org::is_superuser.eq(true),

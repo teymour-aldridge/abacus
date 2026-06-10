@@ -81,6 +81,70 @@ fn run_workload(input: &WorkloadInput) -> WorkloadReport {
     report
 }
 
+#[test]
+fn team_standings_are_refreshed_when_completed_rounds_or_teams_change() {
+    for actions in [
+        vec![
+            Action::RegisterUser {
+                username: "bool".to_string(),
+                email: "d@q.edu".to_string(),
+                password: "Igecko".to_string(),
+            },
+            Action::CreateTournament {
+                name: "ibex".to_string(),
+                abbrv: "upZ".to_string(),
+                slug: String::new(),
+            },
+            Action::CreateRound {
+                tournament_idx: 65,
+                name: "otter".to_string(),
+                category_idx: None,
+                seq: 366268609,
+            },
+            Action::SetRoundCompleted {
+                tournament_idx: 110,
+                round_idx: 172,
+                completed: true,
+            },
+            Action::CreateTeam {
+                tournament_idx: 242,
+                name: "true".to_string(),
+                institution_idx: None,
+            },
+        ],
+        vec![
+            Action::RegisterUser {
+                username: "bool".to_string(),
+                email: "d@q.edu".to_string(),
+                password: "Igecko".to_string(),
+            },
+            Action::CreateTournament {
+                name: "lynx".to_string(),
+                abbrv: "nw".to_string(),
+                slug: String::new(),
+            },
+            Action::CreateRound {
+                tournament_idx: 65,
+                name: "lynx".to_string(),
+                category_idx: None,
+                seq: 366268609,
+            },
+            Action::CreateTeam {
+                tournament_idx: 242,
+                name: "true".to_string(),
+                institution_idx: None,
+            },
+            Action::SetRoundCompleted {
+                tournament_idx: 110,
+                round_idx: 172,
+                completed: true,
+            },
+        ],
+    ] {
+        run_workload(&WorkloadInput { actions });
+    }
+}
+
 fn build_database() -> Pool<ConnectionManager<diesel::SqliteConnection>> {
     let pool = Pool::builder()
         .max_size(1)

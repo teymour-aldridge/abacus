@@ -23,6 +23,7 @@ use crate::{
             },
         },
         snapshots::take_snapshot,
+        standings::compute::refresh_saved_team_standings,
     },
     util_resp::{StandardResponse, bad_request, see_other_ok, success},
 };
@@ -185,6 +186,7 @@ pub async fn do_create_team(
         .unwrap();
     assert_eq!(n, 1);
 
+    refresh_saved_team_standings(&tid, &mut *conn).unwrap();
     take_snapshot(&tid, &mut *conn);
 
     let _ = tx.send(Msg {

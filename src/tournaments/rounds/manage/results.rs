@@ -20,6 +20,7 @@ use crate::{
             ballots::{BallotRepr, aggregate::aggregate_ballot_set},
             draws::{DebateRepr, RoundDrawRepr},
         },
+        standings::compute::refresh_saved_team_standings,
     },
     util_resp::{
         StandardResponse, bad_request, err_not_found, see_other_ok, success,
@@ -276,6 +277,8 @@ pub async fn set_round_completed(
             );
         }
     }
+
+    refresh_saved_team_standings(&tournament_id, &mut *conn).unwrap();
 
     see_other_ok(Redirect::to(&format!(
         "/tournaments/{}/rounds/{}/results/manage",

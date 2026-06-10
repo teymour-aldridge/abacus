@@ -325,29 +325,11 @@ impl TeamStandings {
 
             match kind {
                 SerializableMetric::Rankable(rankable_team_metric) => {
-                    let pos =
-                        metrics.iter().position(|t| *t == rankable_team_metric);
-
-                    match pos {
-                        Some(pos) => {
-                            metrics_of_team
-                                .entry(team)
-                                .and_modify(|metrics: &mut Vec<_>| {
-                                    if metrics.len() - 1 <= pos {
-                                        metrics
-                                            .push((rankable_team_metric, value))
-                                    } else {
-                                        metrics.insert(
-                                            pos,
-                                            (rankable_team_metric, value),
-                                        )
-                                    }
-                                })
-                                .or_insert(vec![(rankable_team_metric, value)]);
-                        }
-                        None => {
-                            continue;
-                        }
+                    if metrics.contains(&rankable_team_metric) {
+                        metrics_of_team
+                            .entry(team)
+                            .or_insert_with(Vec::new)
+                            .push((rankable_team_metric, value));
                     }
                 }
                 SerializableMetric::NonRankable(unrankable_team_metric) => {
@@ -355,6 +337,12 @@ impl TeamStandings {
                         .insert((team, unrankable_team_metric), value);
                 }
             }
+        }
+
+        for metrics_of_team in metrics_of_team.values_mut() {
+            metrics_of_team.sort_by_key(|(kind, _)| {
+                metrics.iter().position(|needle| needle == kind).unwrap()
+            });
         }
 
         // assert that all team metrics are correctly sorted
@@ -427,10 +415,12 @@ impl TeamStandings {
                 }
             }
 
-            diesel::insert_into(team_metrics::table)
-                .values(records)
-                .execute(conn)
-                .unwrap();
+            if !records.is_empty() {
+                diesel::insert_into(team_metrics::table)
+                    .values(records)
+                    .execute(conn)
+                    .unwrap();
+            }
         };
 
         let _save_unranked_metrics = {
@@ -447,10 +437,12 @@ impl TeamStandings {
                 ));
             }
 
-            diesel::insert_into(team_metrics::table)
-                .values(records)
-                .execute(conn)
-                .unwrap();
+            if !records.is_empty() {
+                diesel::insert_into(team_metrics::table)
+                    .values(records)
+                    .execute(conn)
+                    .unwrap();
+            }
         };
 
         let _save_rankings = {
@@ -465,12 +457,21 @@ impl TeamStandings {
                 ));
             }
 
-            diesel::insert_into(team_standings::table)
-                .values(records)
-                .execute(conn)
-                .unwrap();
+            if !records.is_empty() {
+                diesel::insert_into(team_standings::table)
+                    .values(records)
+                    .execute(conn)
+                    .unwrap();
+            }
         };
 
         Ok(())
     }
+}
+
+pub fn refresh_saved_team_standings(
+    tid: &str,
+    conn: &mut impl LoadConnection<Backend = Sqlite>,
+) -> Result<(), diesel::result::Error> {
+    TeamStandings::recompute(tid, conn).save(tid, conn)
 }

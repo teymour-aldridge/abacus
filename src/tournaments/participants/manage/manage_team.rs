@@ -24,6 +24,7 @@ use crate::{
         },
         rounds::TournamentRounds,
         snapshots::take_snapshot,
+        standings::compute::refresh_saved_team_standings,
         teams::Team,
     },
     util_resp::{
@@ -243,6 +244,7 @@ pub async fn do_edit_team_details(
         .execute(&mut *conn)
         .unwrap();
 
+    refresh_saved_team_standings(&tournament.id, &mut *conn).unwrap();
     take_snapshot(&tournament.id, &mut *conn);
 
     let _ = tx.send(Msg {

@@ -14,7 +14,7 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
-const TABDA_DICTIONARY_STRINGS: [&str; 33] = [
+const TABDA_DICTIONARY_STRINGS: [&str; 48] = [
     "otter",
     "badger",
     "lynx",
@@ -48,6 +48,21 @@ const TABDA_DICTIONARY_STRINGS: [&str; 33] = [
     "false",
     "in_round",
     "-----",
+    "consensus",
+    "individual",
+    "wins",
+    "ballots",
+    "draw_strength_by_wins",
+    "draw_strength_by_speaks",
+    "total_speaker_score",
+    "avg_total_speaker_score",
+    "n_times_achieved_0",
+    "n_times_achieved_1",
+    "n_times_achieved_2",
+    "n_times_achieved_3",
+    "lowest_rank",
+    "highest_rank",
+    "random",
 ];
 
 type InnerStringMutator = fuzzcheck::mutators::grammar::ASTMutator;
@@ -523,6 +538,32 @@ pub enum Action {
         speaker_tab_public: bool,
         #[serde(default)]
         standings_public: bool,
+        #[serde(default)]
+        require_prelim_substantive_speaks: bool,
+        #[serde(default)]
+        require_prelim_speaker_order: bool,
+        #[serde(default)]
+        require_elim_substantive_speaks: bool,
+        #[serde(default)]
+        require_elim_speaker_order: bool,
+        #[serde(default)]
+        reply_speakers: bool,
+        #[serde(default)]
+        reply_must_speak: bool,
+    },
+    ApplyTournamentPreset {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        preset_idx: usize,
+    },
+    ViewTournamentPage {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        round_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        page_idx: usize,
     },
 
     // Participants
@@ -667,6 +708,24 @@ pub enum Action {
         #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         question_idx: usize,
     },
+    EditFeedbackQuestion {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        question_idx: usize,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
+        question: String,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
+        question_type: String,
+        seq: i64,
+    },
+    MoveFeedbackQuestion {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        question_idx: usize,
+        up: bool,
+    },
 
     // Rounds & Draws
     CreateRound {
@@ -683,6 +742,8 @@ pub enum Action {
         tournament_idx: usize,
         #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         round_idx: usize,
+        #[serde(default)]
+        force: bool,
     },
     SetDrawPublished {
         #[field_mutator(UsizeMutator = { make_usize_mutator() })]
@@ -919,6 +980,11 @@ impl<'a> ActionContext<'a> {
         assert_response_no_5xx(action, &path, &response);
     }
 
+    async fn get(&mut self, action: &str, path: String) {
+        let response = self.client.get(&path).await;
+        assert_response_no_5xx(action, &path, &response);
+    }
+
     async fn post_form<F>(&mut self, action: &str, path: String, form: &F)
     where
         F: ?Sized + Serialize,
@@ -1032,6 +1098,12 @@ impl Action {
                 team_tab_public,
                 speaker_tab_public,
                 standings_public,
+                require_prelim_substantive_speaks,
+                require_prelim_speaker_order,
+                require_elim_substantive_speaks,
+                require_elim_speaker_order,
+                reply_speakers,
+                reply_must_speak,
             } => {
                 let mut conn = pool.get().unwrap();
                 if let Some(tid) = get_id_by_idx!(
@@ -1052,6 +1124,16 @@ impl Action {
                         config.team_tab_public = team_tab_public;
                         config.speaker_tab_public = speaker_tab_public;
                         config.standings_public = standings_public;
+                        config.require_prelim_substantive_speaks =
+                            require_prelim_substantive_speaks;
+                        config.require_prelim_speaker_order =
+                            require_prelim_speaker_order;
+                        config.require_elim_substantive_speaks =
+                            require_elim_substantive_speaks;
+                        config.require_elim_speaker_order =
+                            require_elim_speaker_order;
+                        config.reply_speakers = reply_speakers;
+                        config.reply_must_speak = reply_must_speak;
                         let config = toml::to_string(&config).unwrap();
                         drop(conn);
                         let form = [("config", config)];
@@ -1061,6 +1143,125 @@ impl Action {
                             &form,
                         )
                         .await;
+                    }
+                }
+            }
+            Action::ApplyTournamentPreset {
+                tournament_idx,
+                preset_idx,
+            } => {
+                let mut conn = pool.get().unwrap();
+                if let (Some(tid), Some(preset_id)) = (
+                    get_id_by_idx!(
+                        &mut *conn,
+                        tournaments::table
+                            .select(tournaments::id)
+                            .order_by(tournaments::id),
+                        tournament_idx,
+                    ),
+                    get_id_by_idx!(
+                        &mut *conn,
+                        tournament_presets::table
+                            .select(tournament_presets::id)
+                            .order_by(tournament_presets::id),
+                        preset_idx,
+                    ),
+                ) {
+                    drop(conn);
+                    let form = [("preset_id", preset_id)];
+                    ctx.post_form(
+                        "ApplyTournamentPreset",
+                        format!("/tournaments/{}/configuration/preset", tid),
+                        &form,
+                    )
+                    .await;
+                }
+            }
+            Action::ViewTournamentPage {
+                tournament_idx,
+                round_idx,
+                page_idx,
+            } => {
+                let mut conn = pool.get().unwrap();
+                if let Some(tid) = get_id_by_idx!(
+                    &mut *conn,
+                    tournaments::table
+                        .select(tournaments::id)
+                        .order_by(tournaments::id),
+                    tournament_idx,
+                ) {
+                    let round_count = rounds::table
+                        .filter(rounds::tournament_id.eq(&tid))
+                        .count()
+                        .get_result::<i64>(&mut *conn)
+                        .unwrap_or(0);
+                    let round_seq = if round_count == 0 {
+                        None
+                    } else {
+                        rounds::table
+                            .filter(rounds::tournament_id.eq(&tid))
+                            .select(rounds::seq)
+                            .order_by(rounds::id)
+                            .offset((round_idx as i64) % round_count)
+                            .limit(1)
+                            .get_result::<i64>(&mut *conn)
+                            .ok()
+                    };
+                    drop(conn);
+
+                    let round_path = |suffix: &str| {
+                        round_seq.as_ref().map(|seq| {
+                            format!(
+                                "/tournaments/{}/rounds/{}{}",
+                                tid, seq, suffix
+                            )
+                        })
+                    };
+                    let path = match page_idx % 22 {
+                        0 => Some(format!("/tournaments/{}", tid)),
+                        1 => Some(format!("/tournaments/{}/manage", tid)),
+                        2 => Some(format!("/tournaments/{}/participants", tid)),
+                        3 => Some(format!(
+                            "/tournaments/{}/participants/privateurls",
+                            tid
+                        )),
+                        4 => Some(format!("/tournaments/{}/rooms", tid)),
+                        5 => {
+                            Some(format!("/tournaments/{}/configuration", tid))
+                        }
+                        6 => Some(format!(
+                            "/tournaments/{}/configuration/custom",
+                            tid
+                        )),
+                        7 => Some(format!(
+                            "/tournaments/{}/feedback/manage",
+                            tid
+                        )),
+                        8 => {
+                            Some(format!("/tournaments/{}/feedback/table", tid))
+                        }
+                        9 => Some(format!("/tournaments/{}/rounds", tid)),
+                        10 => {
+                            Some(format!("/tournaments/{}/rounds/create", tid))
+                        }
+                        11 => Some(format!(
+                            "/tournaments/{}/standings/teams",
+                            tid
+                        )),
+                        12 => Some(format!("/tournaments/{}/tab/team", tid)),
+                        13 => Some(format!("/tournaments/{}/motions", tid)),
+                        14 => round_path(""),
+                        15 => round_path("/setup"),
+                        16 => round_path("/draw/manage"),
+                        17 => round_path("/briefing"),
+                        18 => round_path("/results/manage"),
+                        19 => round_path("/availability/judges"),
+                        20 => round_path("/availability/teams"),
+                        21 => round_path("/ballots"),
+                        _ => unreachable!(),
+                    };
+                    if let Some(path) = path {
+                        ctx.get("ViewTournamentPage", path).await;
                     }
                 }
             }
@@ -1729,6 +1930,84 @@ impl Action {
                     }
                 }
             }
+            Action::EditFeedbackQuestion {
+                tournament_idx,
+                question_idx,
+                question,
+                question_type,
+                seq,
+            } => {
+                let mut conn = pool.get().unwrap();
+                if let Some(tid) = get_id_by_idx!(
+                    &mut *conn,
+                    tournaments::table
+                        .select(tournaments::id)
+                        .order_by(tournaments::id),
+                    tournament_idx,
+                ) {
+                    if let Some(q_id) = get_id_by_idx!(
+                        &mut *conn,
+                        feedback_questions::table
+                            .filter(feedback_questions::tournament_id.eq(&tid))
+                            .select(feedback_questions::id)
+                            .order_by(feedback_questions::id),
+                        question_idx,
+                    ) {
+                        drop(conn);
+                        let form = [
+                            ("question_id", q_id.clone()),
+                            ("question", question),
+                            ("kind", question_type),
+                            ("seq", seq.to_string()),
+                        ];
+                        ctx.post_form(
+                            "EditFeedbackQuestion",
+                            format!(
+                                "/tournaments/{}/feedback/manage/{}/edit",
+                                tid, q_id
+                            ),
+                            &form,
+                        )
+                        .await;
+                    }
+                }
+            }
+            Action::MoveFeedbackQuestion {
+                tournament_idx,
+                question_idx,
+                up,
+            } => {
+                let mut conn = pool.get().unwrap();
+                if let Some(tid) = get_id_by_idx!(
+                    &mut *conn,
+                    tournaments::table
+                        .select(tournaments::id)
+                        .order_by(tournaments::id),
+                    tournament_idx,
+                ) {
+                    if let Some(q_id) = get_id_by_idx!(
+                        &mut *conn,
+                        feedback_questions::table
+                            .filter(feedback_questions::tournament_id.eq(&tid))
+                            .select(feedback_questions::id)
+                            .order_by(feedback_questions::id),
+                        question_idx,
+                    ) {
+                        drop(conn);
+                        let form = [("question_id", q_id)];
+                        let direction = if up { "up" } else { "down" };
+                        ctx.post_form(
+                            "MoveFeedbackQuestion",
+                            format!(
+                                "/tournaments/{}/feedback/manage/{}",
+                                tid, direction
+                            ),
+                            &form,
+                        )
+                        .await;
+                    }
+                }
+            }
             Action::CreateRound {
                 tournament_idx,
                 name,
@@ -1776,6 +2055,7 @@ impl Action {
             Action::GenerateDraw {
                 tournament_idx,
                 round_idx,
+                force,
             } => {
                 let mut conn = pool.get().unwrap();
                 if let Some(tid) = get_id_by_idx!(
@@ -1794,11 +2074,12 @@ impl Action {
                         round_idx,
                     ) {
                         drop(conn);
+                        let force = if force { "?force=true" } else { "" };
                         ctx.post(
                             "GenerateDraw",
                             format!(
-                                "/tournaments/{}/rounds/{}/draws/create",
-                                tid, rid
+                                "/tournaments/{}/rounds/{}/draws/create{}",
+                                tid, rid, force
                             ),
                         )
                         .await;

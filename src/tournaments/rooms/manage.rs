@@ -262,6 +262,21 @@ pub async fn create_room(
         );
     }
 
+    let duplicate_name = diesel::dsl::select(diesel::dsl::exists(
+        rooms::table.filter(
+            rooms::tournament_id
+                .eq(&tournament.id)
+                .and(rooms::name.eq(&form.name)),
+        ),
+    ))
+    .get_result::<bool>(&mut *conn)
+    .map_err(FailureResponse::from)?;
+    if duplicate_name {
+        return bad_request(
+            maud! {p {"A room with this name already exists."}}.render(),
+        );
+    }
+
     let new_room = Room {
         id: uuid::Uuid::now_v7().to_string(),
         tournament_id: tid.clone(),

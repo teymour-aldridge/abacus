@@ -141,6 +141,17 @@ pub async fn do_generate_draw(
             );
         }
 
+        if round.completed {
+            return DrawResult::DrawError(
+                MakeDrawError::InvalidConfiguration(
+                    "completed rounds cannot have their draw regenerated"
+                        .to_string(),
+                ),
+                tournament,
+                round,
+            );
+        }
+
         if let Some(round) =
             round.preceeding_incomplete_round_of_lowest_seq(&mut conn)
         {

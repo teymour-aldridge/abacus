@@ -36,7 +36,7 @@ pub fn draw_strength_of_teams(
     );
 
     let mut ds: HashMap<String, i64> =
-        HashMap::with_capacity(team_points.len());
+        team_points.keys().map(|team| (team.clone(), 0)).collect();
 
     for (_, teams) in teams_of_debate {
         for team_a in &teams {

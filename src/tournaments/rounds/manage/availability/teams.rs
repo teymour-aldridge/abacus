@@ -142,7 +142,12 @@ pub async fn view_team_availability(
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
     let rounds = TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
-    let current_rounds = Round::current_rounds(&tournament.id, &mut *conn);
+    let selected_rounds =
+        Round::of_seq(round_seq as i64, &tournament.id, &mut *conn);
+
+    if selected_rounds.is_empty() {
+        return err_not_found();
+    }
 
     let teams = teams::table
         .filter(teams::tournament_id.eq(&tournament_id))
@@ -163,12 +168,12 @@ pub async fn view_team_availability(
             )
             .user(user)
             .tournament(tournament.clone())
-            .current_rounds(current_rounds.clone())
+            .current_rounds(Round::current_rounds(&tournament.id, &mut *conn))
             .body(maud! {
                 SidebarWrapper rounds=(&rounds) tournament=(&tournament) active_page=(Some(crate::tournaments::manage::sidebar::SidebarPage::Setup)) selected_seq=(Some(round_seq as i64)) {
                     h1 {
                         "Manage availabilities for rounds "
-                        @for (i, round) in current_rounds.iter().enumerate() {
+                        @for (i, round) in selected_rounds.iter().enumerate() {
                             @if i > 0 {
                                 ", "
                             }
@@ -176,7 +181,7 @@ pub async fn view_team_availability(
                         }
                     }
                     div class = "row mt-3 mb-3" {
-                        @for round in &current_rounds {
+                        @for round in &selected_rounds {
                             div class="col-md-auto" {
                                 form method="post" action=(format!("/tournaments/{tournament_id}/rounds/{}/availability/teams/all?check=in", round.id)) {
                                     button type="submit" class="btn btn-primary" {
@@ -195,7 +200,7 @@ pub async fn view_team_availability(
                     }
                     ManageAvailabilityTable
                         tournament_id=(&tournament_id)
-                        rounds=(&current_rounds)
+                        rounds=(&selected_rounds)
                         teams=(&teams)
                         teams_and_availability=(&teams_and_availability);
                 }

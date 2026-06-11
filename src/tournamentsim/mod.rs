@@ -256,3 +256,41 @@ fn fuzz_regression_dda7db76ef12f900() {
         ],
     });
 }
+
+#[test]
+fn fuzz_regression_bee2ecfb0de2efff() {
+    harness::run_workload(&WorkloadInput {
+        actions: vec![
+            Action::RegisterUser {
+                username: "on*".to_string(),
+                email: "d@r.com".to_string(),
+                password: "badger".to_string(),
+            },
+            Action::CreateTournament {
+                name: "true".to_string(),
+                abbrv: "on".to_string(),
+                slug: String::new(),
+            },
+            Action::CreateRound {
+                tournament_idx: 193,
+                name: "down".to_string(),
+                category_idx: None,
+                seq: 3958213056,
+            },
+            Action::SetRoundCompleted {
+                tournament_idx: 133,
+                round_idx: 159,
+                completed: true,
+            },
+            Action::CreateTeam {
+                tournament_idx: 160,
+                name: "lynx".to_string(),
+                institution_idx: None,
+            },
+            Action::ApplyTournamentPreset {
+                tournament_idx: 122,
+                preset_idx: 179,
+            },
+        ],
+    });
+}

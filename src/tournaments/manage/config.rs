@@ -22,6 +22,7 @@ use crate::{
     template::Page,
     tournaments::{
         Tournament, manage::sidebar::SidebarWrapper, rounds::TournamentRounds,
+        standings::compute::refresh_saved_team_standings,
     },
     util_resp::{
         FailureResponse, StandardResponse, bad_request, see_other_ok, success,
@@ -379,6 +380,7 @@ pub async fn update_tournament_configuration(
     let new_config = parse_tournament_config(&form.config, &user, &tournament)?;
     apply_tournament_config(&tournament, new_config, &mut *conn)
         .map_err(|err| config_update_error_response(&user, &tournament, err))?;
+    refresh_saved_team_standings(&tournament.id, &mut *conn)?;
 
     see_other_ok(Redirect::to(&format!("/tournaments/{}", &tournament.id)))
 }
@@ -399,6 +401,7 @@ pub async fn apply_tournament_preset(
         parse_tournament_config(&preset.config, &user, &tournament)?;
     apply_tournament_config(&tournament, new_config, &mut *conn)
         .map_err(|err| config_update_error_response(&user, &tournament, err))?;
+    refresh_saved_team_standings(&tournament.id, &mut *conn)?;
 
     see_other_ok(Redirect::to(&format!("/tournaments/{}", &tournament.id)))
 }

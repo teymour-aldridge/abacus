@@ -3,6 +3,7 @@ use diesel::prelude::*;
 use crate::schema::rounds;
 
 pub mod atss;
+pub mod ballots;
 pub mod draw_strength;
 pub mod n_times_specific_result;
 pub mod points;

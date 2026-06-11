@@ -13,6 +13,7 @@ use crate::tournaments::config::{
     PullupMetric, RankableTeamMetric, UnrankableTeamMetric,
 };
 use crate::tournaments::standings::compute::metrics::atss;
+use crate::tournaments::standings::compute::metrics::ballots::ballot_points_of_team;
 use crate::tournaments::standings::compute::metrics::draw_strength::draw_strength_of_teams;
 use crate::tournaments::standings::compute::metrics::n_times_specific_result::times_team_achieved_p_points;
 use crate::tournaments::standings::compute::metrics::points::points_of_team;
@@ -166,8 +167,13 @@ impl TeamStandings {
                         .collect();
                     atss::atss((tid, tss), conn)
                 }
-                RankableTeamMetric::Ballots
-                | RankableTeamMetric::DrawStrengthBySpeaks => todo!(),
+                RankableTeamMetric::Ballots => {
+                    ballot_points_of_team((tid,), conn)
+                        .into_iter()
+                        .map(|(k, v)| (k, rust_decimal::Decimal::from(v)))
+                        .collect()
+                }
+                RankableTeamMetric::DrawStrengthBySpeaks => todo!(),
             };
 
             for (k, v) in val2merge {

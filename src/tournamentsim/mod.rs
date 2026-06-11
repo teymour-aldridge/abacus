@@ -161,3 +161,30 @@ fn duplicate_room_constraints_are_idempotent() {
         ],
     });
 }
+
+#[test]
+fn applying_preset_then_viewing_team_tab_does_not_error() {
+    harness::run_workload(&WorkloadInput {
+        actions: vec![
+            Action::RegisterUser {
+                username: "*on".to_string(),
+                email: "d@r.com".to_string(),
+                password: "badger".to_string(),
+            },
+            Action::CreateTournament {
+                name: "true".to_string(),
+                abbrv: "on".to_string(),
+                slug: String::new(),
+            },
+            Action::ApplyTournamentPreset {
+                tournament_idx: 6,
+                preset_idx: 113,
+            },
+            Action::ViewTournamentPage {
+                tournament_idx: 0,
+                round_idx: 171,
+                page_idx: 122,
+            },
+        ],
+    });
+}

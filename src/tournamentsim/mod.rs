@@ -188,3 +188,32 @@ fn applying_preset_then_viewing_team_tab_does_not_error() {
         ],
     });
 }
+
+#[test]
+fn briefing_room_handles_new_round_without_draw() {
+    harness::run_workload(&WorkloadInput {
+        actions: vec![
+            Action::RegisterUser {
+                username: "*on".to_string(),
+                email: "d@r.com".to_string(),
+                password: "badger".to_string(),
+            },
+            Action::CreateTournament {
+                name: "true".to_string(),
+                abbrv: "on".to_string(),
+                slug: String::new(),
+            },
+            Action::CreateRound {
+                tournament_idx: 81,
+                name: "otter".to_string(),
+                category_idx: None,
+                seq: 4043524234,
+            },
+            Action::ViewTournamentPage {
+                tournament_idx: 136,
+                round_idx: 95,
+                page_idx: 61,
+            },
+        ],
+    });
+}

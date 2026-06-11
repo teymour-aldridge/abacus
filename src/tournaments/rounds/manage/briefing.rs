@@ -1,8 +1,4 @@
-use axum::{
-    Form,
-    extract::{Path, State},
-    response::Redirect,
-};
+use axum::{Form, extract::Path, response::Redirect};
 use chrono::Utc;
 use diesel::prelude::*;
 use hypertext::prelude::*;
@@ -12,7 +8,7 @@ use std::collections::HashMap;
 use crate::{
     auth::User,
     schema::{motions_of_round, rounds},
-    state::{AppState, Conn},
+    state::Conn,
     template::Page,
     tournaments::{
         Tournament,
@@ -136,15 +132,14 @@ impl Renderable for BriefingRoomView {
 }
 
 pub async fn get_briefing_room(
-    State(state): State<AppState>,
-    user: User<true>,
     Path((tournament_id, round_seq)): Path<(String, i64)>,
-) -> impl axum::response::IntoResponse {
-    let mut conn = state.pool.get().unwrap();
-    let tournament = Tournament::fetch(&tournament_id, &mut conn).unwrap();
-    let all_rounds =
-        TournamentRounds::fetch(&tournament_id, &mut conn).unwrap();
-    let rounds = Round::of_seq(round_seq, &tournament_id, &mut conn);
+    user: User<true>,
+    mut conn: Conn<true>,
+) -> StandardResponse {
+    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
+    tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+    let all_rounds = TournamentRounds::fetch(&tournament_id, &mut *conn)?;
+    let rounds = Round::of_seq(round_seq, &tournament_id, &mut *conn);
 
     let can_publish_motions: HashMap<String, bool> = rounds
         .iter()
@@ -152,7 +147,7 @@ pub async fn get_briefing_room(
             let has_motions = motions_of_round::table
                 .filter(motions_of_round::round_id.eq(&round.id))
                 .count()
-                .get_result::<i64>(&mut conn)
+                .get_result::<i64>(&mut *conn)
                 .unwrap_or(0)
                 > 0;
 
@@ -160,7 +155,7 @@ pub async fn get_briefing_room(
                 .filter(motions_of_round::round_id.eq(&round.id))
                 .filter(motions_of_round::published_at.is_null())
                 .count()
-                .get_result::<i64>(&mut conn)
+                .get_result::<i64>(&mut *conn)
                 .unwrap_or(0)
                 > 0;
 

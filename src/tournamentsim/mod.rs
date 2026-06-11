@@ -118,3 +118,46 @@ fn room_creation_accepts_fuzzer_priority_extremes() {
         ],
     });
 }
+
+#[test]
+fn duplicate_room_constraints_are_idempotent() {
+    harness::run_workload(&WorkloadInput {
+        actions: vec![
+            Action::RegisterUser {
+                username: "lynx".to_string(),
+                email: "d@r.com".to_string(),
+                password: "badger".to_string(),
+            },
+            Action::CreateTournament {
+                name: "true".to_string(),
+                abbrv: "on".to_string(),
+                slug: String::new(),
+            },
+            Action::CreateJudge {
+                tournament_idx: 73,
+                name: String::new(),
+                email: "o@h.com".to_string(),
+                institution_idx: None,
+            },
+            Action::CreateRoomCategory {
+                tournament_idx: 81,
+                name: None,
+                private_name: String::new(),
+                public_name: String::new(),
+                description: String::new(),
+            },
+            Action::AddConstraint {
+                tournament_idx: 129,
+                ptype: "judge".to_string(),
+                pid_idx: 164,
+                category_idx: 153,
+            },
+            Action::AddConstraint {
+                tournament_idx: 129,
+                ptype: "judge".to_string(),
+                pid_idx: 164,
+                category_idx: 153,
+            },
+        ],
+    });
+}

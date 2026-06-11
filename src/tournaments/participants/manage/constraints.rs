@@ -457,45 +457,75 @@ pub async fn add_constraint(
     conn.transaction(|conn| {
         match ptype {
             ParticipantType::Speaker => {
-                let max_pref = speaker_room_constraints::table
+                let exists = speaker_room_constraints::table
                     .filter(
                         speaker_room_constraints::speaker_id
                             .eq(&participant_id),
                     )
-                    .select(diesel::dsl::max(speaker_room_constraints::pref))
-                    .first::<Option<i64>>(conn)?
-                    .unwrap_or(0);
+                    .filter(
+                        speaker_room_constraints::category_id
+                            .eq(&form.category_id),
+                    )
+                    .first::<SpeakerRoomConstraint>(conn)
+                    .optional()?;
 
-                let constraint = SpeakerRoomConstraint {
-                    id: uuid::Uuid::new_v4().to_string(),
-                    speaker_id: participant_id.clone(),
-                    category_id: form.category_id.clone(),
-                    pref: max_pref + 1,
-                    tournament_id: tournament.id.clone(),
-                };
-                diesel::insert_into(speaker_room_constraints::table)
-                    .values(&constraint)
-                    .execute(conn)?;
+                if exists.is_none() {
+                    let max_pref = speaker_room_constraints::table
+                        .filter(
+                            speaker_room_constraints::speaker_id
+                                .eq(&participant_id),
+                        )
+                        .select(diesel::dsl::max(
+                            speaker_room_constraints::pref,
+                        ))
+                        .first::<Option<i64>>(conn)?
+                        .unwrap_or(0);
+
+                    let constraint = SpeakerRoomConstraint {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        speaker_id: participant_id.clone(),
+                        category_id: form.category_id.clone(),
+                        pref: max_pref + 1,
+                        tournament_id: tournament.id.clone(),
+                    };
+                    diesel::insert_into(speaker_room_constraints::table)
+                        .values(&constraint)
+                        .execute(conn)?;
+                }
             }
             ParticipantType::Judge => {
-                let max_pref = judge_room_constraints::table
+                let exists = judge_room_constraints::table
                     .filter(
                         judge_room_constraints::judge_id.eq(&participant_id),
                     )
-                    .select(diesel::dsl::max(judge_room_constraints::pref))
-                    .first::<Option<i64>>(conn)?
-                    .unwrap_or(0);
+                    .filter(
+                        judge_room_constraints::category_id
+                            .eq(&form.category_id),
+                    )
+                    .first::<JudgeRoomConstraint>(conn)
+                    .optional()?;
 
-                let constraint = JudgeRoomConstraint {
-                    id: uuid::Uuid::new_v4().to_string(),
-                    judge_id: participant_id.clone(),
-                    category_id: form.category_id.clone(),
-                    pref: max_pref + 1,
-                    tournament_id: tournament.id.clone(),
-                };
-                diesel::insert_into(judge_room_constraints::table)
-                    .values(&constraint)
-                    .execute(conn)?;
+                if exists.is_none() {
+                    let max_pref = judge_room_constraints::table
+                        .filter(
+                            judge_room_constraints::judge_id
+                                .eq(&participant_id),
+                        )
+                        .select(diesel::dsl::max(judge_room_constraints::pref))
+                        .first::<Option<i64>>(conn)?
+                        .unwrap_or(0);
+
+                    let constraint = JudgeRoomConstraint {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        judge_id: participant_id.clone(),
+                        category_id: form.category_id.clone(),
+                        pref: max_pref + 1,
+                        tournament_id: tournament.id.clone(),
+                    };
+                    diesel::insert_into(judge_room_constraints::table)
+                        .values(&constraint)
+                        .execute(conn)?;
+                }
             }
         }
 

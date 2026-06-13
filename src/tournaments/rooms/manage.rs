@@ -1,6 +1,9 @@
 use crate::{
     auth::User,
-    schema::{room_categories, rooms, rooms_of_category},
+    schema::{
+        judge_room_constraints, room_categories, rooms, rooms_of_category,
+        speaker_room_constraints,
+    },
     state::Conn,
     template::Page,
     tournaments::{
@@ -350,10 +353,28 @@ pub async fn delete_category(
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
-    diesel::delete(
-        room_categories::table.filter(room_categories::id.eq(cat_id)),
-    )
-    .execute(&mut *conn)
+    conn.transaction(|conn| {
+        diesel::delete(
+            speaker_room_constraints::table
+                .filter(speaker_room_constraints::category_id.eq(&cat_id)),
+        )
+        .execute(conn)?;
+        diesel::delete(
+            judge_room_constraints::table
+                .filter(judge_room_constraints::category_id.eq(&cat_id)),
+        )
+        .execute(conn)?;
+        diesel::delete(
+            rooms_of_category::table
+                .filter(rooms_of_category::category_id.eq(&cat_id)),
+        )
+        .execute(conn)?;
+        diesel::delete(
+            room_categories::table.filter(room_categories::id.eq(&cat_id)),
+        )
+        .execute(conn)?;
+        Ok::<_, diesel::result::Error>(())
+    })
     .map_err(FailureResponse::from)?;
 
     see_other_ok(Redirect::to(&format!("/tournaments/{}/rooms", tid)))

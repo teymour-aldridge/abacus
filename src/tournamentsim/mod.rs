@@ -381,3 +381,132 @@ fn release_full_draw_requires_motion() {
         ],
     });
 }
+
+#[test]
+fn fuzz_regression_7ac30aecdb5ffdaf() {
+    harness::run_workload(&WorkloadInput {
+        actions: vec![
+            Action::RegisterUser {
+                username: "out".to_string(),
+                email: "l@u.org".to_string(),
+                password: "badger".to_string(),
+            },
+            Action::CreateTournament {
+                name: "ibex".to_string(),
+                abbrv: ",l".to_string(),
+                slug: String::new(),
+            },
+            Action::CreateRoom {
+                tournament_idx: 97,
+                name: String::new(),
+                priority: 157038913731170864,
+            },
+            Action::CreateRound {
+                tournament_idx: 148,
+                name: "lynx".to_string(),
+                category_idx: None,
+                seq: 4019972498,
+            },
+            Action::CreateTeam {
+                tournament_idx: 125,
+                name: "Xout".to_string(),
+                institution_idx: None,
+            },
+            Action::CreateTeam {
+                tournament_idx: 125,
+                name: "Xout".to_string(),
+                institution_idx: None,
+            },
+            Action::CreateTeam {
+                tournament_idx: 125,
+                name: "Xout".to_string(),
+                institution_idx: None,
+            },
+            Action::CreateTeam {
+                tournament_idx: 164,
+                name: "lynx".to_string(),
+                institution_idx: None,
+            },
+            Action::UpdateAllTeamEligibility {
+                tournament_idx: 182,
+                round_idx: 64,
+                eligible: true,
+            },
+            Action::GenerateDraw {
+                tournament_idx: 142,
+                round_idx: 67,
+                force: true,
+            },
+            Action::MoveRoom {
+                tournament_idx: 46,
+                round_idx: 189,
+                room_idx: 150,
+                debate_idx: 106,
+                assign: true,
+            },
+            Action::CreateJudge {
+                tournament_idx: 153,
+                name: String::new(),
+                email: "d@l.org".to_string(),
+                institution_idx: None,
+            },
+            Action::CreateRoomCategory {
+                tournament_idx: 123,
+                name: None,
+                private_name: String::new(),
+                public_name: String::new(),
+                description: String::new(),
+            },
+            Action::AddConstraint {
+                tournament_idx: 245,
+                ptype: "judge".to_string(),
+                pid_idx: 156,
+                category_idx: 138,
+            },
+            Action::DeleteRoomCategory {
+                tournament_idx: 0,
+                category_idx: 85,
+            },
+            Action::ViewTournamentPage {
+                tournament_idx: 83,
+                round_idx: 8,
+                page_idx: 225,
+            },
+            Action::MoveJudge {
+                tournament_idx: 130,
+                round_idx: 136,
+                judge_idx: 241,
+                debate_idx: 81,
+                role: String::new(),
+                assign: true,
+            },
+            Action::ViewTournamentPage {
+                tournament_idx: 233,
+                round_idx: 160,
+                page_idx: 70,
+            },
+            Action::CreateRound {
+                tournament_idx: 148,
+                name: "lynx".to_string(),
+                category_idx: None,
+                seq: 4019972498,
+            },
+            Action::ViewTournamentPage {
+                tournament_idx: 119,
+                round_idx: 40,
+                page_idx: 97,
+            },
+            Action::SetDrawPublished {
+                tournament_idx: 178,
+                round_idx: 159,
+                status: "d".to_string(),
+                published: Some(true),
+            },
+            Action::SetRoundCompleted {
+                tournament_idx: 236,
+                round_idx: 23,
+                completed: true,
+            },
+        ],
+    });
+}

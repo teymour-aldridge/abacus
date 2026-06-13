@@ -654,3 +654,99 @@ fn fuzz_regression_7ac30aecdb5ffdaf() {
         ],
     });
 }
+
+#[test]
+fn fuzz_regression_a633fc1777f8b51f() {
+    harness::run_workload(&WorkloadInput {
+        actions: vec![
+            Action::RegisterUser {
+                username: "otter".to_string(),
+                email: "g@r.org".to_string(),
+                password: "badger".to_string(),
+            },
+            Action::CreateTournament {
+                name: "ibex".to_string(),
+                abbrv: ",l".to_string(),
+                slug: String::new(),
+            },
+            Action::CreateRound {
+                tournament_idx: 148,
+                name: "lynx".to_string(),
+                category_idx: None,
+                seq: 4019972498,
+            },
+            Action::CreateTeam {
+                tournament_idx: 125,
+                name: "Xout".to_string(),
+                institution_idx: None,
+            },
+            Action::CreateTeam {
+                tournament_idx: 125,
+                name: "Xout".to_string(),
+                institution_idx: None,
+            },
+            Action::CreateTeam {
+                tournament_idx: 125,
+                name: "Xout".to_string(),
+                institution_idx: None,
+            },
+            Action::CreateTeam {
+                tournament_idx: 164,
+                name: "lynx".to_string(),
+                institution_idx: None,
+            },
+            Action::UpdateAllTeamEligibility {
+                tournament_idx: 182,
+                round_idx: 64,
+                eligible: true,
+            },
+            Action::UpdateTournamentConfiguration {
+                tournament_idx: 32,
+                name: None,
+                abbrv: None,
+                slug: None,
+                show_draws: true,
+                show_round_results: false,
+                team_tab_public: true,
+                speaker_tab_public: false,
+                standings_public: true,
+                require_prelim_substantive_speaks: true,
+                require_prelim_speaker_order: true,
+                require_elim_substantive_speaks: false,
+                require_elim_speaker_order: false,
+                reply_speakers: true,
+                reply_must_speak: true,
+            },
+            Action::CreateMotion {
+                tournament_idx: 235,
+                round_idx: 46,
+                motion: "O".to_string(),
+                infoslide: None,
+            },
+            Action::GenerateDraw {
+                tournament_idx: 134,
+                round_idx: 101,
+                force: false,
+            },
+            Action::CreateJudge {
+                tournament_idx: 153,
+                name: String::new(),
+                email: "v@g.org".to_string(),
+                institution_idx: None,
+            },
+            Action::MoveJudge {
+                tournament_idx: 130,
+                round_idx: 136,
+                judge_idx: 241,
+                debate_idx: 81,
+                role: String::new(),
+                assign: true,
+            },
+            Action::ViewTournamentPage {
+                tournament_idx: 244,
+                round_idx: 153,
+                page_idx: 185,
+            },
+        ],
+    });
+}

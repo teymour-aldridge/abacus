@@ -213,6 +213,13 @@ fn tournament_with_config(
 fn validate_config_in_isolation(config: &TournamentConfig) -> Vec<String> {
     let mut problems = Vec::new();
 
+    if config.reply_speakers && config.teams_per_side != 1 {
+        problems.push(
+            "`reply_speakers` is only supported when `teams_per_side = 1`."
+                .to_string(),
+        );
+    }
+
     if config.require_prelim_substantive_speaks
         && !config.require_prelim_speaker_order
     {

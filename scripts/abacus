@@ -1,0 +1,144 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage:
+  abacus serve [TOURNAMENT_PRESET] [--release] [--database-url PATH_OR_URL] [-- ARGS...]
+  abacus test [--rust-only] [--frontend-only] [-- ARGS...]
+  abacus help
+
+Environment:
+  DATABASE_URL                         default: sqlite.db
+
+Tournament presets:
+  bp88team                             import teams, judges, rooms, and rounds before serving
+EOF
+}
+
+serve() {
+  local release=0
+  local database_url="${DATABASE_URL:-sqlite.db}"
+  local tournament_preset=""
+  local cargo_args=()
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --release)
+        release=1
+        shift
+        ;;
+      --database-url)
+        database_url="$2"
+        shift 2
+        ;;
+      --)
+        shift
+        cargo_args+=("$@")
+        break
+        ;;
+      -*)
+        echo "unknown serve argument: $1" >&2
+        exit 2
+        ;;
+      *)
+        if [[ -z "$tournament_preset" ]]; then
+          tournament_preset="$1"
+        else
+          cargo_args+=("$1")
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  if [[ -n "$tournament_preset" ]]; then
+    import_tournament_preset "$tournament_preset" "$database_url"
+  fi
+
+  if [[ "$release" == "1" ]]; then
+    DATABASE_URL="$database_url" cargo run --release --bin abacus -- "${cargo_args[@]}"
+  else
+    DATABASE_URL="$database_url" cargo run --bin abacus -- "${cargo_args[@]}"
+  fi
+}
+
+import_tournament_preset() {
+  local preset="$1"
+  local database_url="$2"
+
+  case "$preset" in
+    bp88team)
+      if [[ "$database_url" == ":memory:" ]]; then
+        echo "abacus serve bp88team requires a file-backed SQLite DATABASE_URL" >&2
+        exit 2
+      fi
+
+      if [[ -f "$database_url" ]] && sqlite3 "$database_url" "select count(*) from tournaments where slug = 'bp88team';" 2>/dev/null | grep -qx "1"; then
+        return
+      fi
+
+      DATABASE_URL="$database_url" cargo run --bin testdata -- "$database_url" --teams --judges --rooms --rounds
+      ;;
+    *)
+      echo "unknown tournament preset: $preset" >&2
+      echo "supported tournament presets: bp88team" >&2
+      exit 2
+      ;;
+  esac
+}
+
+test_all() {
+  local rust=1
+  local frontend=1
+  local cargo_args=()
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --rust-only)
+        frontend=0
+        shift
+        ;;
+      --frontend-only)
+        rust=0
+        shift
+        ;;
+      --)
+        shift
+        cargo_args+=("$@")
+        break
+        ;;
+      *)
+        cargo_args+=("$1")
+        shift
+        ;;
+    esac
+  done
+
+  if [[ "$frontend" == "1" ]]; then
+    npm run build --prefix frontend
+  fi
+
+  if [[ "$rust" == "1" ]]; then
+    cargo test --locked --all-targets "${cargo_args[@]}"
+  fi
+}
+
+case "${1:-help}" in
+  serve)
+    shift
+    serve "$@"
+    ;;
+  test)
+    shift
+    test_all "$@"
+    ;;
+  help|-h|--help)
+    usage
+    ;;
+  *)
+    echo "unknown command: $1" >&2
+    usage >&2
+    exit 2
+    ;;
+esac

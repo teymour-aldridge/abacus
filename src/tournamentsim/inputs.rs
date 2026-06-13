@@ -1528,7 +1528,13 @@ impl Action {
                                             .eq(judges_of_debate::debate_id),
                                     )
                                 )
+                                .inner_join(
+                                    rounds::table.on(
+                                        rounds::id.eq(debates::round_id),
+                                    )
+                                )
                                 .filter(debates::tournament_id.eq(&tid))
+                                .filter(rounds::draw_status.eq("released_full"))
                                 .select((
                                     judges_of_debate::debate_id,
                                     judges_of_debate::judge_id,

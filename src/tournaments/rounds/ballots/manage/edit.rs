@@ -26,6 +26,16 @@ use crate::{
     util_resp::{StandardResponse, err_not_found, see_other_ok, success},
 };
 
+fn redirect_to_ballot_set(
+    tournament_id: &str,
+    debate_id: &str,
+) -> StandardResponse {
+    see_other_ok(Redirect::to(&format!(
+        "/tournaments/{}/debates/{}/ballots",
+        tournament_id, debate_id
+    )))
+}
+
 #[derive(Serialize, Deserialize)]
 /// Ballot form used for judges to submit ballots, and for tab directors to
 /// edit them behind the scenes.
@@ -204,6 +214,11 @@ pub async fn edit_ballot_page(
         "ballot edit requires at least one motion"
     );
 
+    // todo: set flash message explaining why the redirect happened
+    if round.draw_status != "released_full" {
+        return redirect_to_ballot_set(&tournament_id, &debate_id);
+    }
+
     let latest_ballots = debate_repr.latest_ballots(&mut *conn);
     let judge_ballot = latest_ballots
         .into_iter()
@@ -276,6 +291,9 @@ pub async fn do_edit_ballot(
         !debate_repr.motions.is_empty(),
         "ballot edit requires at least one motion"
     );
+    if round.draw_status != "released_full" {
+        return redirect_to_ballot_set(&tournament_id, &debate_id);
+    }
 
     let judge = debate_repr.judges.get(&judge_id);
     if judge.is_none() {

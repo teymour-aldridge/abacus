@@ -105,11 +105,10 @@ impl DebateRepr {
             .first::<Debate>(conn)?;
 
         let room = match &debate.room_id {
-            Some(room_id) => Some(
-                schema_rooms::table
-                    .filter(schema_rooms::id.eq(room_id))
-                    .first::<Room>(conn)?,
-            ),
+            Some(room_id) => schema_rooms::table
+                .filter(schema_rooms::id.eq(room_id))
+                .first::<Room>(conn)
+                .optional()?,
             None => None,
         };
 
@@ -302,4 +301,59 @@ pub struct DebateTeam {
     pub team_id: String,
     pub side: i64,
     pub seq: i64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DebateRepr;
+    use crate::schema::{debates, rooms};
+    use diesel::prelude::*;
+    use diesel::sqlite::SqliteConnection;
+    use diesel_migrations::MigrationHarness;
+
+    fn test_conn() -> SqliteConnection {
+        let mut conn = SqliteConnection::establish(":memory:").unwrap();
+        conn.run_pending_migrations(crate::MIGRATIONS).unwrap();
+        conn
+    }
+
+    #[test]
+    fn debate_repr_treats_deleted_room_as_unassigned() {
+        let mut conn = test_conn();
+        let tournament_id = "tournament".to_string();
+        let round_id = "round".to_string();
+        let room_id = "room".to_string();
+        let debate_id = "debate".to_string();
+
+        diesel::insert_into(rooms::table)
+            .values((
+                rooms::id.eq(&room_id),
+                rooms::tournament_id.eq(&tournament_id),
+                rooms::name.eq("Room 1"),
+                rooms::url.eq(None::<String>),
+                rooms::priority.eq(0_i64),
+                rooms::number.eq(0_i64),
+            ))
+            .execute(&mut conn)
+            .unwrap();
+
+        diesel::insert_into(debates::table)
+            .values((
+                debates::id.eq(&debate_id),
+                debates::tournament_id.eq(&tournament_id),
+                debates::round_id.eq(&round_id),
+                debates::room_id.eq(Some(room_id.clone())),
+                debates::number.eq(0_i64),
+                debates::status.eq("draft"),
+            ))
+            .execute(&mut conn)
+            .unwrap();
+
+        diesel::delete(rooms::table.filter(rooms::id.eq(&room_id)))
+            .execute(&mut conn)
+            .unwrap();
+
+        let repr = DebateRepr::try_fetch(&debate_id, &mut conn).unwrap();
+        assert!(repr.room.is_none());
+    }
 }

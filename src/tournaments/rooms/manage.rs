@@ -1,8 +1,8 @@
 use crate::{
     auth::User,
     schema::{
-        judge_room_constraints, room_categories, rooms, rooms_of_category,
-        speaker_room_constraints,
+        debates, judge_room_constraints, room_categories, rooms,
+        rooms_of_category, speaker_room_constraints,
     },
     state::Conn,
     template::Page,
@@ -312,6 +312,24 @@ pub async fn delete_room(
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+
+    diesel::update(
+        debates::table.filter(
+            debates::tournament_id
+                .eq(&tid)
+                .and(debates::room_id.eq(Some(room_id.clone()))),
+        ),
+    )
+    .set(debates::room_id.eq(None::<String>))
+    .execute(&mut *conn)
+    .map_err(FailureResponse::from)?;
+
+    diesel::delete(
+        rooms_of_category::table
+            .filter(rooms_of_category::room_id.eq(&room_id)),
+    )
+    .execute(&mut *conn)
+    .map_err(FailureResponse::from)?;
 
     diesel::delete(rooms::table.filter(rooms::id.eq(room_id)))
         .execute(&mut *conn)

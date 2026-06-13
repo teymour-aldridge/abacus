@@ -17,11 +17,21 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     auth::User,
-    schema::{tournament_presets, tournaments},
+    schema::{
+        ballots, debates, rounds, speaker_scores_of_ballot, tournament_presets,
+        tournaments,
+    },
     state::Conn,
     template::Page,
     tournaments::{
-        Tournament, manage::sidebar::SidebarWrapper, rounds::TournamentRounds,
+        Tournament,
+        manage::sidebar::SidebarWrapper,
+        participants::TournamentParticipants,
+        rounds::{
+            TournamentRounds,
+            ballots::{BallotBuilder, BallotMetadata, BallotRepr},
+            draws::{DebateRepr, RoundDrawRepr},
+        },
         standings::compute::refresh_saved_team_standings,
     },
     util_resp::{
@@ -153,6 +163,398 @@ fn parse_tournament_config(
     }
 
     Ok(new_config)
+}
+
+fn tournament_with_config(
+    tournament: &Tournament,
+    config: &TournamentConfig,
+) -> Tournament {
+    let mut candidate = tournament.clone();
+    candidate.team_tab_public = config.team_tab_public;
+    candidate.speaker_tab_public = config.speaker_tab_public;
+    candidate.standings_public = config.standings_public;
+    candidate.show_round_results = config.show_round_results;
+    candidate.show_draws = config.show_draws;
+    candidate.teams_per_side = config.teams_per_side;
+    candidate.substantive_speakers = config.substantive_speakers;
+    candidate.reply_speakers = config.reply_speakers;
+    candidate.reply_must_speak = config.reply_must_speak;
+    candidate.max_substantive_speech_index_for_reply =
+        config.max_substantive_speech_index_for_reply;
+    candidate.pool_ballot_setup = config.pool_ballot_setup.clone();
+    candidate.elim_ballot_setup = config.elim_ballot_setup.clone();
+    candidate.margin_includes_dissenters = config.margin_includes_dissenters;
+    candidate.institution_penalty = config.institution_penalty;
+    candidate.history_penalty = config.history_penalty;
+    candidate.pullup_metrics = config.pullup_metrics.clone();
+    candidate.repeat_pullup_penalty = config.repeat_pullup_penalty;
+    candidate.team_standings_metrics = config.team_standings_metrics.clone();
+    candidate.speaker_standings_metrics =
+        config.speaker_standings_metrics.clone();
+    candidate.exclude_from_speaker_standings_after =
+        config.exclude_from_speaker_standings_after;
+    candidate.substantive_speech_min_speak =
+        config.substantive_speech_min_speak;
+    candidate.substantive_speech_max_speak =
+        config.substantive_speech_max_speak;
+    candidate.substantive_speech_step = Some(config.substantive_speech_step);
+    candidate.reply_speech_min_speak = config.reply_speech_min_speak;
+    candidate.reply_speech_max_speak = config.reply_speech_max_speak;
+    candidate.require_prelim_substantive_speaks =
+        config.require_prelim_substantive_speaks;
+    candidate.require_prelim_speaker_order =
+        config.require_prelim_speaker_order;
+    candidate.require_elim_substantive_speaks =
+        config.require_elim_substantive_speaks;
+    candidate.require_elim_speaker_order = config.require_elim_speaker_order;
+    candidate
+}
+
+fn validate_config_in_isolation(config: &TournamentConfig) -> Vec<String> {
+    let mut problems = Vec::new();
+
+    if config.require_prelim_substantive_speaks
+        && !config.require_prelim_speaker_order
+    {
+        problems.push(
+            "`require_prelim_substantive_speaks` requires \
+             `require_prelim_speaker_order`."
+                .to_string(),
+        );
+    }
+
+    if config.require_elim_substantive_speaks
+        && !config.require_elim_speaker_order
+    {
+        problems.push(
+            "`require_elim_substantive_speaks` requires \
+             `require_elim_speaker_order`."
+                .to_string(),
+        );
+    }
+
+    if let (Some(min), Some(max)) = (
+        config.substantive_speech_min_speak,
+        config.substantive_speech_max_speak,
+    ) {
+        if min > max {
+            problems.push(
+                "`substantive_speech_min_speak` cannot be greater than \
+                 `substantive_speech_max_speak`."
+                    .to_string(),
+            );
+        }
+    }
+
+    if config.substantive_speech_step <= 0.0 {
+        problems.push(
+            "`substantive_speech_step` must be greater than zero.".to_string(),
+        );
+    }
+
+    if let (Some(min), Some(max)) =
+        (config.reply_speech_min_speak, config.reply_speech_max_speak)
+    {
+        if min > max {
+            problems.push(
+                "`reply_speech_min_speak` cannot be greater than \
+                 `reply_speech_max_speak`."
+                    .to_string(),
+            );
+        }
+    }
+
+    problems
+}
+
+fn has_round_data(tournament_id: &str, conn: &mut SqliteConnection) -> bool {
+    debates::table
+        .filter(debates::tournament_id.eq(tournament_id))
+        .count()
+        .get_result::<i64>(conn)
+        .unwrap()
+        > 0
+}
+
+fn has_ballots_for_round_kind(
+    tournament_id: &str,
+    kind: &str,
+    conn: &mut SqliteConnection,
+) -> bool {
+    ballots::table
+        .inner_join(debates::table.on(ballots::debate_id.eq(debates::id)))
+        .inner_join(rounds::table.on(debates::round_id.eq(rounds::id)))
+        .filter(ballots::tournament_id.eq(tournament_id))
+        .filter(rounds::kind.eq(kind))
+        .count()
+        .get_result::<i64>(conn)
+        .unwrap()
+        > 0
+}
+
+fn has_speaker_scores(
+    tournament_id: &str,
+    conn: &mut SqliteConnection,
+) -> bool {
+    speaker_scores_of_ballot::table
+        .filter(speaker_scores_of_ballot::tournament_id.eq(tournament_id))
+        .count()
+        .get_result::<i64>(conn)
+        .unwrap()
+        > 0
+}
+
+fn validate_existing_data_shape(
+    tournament: &Tournament,
+    candidate: &Tournament,
+    conn: &mut SqliteConnection,
+) -> Vec<String> {
+    let mut problems = Vec::new();
+
+    if tournament.teams_per_side != candidate.teams_per_side
+        && has_round_data(&tournament.id, conn)
+    {
+        problems.push(
+            "`teams_per_side` cannot be changed while draws exist.".to_string(),
+        );
+    }
+
+    if (tournament.substantive_speakers != candidate.substantive_speakers
+        || tournament.reply_speakers != candidate.reply_speakers)
+        && has_speaker_scores(&tournament.id, conn)
+    {
+        problems.push(
+            "`substantive_speakers` and `reply_speakers` cannot be changed \
+             while speaker score ballots exist."
+                .to_string(),
+        );
+    }
+
+    if (tournament.require_prelim_substantive_speaks
+        != candidate.require_prelim_substantive_speaks
+        || tournament.require_prelim_speaker_order
+            != candidate.require_prelim_speaker_order
+        || tournament.pool_ballot_setup != candidate.pool_ballot_setup)
+        && has_ballots_for_round_kind(&tournament.id, "P", conn)
+    {
+        problems.push(
+            "Preliminary ballot format settings cannot be changed while \
+             preliminary ballots exist."
+                .to_string(),
+        );
+    }
+
+    if (tournament.require_elim_substantive_speaks
+        != candidate.require_elim_substantive_speaks
+        || tournament.require_elim_speaker_order
+            != candidate.require_elim_speaker_order
+        || tournament.elim_ballot_setup != candidate.elim_ballot_setup)
+        && has_ballots_for_round_kind(&tournament.id, "E", conn)
+    {
+        problems.push(
+            "Elimination ballot format settings cannot be changed while \
+             elimination ballots exist."
+                .to_string(),
+        );
+    }
+
+    problems
+}
+
+fn validate_debate_has_candidate_shape(
+    candidate: &Tournament,
+    debate: &DebateRepr,
+) -> Result<(), String> {
+    for seq in 0..candidate.teams_per_side {
+        for side in 0..2 {
+            if !debate
+                .teams_of_debate
+                .iter()
+                .any(|team| team.side == side && team.seq == seq)
+            {
+                return Err(format!(
+                    "draw does not contain a team at side {side}, position {seq}"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn revalidate_ballot_with_candidate_config(
+    ballot: &BallotRepr,
+    candidate: &Tournament,
+    round: &crate::tournaments::rounds::Round,
+    debate: &DebateRepr,
+    participants: &TournamentParticipants,
+    conn: &mut SqliteConnection,
+) -> Result<(), String> {
+    let metadata = BallotMetadata {
+        id: ballot.metadata.id.clone(),
+        tournament_id: ballot.metadata.tournament_id.clone(),
+        debate_id: ballot.metadata.debate_id.clone(),
+        judge_id: ballot.metadata.judge_id.clone(),
+        submitted_at: ballot.metadata.submitted_at,
+        motion_id: ballot.metadata.motion_id.clone(),
+        version: 0,
+        change: ballot.metadata.change.clone(),
+        editor_id: ballot.metadata.editor_id.clone(),
+    };
+
+    let mut builder = BallotBuilder::new(
+        candidate,
+        debate,
+        round,
+        participants,
+        metadata,
+        0,
+        0,
+        false,
+        conn,
+    )?;
+
+    for seq in 0..candidate.teams_per_side {
+        for side in 0..2 {
+            let debate_team = debate.team_of_side_and_seq(side, seq);
+            let speakers = if candidate.round_requires_speaker_order(round) {
+                ballot
+                    .scores_of_team(&debate_team.team_id)
+                    .into_iter()
+                    .map(|score| (score.speaker_id, score.score))
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            let points = ballot
+                .team_ranks
+                .iter()
+                .find(|rank| rank.team_id == debate_team.team_id)
+                .map(|rank| rank.points as usize);
+
+            builder.add_team(side as usize, seq as usize, speakers, points)?;
+        }
+    }
+
+    builder.build()?;
+    Ok(())
+}
+
+fn validate_existing_ballots_with_candidate_config(
+    candidate: &Tournament,
+    conn: &mut SqliteConnection,
+) -> Vec<String> {
+    let mut problems = Vec::new();
+    let participants = TournamentParticipants::load(&candidate.id, conn);
+    let tournament_rounds = match TournamentRounds::fetch(&candidate.id, conn) {
+        Ok(rounds) => rounds,
+        Err(err) => {
+            return vec![format!(
+                "Could not load tournament rounds for compatibility checks: {err}."
+            )];
+        }
+    };
+
+    for round in tournament_rounds
+        .prelim
+        .into_iter()
+        .chain(tournament_rounds.elim.into_iter())
+    {
+        let draw = RoundDrawRepr::of_round(round.clone(), conn);
+        for debate in draw.debates {
+            if let Err(err) =
+                validate_debate_has_candidate_shape(candidate, &debate)
+            {
+                problems.push(format!(
+                    "Round {}, debate {}: {err}.",
+                    round.name, debate.debate.number
+                ));
+                continue;
+            }
+
+            let ballots = debate.latest_ballots(conn);
+            for ballot in &ballots {
+                if let Err(err) = revalidate_ballot_with_candidate_config(
+                    ballot,
+                    candidate,
+                    &round,
+                    &debate,
+                    &participants,
+                    conn,
+                ) {
+                    let judge_name = debate
+                        .judges
+                        .get(&ballot.metadata.judge_id)
+                        .map(|judge| judge.name.as_str())
+                        .unwrap_or("unknown judge");
+                    problems.push(format!(
+                        "Round {}, debate {}, ballot from {}: {err}.",
+                        round.name, debate.debate.number, judge_name
+                    ));
+                }
+            }
+
+            let ballot_set_problems =
+                BallotRepr::problems_of_set(&ballots, candidate, &debate);
+            for problem in ballot_set_problems {
+                problems.push(format!(
+                    "Round {}, debate {}: {problem}",
+                    round.name, debate.debate.number
+                ));
+            }
+        }
+    }
+
+    problems
+}
+
+fn validate_tournament_config_update(
+    tournament: &Tournament,
+    new_config: &TournamentConfig,
+    conn: &mut SqliteConnection,
+) -> Result<Tournament, Vec<String>> {
+    let mut problems = validate_config_in_isolation(new_config);
+    let candidate = tournament_with_config(tournament, new_config);
+
+    if problems.is_empty() {
+        problems
+            .extend(validate_existing_data_shape(tournament, &candidate, conn));
+    }
+
+    if problems.is_empty() {
+        problems.extend(validate_existing_ballots_with_candidate_config(
+            &candidate, conn,
+        ));
+    }
+
+    if problems.is_empty() {
+        Ok(candidate)
+    } else {
+        Err(problems)
+    }
+}
+
+fn config_validation_error_response(
+    user: &User<true>,
+    tournament: &Tournament,
+    problems: Vec<String>,
+) -> FailureResponse {
+    FailureResponse::BadRequest(
+        Page::new()
+            .user(user.clone())
+            .tournament(tournament.clone())
+            .body(maud! {
+                h1 { "Configuration cannot be applied" }
+                p {
+                    "The new configuration is incompatible with the current tournament data."
+                }
+                ul {
+                    @for problem in &problems {
+                        li { (problem) }
+                    }
+                }
+            })
+            .render(),
+    )
 }
 
 fn config_update_error_response(
@@ -373,11 +775,13 @@ pub async fn update_tournament_configuration(
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
-    // todo: check if configuration change is incompatible with existing data
-    // (for example, if there are ballots with a different format, these must
-    // be deleted first!)
-
     let new_config = parse_tournament_config(&form.config, &user, &tournament)?;
+
+    validate_tournament_config_update(&tournament, &new_config, &mut *conn)
+        .map_err(|problems| {
+            config_validation_error_response(&user, &tournament, problems)
+        })?;
+
     apply_tournament_config(&tournament, new_config, &mut *conn)
         .map_err(|err| config_update_error_response(&user, &tournament, err))?;
     refresh_saved_team_standings(&tournament.id, &mut *conn)?;
@@ -399,6 +803,10 @@ pub async fn apply_tournament_preset(
         .first::<TournamentPreset>(&mut *conn)?;
     let new_config =
         parse_tournament_config(&preset.config, &user, &tournament)?;
+    validate_tournament_config_update(&tournament, &new_config, &mut *conn)
+        .map_err(|problems| {
+            config_validation_error_response(&user, &tournament, problems)
+        })?;
     apply_tournament_config(&tournament, new_config, &mut *conn)
         .map_err(|err| config_update_error_response(&user, &tournament, err))?;
     refresh_saved_team_standings(&tournament.id, &mut *conn)?;

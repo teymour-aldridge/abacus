@@ -635,6 +635,17 @@ pub enum Action {
         #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         constraint_idx: usize,
     },
+    MoveConstraint {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        tournament_idx: usize,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
+        ptype: String,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        pid_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        constraint_idx: usize,
+        up: bool,
+    },
 
     // Rooms
     CreateRoom {
@@ -737,6 +748,26 @@ pub enum Action {
         #[serde(default = "default_round_seq")]
         seq: u32,
     },
+    EditRound {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        round_idx: usize,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
+        name: String,
+        #[serde(default = "default_round_seq")]
+        seq: u32,
+    },
+    CreateMotion {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        round_idx: usize,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
+        motion: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        infoslide: Option<String>,
+    },
     GenerateDraw {
         #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
@@ -810,6 +841,60 @@ pub enum Action {
         eligible: bool,
     },
 
+    // Draw editing
+    SubmitDrawCommand {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        round_idx: usize,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
+        cmd: String,
+    },
+    MoveJudge {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        round_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        judge_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        debate_idx: usize,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
+        role: String,
+        assign: bool,
+    },
+    MoveTeam {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        round_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        team1_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        team2_idx: usize,
+    },
+    ChangeJudgeRole {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        round_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        judge_allocation_idx: usize,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
+        role: String,
+    },
+    MoveRoom {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        round_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        room_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        debate_idx: usize,
+        assign: bool,
+    },
+
     // Ballots
     SubmitBallot {
         #[field_mutator(UsizeMutator = { make_usize_mutator() })]
@@ -819,6 +904,29 @@ pub enum Action {
         #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         round_idx: usize,
         form: FuzzerBallotForm,
+    },
+    EditBallot {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        debate_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        judge_idx: usize,
+        form: FuzzerBallotForm,
+    },
+
+    // Public feedback
+    SubmitFeedback {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        private_url_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        round_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        target_judge_idx: usize,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
+        answer: String,
     },
 }
 
@@ -856,6 +964,26 @@ impl FuzzState {
 
 fn path_segment(value: &str) -> String {
     utf8_percent_encode(value, NON_ALPHANUMERIC).to_string()
+}
+
+fn form_encode(pairs: &[(String, String)]) -> Vec<u8> {
+    pairs
+        .iter()
+        .enumerate()
+        .fold(String::new(), |mut out, (idx, (key, value))| {
+            if idx > 0 {
+                out.push('&');
+            }
+            out.push_str(
+                &utf8_percent_encode(key, NON_ALPHANUMERIC).to_string(),
+            );
+            out.push('=');
+            out.push_str(
+                &utf8_percent_encode(value, NON_ALPHANUMERIC).to_string(),
+            );
+            out
+        })
+        .into_bytes()
 }
 
 struct ActionContext<'a> {
@@ -943,6 +1071,30 @@ impl<'a> ActionContext<'a> {
         )
     }
 
+    fn debate_id(&self, tournament_id: &str, idx: usize) -> Option<String> {
+        let mut conn = self.conn();
+        get_id_by_idx!(
+            &mut *conn,
+            debates::table
+                .filter(debates::tournament_id.eq(tournament_id))
+                .select(debates::id)
+                .order_by(debates::id),
+            idx,
+        )
+    }
+
+    fn debate_id_in_round(&self, round_id: &str, idx: usize) -> Option<String> {
+        let mut conn = self.conn();
+        get_id_by_idx!(
+            &mut *conn,
+            debates::table
+                .filter(debates::round_id.eq(round_id))
+                .select(debates::id)
+                .order_by(debates::id),
+            idx,
+        )
+    }
+
     fn room_category_id(
         &self,
         tournament_id: &str,
@@ -975,6 +1127,44 @@ impl<'a> ActionContext<'a> {
         )
     }
 
+    fn private_url(&self, tournament_id: &str, idx: usize) -> Option<String> {
+        let mut conn = self.conn();
+        let judge_count = judges::table
+            .filter(judges::tournament_id.eq(tournament_id))
+            .count()
+            .get_result::<i64>(&mut *conn)
+            .unwrap_or(0);
+        let speaker_count = speakers::table
+            .filter(speakers::tournament_id.eq(tournament_id))
+            .count()
+            .get_result::<i64>(&mut *conn)
+            .unwrap_or(0);
+        let total = judge_count + speaker_count;
+        if total == 0 {
+            return None;
+        }
+        let idx = (idx as i64) % total;
+        if idx < judge_count {
+            judges::table
+                .filter(judges::tournament_id.eq(tournament_id))
+                .select(judges::private_url)
+                .order_by(judges::id)
+                .offset(idx)
+                .limit(1)
+                .get_result::<String>(&mut *conn)
+                .ok()
+        } else {
+            speakers::table
+                .filter(speakers::tournament_id.eq(tournament_id))
+                .select(speakers::private_url)
+                .order_by(speakers::id)
+                .offset(idx - judge_count)
+                .limit(1)
+                .get_result::<String>(&mut *conn)
+                .ok()
+        }
+    }
+
     async fn post(&mut self, action: &str, path: String) {
         let response = self.client.post(&path).await;
         assert_response_no_5xx(action, &path, &response);
@@ -995,6 +1185,21 @@ impl<'a> ActionContext<'a> {
 
     async fn post_bytes(&mut self, action: &str, path: String, bytes: Vec<u8>) {
         let response = self.client.post(&path).bytes(Bytes::from(bytes)).await;
+        assert_response_no_5xx(action, &path, &response);
+    }
+
+    async fn post_urlencoded(
+        &mut self,
+        action: &str,
+        path: String,
+        fields: &[(String, String)],
+    ) {
+        let response = self
+            .client
+            .post(&path)
+            .bytes(Bytes::from(form_encode(fields)))
+            .content_type("application/x-www-form-urlencoded")
+            .await;
         assert_response_no_5xx(action, &path, &response);
     }
 }
@@ -1195,20 +1400,22 @@ impl Action {
                         .count()
                         .get_result::<i64>(&mut *conn)
                         .unwrap_or(0);
-                    let round_seq = if round_count == 0 {
+                    let round_info = if round_count == 0 {
                         None
                     } else {
                         rounds::table
                             .filter(rounds::tournament_id.eq(&tid))
-                            .select(rounds::seq)
+                            .select((rounds::id, rounds::seq))
                             .order_by(rounds::id)
                             .offset((round_idx as i64) % round_count)
                             .limit(1)
-                            .get_result::<i64>(&mut *conn)
+                            .get_result::<(String, i64)>(&mut *conn)
                             .ok()
                     };
                     drop(conn);
 
+                    let round_id = round_info.as_ref().map(|(id, _)| id);
+                    let round_seq = round_info.as_ref().map(|(_, seq)| seq);
                     let round_path = |suffix: &str| {
                         round_seq.as_ref().map(|seq| {
                             format!(
@@ -1217,7 +1424,7 @@ impl Action {
                             )
                         })
                     };
-                    let path = match page_idx % 22 {
+                    let path = match page_idx % 38 {
                         0 => Some(format!("/tournaments/{}", tid)),
                         1 => Some(format!("/tournaments/{}/manage", tid)),
                         2 => Some(format!("/tournaments/{}/participants", tid)),
@@ -1258,6 +1465,130 @@ impl Action {
                         19 => round_path("/availability/judges"),
                         20 => round_path("/availability/teams"),
                         21 => round_path("/ballots"),
+                        22 => round_path("/draw"),
+                        23 => round_path("/results"),
+                        24 => round_id.map(|rid| {
+                            format!("/tournaments/{}/rounds/{}/edit", tid, rid)
+                        }),
+                        25 => round_id.map(|rid| {
+                            format!(
+                                "/tournaments/{}/rounds/{}/draws/create",
+                                tid, rid
+                            )
+                        }),
+                        26 => round_id.map(|rid| {
+                            format!(
+                                "/tournaments/{}/rounds/draws/edit?rounds={}",
+                                tid, rid
+                            )
+                        }),
+                        27 => round_id.map(|rid| {
+                            format!(
+                                "/tournaments/{}/rounds/draws/rooms/edit?rounds={}",
+                                tid, rid
+                            )
+                        }),
+                        28 => ctx.private_url(&tid, round_idx).map(|private_url| {
+                            format!(
+                                "/tournaments/{}/privateurls/{}",
+                                tid, private_url
+                            )
+                        }),
+                        29 => round_id.and_then(|rid| {
+                            ctx.private_url(&tid, round_idx).map(|private_url| {
+                                format!(
+                                    "/tournaments/{}/privateurls/{}/rounds/{}/submit",
+                                    tid, private_url, rid
+                                )
+                            })
+                        }),
+                        30 => round_id.and_then(|rid| {
+                            ctx.private_url(&tid, round_idx).map(|private_url| {
+                                format!(
+                                    "/tournaments/{}/privateurls/{}/rounds/{}/feedback/submit",
+                                    tid, private_url, rid
+                                )
+                            })
+                        }),
+                        31 => ctx.team_id(&tid, round_idx).map(|team_id| {
+                            format!("/tournaments/{}/teams/{}", tid, team_id)
+                        }),
+                        32 => ctx.debate_id(&tid, round_idx).map(|debate_id| {
+                            format!(
+                                "/tournaments/{}/debates/{}/ballots",
+                                tid, debate_id
+                            )
+                        }),
+                        33 => {
+                            let mut conn = pool.get().unwrap();
+                            let targets = judges_of_debate::table
+                                .inner_join(
+                                    debates::table.on(
+                                        debates::id
+                                            .eq(judges_of_debate::debate_id),
+                                    )
+                                )
+                                .filter(debates::tournament_id.eq(&tid))
+                                .select((
+                                    judges_of_debate::debate_id,
+                                    judges_of_debate::judge_id,
+                                ))
+                                .order_by(judges_of_debate::id)
+                                .load::<(String, String)>(&mut *conn)
+                                .unwrap_or_default();
+                            let target = if targets.is_empty() {
+                                None
+                            } else {
+                                Some(
+                                    targets
+                                        [round_idx % targets.len()]
+                                    .clone(),
+                                )
+                            };
+                            target.map(|(debate_id, judge_id)| {
+                                format!(
+                                    "/tournaments/{}/debates/{}/judges/{}/edit",
+                                    tid, debate_id, judge_id
+                                )
+                            })
+                        }
+                        34 => {
+                            let mut conn = pool.get().unwrap();
+                            let targets = ballots::table
+                                .filter(ballots::tournament_id.eq(&tid))
+                                .select((ballots::debate_id, ballots::id))
+                                .order_by(ballots::id)
+                                .load::<(String, String)>(&mut *conn)
+                                .unwrap_or_default();
+                            let target = if targets.is_empty() {
+                                None
+                            } else {
+                                Some(
+                                    targets
+                                        [round_idx % targets.len()]
+                                    .clone(),
+                                )
+                            };
+                            target.map(|(debate_id, ballot_id)| {
+                                format!(
+                                    "/tournaments/{}/debates/{}/ballots/{}/view",
+                                    tid, debate_id, ballot_id
+                                )
+                            })
+                        }
+                        35 => ctx.judge_id(&tid, round_idx).map(|judge_id| {
+                            format!(
+                                "/tournaments/{}/participants/judge/{}/constraints",
+                                tid, judge_id
+                            )
+                        }),
+                        36 => ctx.team_id(&tid, round_idx).map(|team_id| {
+                            format!(
+                                "/tournaments/{}/teams/{}/speakers/create",
+                                tid, team_id
+                            )
+                        }),
+                        37 => Some(format!("/tournaments/{}/judges/create", tid)),
                         _ => unreachable!(),
                     };
                     if let Some(path) = path {
@@ -1636,6 +1967,99 @@ impl Action {
                                 )
                                 .await;
                             }
+                        }
+                    }
+                }
+            }
+            Action::MoveConstraint {
+                tournament_idx,
+                ptype,
+                pid_idx,
+                constraint_idx,
+                up,
+            } => {
+                let mut conn = pool.get().unwrap();
+                if let Some(tid) = get_id_by_idx!(
+                    &mut *conn,
+                    tournaments::table
+                        .select(tournaments::id)
+                        .order_by(tournaments::id),
+                    tournament_idx,
+                ) {
+                    let pid = if ptype == "speaker" {
+                        get_id_by_idx!(
+                            &mut *conn,
+                            speakers::table
+                                .filter(speakers::tournament_id.eq(&tid))
+                                .select(speakers::id)
+                                .order_by(speakers::id),
+                            pid_idx,
+                        )
+                    } else {
+                        get_id_by_idx!(
+                            &mut *conn,
+                            judges::table
+                                .filter(judges::tournament_id.eq(&tid))
+                                .select(judges::id)
+                                .order_by(judges::id),
+                            pid_idx,
+                        )
+                    };
+
+                    if let Some(pid) = pid {
+                        let cat_id = if ptype == "speaker" {
+                            get_id_by_idx!(
+                                &mut *conn,
+                                speaker_room_constraints::table
+                                    .filter(
+                                        speaker_room_constraints::speaker_id
+                                            .eq(&pid),
+                                    )
+                                    .select(
+                                        speaker_room_constraints::category_id,
+                                    )
+                                    .order_by(speaker_room_constraints::pref,),
+                                constraint_idx,
+                            )
+                        } else {
+                            get_id_by_idx!(
+                                &mut *conn,
+                                judge_room_constraints::table
+                                    .filter(
+                                        judge_room_constraints::judge_id
+                                            .eq(&pid),
+                                    )
+                                    .select(
+                                        judge_room_constraints::category_id,
+                                    )
+                                    .order_by(judge_room_constraints::pref),
+                                constraint_idx,
+                            )
+                        };
+
+                        if let Some(cat_id) = cat_id {
+                            drop(conn);
+                            let ptype = if ptype == "speaker" {
+                                "speaker".to_string()
+                            } else {
+                                "judge".to_string()
+                            };
+                            let form = [
+                                ("category_id".to_string(), cat_id),
+                                (
+                                    "direction".to_string(),
+                                    if up { "up" } else { "down" }.to_string(),
+                                ),
+                            ];
+                            ctx.post_urlencoded(
+                                "MoveConstraint",
+                                format!(
+                                    "/tournaments/{}/participants/{}/{}/constraints/move",
+                                    tid, ptype, pid
+                                ),
+                                &form,
+                            )
+                            .await;
                         }
                     }
                 }
@@ -2052,6 +2476,79 @@ impl Action {
                     .await;
                 }
             }
+            Action::EditRound {
+                tournament_idx,
+                round_idx,
+                name,
+                seq,
+            } => {
+                let seq = (seq % 200).max(1);
+                let mut conn = pool.get().unwrap();
+                if let Some(tid) = get_id_by_idx!(
+                    &mut *conn,
+                    tournaments::table
+                        .select(tournaments::id)
+                        .order_by(tournaments::id),
+                    tournament_idx,
+                ) {
+                    if let Some(rid) = get_id_by_idx!(
+                        &mut *conn,
+                        rounds::table
+                            .filter(rounds::tournament_id.eq(&tid))
+                            .select(rounds::id)
+                            .order_by(rounds::id),
+                        round_idx,
+                    ) {
+                        drop(conn);
+                        let form = [("name", name), ("seq", seq.to_string())];
+                        ctx.post_form(
+                            "EditRound",
+                            format!("/tournaments/{}/rounds/{}/edit", tid, rid),
+                            &form,
+                        )
+                        .await;
+                    }
+                }
+            }
+            Action::CreateMotion {
+                tournament_idx,
+                round_idx,
+                motion,
+                infoslide,
+            } => {
+                let mut conn = pool.get().unwrap();
+                if let Some(tid) = get_id_by_idx!(
+                    &mut *conn,
+                    tournaments::table
+                        .select(tournaments::id)
+                        .order_by(tournaments::id),
+                    tournament_idx,
+                ) {
+                    if let Some(rid) = get_id_by_idx!(
+                        &mut *conn,
+                        rounds::table
+                            .filter(rounds::tournament_id.eq(&tid))
+                            .select(rounds::id)
+                            .order_by(rounds::id),
+                        round_idx,
+                    ) {
+                        drop(conn);
+                        let mut form = vec![("motion".to_string(), motion)];
+                        if let Some(infoslide) = infoslide {
+                            form.push(("infoslide".to_string(), infoslide));
+                        }
+                        ctx.post_urlencoded(
+                            "CreateMotion",
+                            format!(
+                                "/tournaments/{}/rounds/{}/motions/create",
+                                tid, rid
+                            ),
+                            &form,
+                        )
+                        .await;
+                    }
+                }
+            }
             Action::GenerateDraw {
                 tournament_idx,
                 round_idx,
@@ -2400,6 +2897,213 @@ impl Action {
                     }
                 }
             }
+            Action::SubmitDrawCommand {
+                tournament_idx,
+                round_idx,
+                cmd,
+            } => {
+                if let Some(tid) = ctx.tournament_id(tournament_idx) {
+                    if let Some(rid) = ctx.round_id(&tid, round_idx) {
+                        let form = [("cmd".to_string(), cmd)];
+                        ctx.post_urlencoded(
+                            "SubmitDrawCommand",
+                            format!(
+                                "/tournaments/{}/rounds/draws/edit?rounds={}",
+                                tid, rid
+                            ),
+                            &form,
+                        )
+                        .await;
+                    }
+                }
+            }
+            Action::MoveJudge {
+                tournament_idx,
+                round_idx,
+                judge_idx,
+                debate_idx,
+                role,
+                assign,
+            } => {
+                if let Some(tid) = ctx.tournament_id(tournament_idx) {
+                    if let (Some(rid), Some(judge_id)) = (
+                        ctx.round_id(&tid, round_idx),
+                        ctx.judge_id(&tid, judge_idx),
+                    ) {
+                        let to_debate_id = if assign {
+                            ctx.debate_id_in_round(&rid, debate_idx)
+                                .unwrap_or_default()
+                        } else {
+                            String::new()
+                        };
+                        let role = match role.as_str() {
+                            "C" | "chair" => "C",
+                            "T" | "trainee" => "T",
+                            _ => "P",
+                        };
+                        let form = [
+                            ("judge_id".to_string(), judge_id),
+                            ("to_debate_id".to_string(), to_debate_id),
+                            ("role".to_string(), role.to_string()),
+                            ("rounds".to_string(), rid),
+                        ];
+                        ctx.post_urlencoded(
+                            "MoveJudge",
+                            format!(
+                                "/tournaments/{}/rounds/draws/edit/move",
+                                tid
+                            ),
+                            &form,
+                        )
+                        .await;
+                    }
+                }
+            }
+            Action::MoveTeam {
+                tournament_idx,
+                round_idx,
+                team1_idx,
+                team2_idx,
+            } => {
+                if let Some(tid) = ctx.tournament_id(tournament_idx) {
+                    if let Some(rid) = ctx.round_id(&tid, round_idx) {
+                        let mut conn = pool.get().unwrap();
+                        let team1_id = get_id_by_idx!(
+                            &mut *conn,
+                            teams_of_debate::table
+                                .inner_join(debates::table.on(
+                                    debates::id.eq(teams_of_debate::debate_id),
+                                ),)
+                                .filter(debates::round_id.eq(&rid))
+                                .select(teams_of_debate::team_id)
+                                .order_by(teams_of_debate::id),
+                            team1_idx,
+                        );
+                        let team2_id = get_id_by_idx!(
+                            &mut *conn,
+                            teams_of_debate::table
+                                .inner_join(debates::table.on(
+                                    debates::id.eq(teams_of_debate::debate_id),
+                                ),)
+                                .filter(debates::round_id.eq(&rid))
+                                .select(teams_of_debate::team_id)
+                                .order_by(teams_of_debate::id),
+                            team2_idx,
+                        );
+                        drop(conn);
+                        if let (Some(team1_id), Some(team2_id)) =
+                            (team1_id, team2_id)
+                        {
+                            let form = [
+                                ("team1_id".to_string(), team1_id),
+                                ("team2_id".to_string(), team2_id),
+                                ("rounds".to_string(), rid),
+                            ];
+                            ctx.post_urlencoded(
+                                "MoveTeam",
+                                format!(
+                                    "/tournaments/{}/rounds/draws/edit/move_team",
+                                    tid
+                                ),
+                                &form,
+                            )
+                            .await;
+                        }
+                    }
+                }
+            }
+            Action::ChangeJudgeRole {
+                tournament_idx,
+                round_idx,
+                judge_allocation_idx,
+                role,
+            } => {
+                if let Some(tid) = ctx.tournament_id(tournament_idx) {
+                    if let Some(rid) = ctx.round_id(&tid, round_idx) {
+                        let mut conn = pool.get().unwrap();
+                        let allocation = get_id_by_idx!(
+                            &mut *conn,
+                            judges_of_debate::table
+                                .inner_join(debates::table.on(
+                                    debates::id.eq(judges_of_debate::debate_id),
+                                ),)
+                                .filter(debates::round_id.eq(&rid))
+                                .select(judges_of_debate::id)
+                                .order_by(judges_of_debate::id),
+                            judge_allocation_idx,
+                        );
+                        if let Some(allocation_id) = allocation {
+                            let (judge_id, debate_id): (String, String) =
+                                judges_of_debate::table
+                                    .filter(
+                                        judges_of_debate::id.eq(allocation_id),
+                                    )
+                                    .select((
+                                        judges_of_debate::judge_id,
+                                        judges_of_debate::debate_id,
+                                    ))
+                                    .first(&mut *conn)
+                                    .unwrap();
+                            drop(conn);
+                            let role = match role.as_str() {
+                                "C" | "chair" => "C",
+                                "T" | "trainee" => "T",
+                                _ => "P",
+                            };
+                            let form = [
+                                ("judge_id".to_string(), judge_id),
+                                ("debate_id".to_string(), debate_id),
+                                ("role".to_string(), role.to_string()),
+                                ("rounds".to_string(), rid),
+                            ];
+                            ctx.post_urlencoded(
+                                "ChangeJudgeRole",
+                                format!(
+                                    "/tournaments/{}/rounds/draws/edit/role",
+                                    tid
+                                ),
+                                &form,
+                            )
+                            .await;
+                        }
+                    }
+                }
+            }
+            Action::MoveRoom {
+                tournament_idx,
+                round_idx,
+                room_idx,
+                debate_idx,
+                assign,
+            } => {
+                if let Some(tid) = ctx.tournament_id(tournament_idx) {
+                    if let (Some(rid), Some(room_id)) = (
+                        ctx.round_id(&tid, round_idx),
+                        ctx.room_id(&tid, room_idx),
+                    ) {
+                        let to_debate_id = if assign {
+                            ctx.debate_id_in_round(&rid, debate_idx)
+                                .unwrap_or_default()
+                        } else {
+                            String::new()
+                        };
+                        let form = [
+                            ("room_id".to_string(), room_id),
+                            ("to_debate_id".to_string(), to_debate_id),
+                            ("rounds".to_string(), rid),
+                        ];
+                        ctx.post_urlencoded(
+                            "MoveRoom",
+                            format!(
+                                "/tournaments/{}/rounds/draws/rooms/edit/move",
+                                tid
+                            ),
+                            &form,
+                        )
+                        .await;
+                    }
+                }
+            }
             Action::SubmitBallot {
                 tournament_idx,
                 private_url_idx,
@@ -2449,6 +3153,103 @@ impl Action {
                     }
                 }
             }
+            Action::EditBallot {
+                tournament_idx,
+                debate_idx,
+                judge_idx,
+                form: f_form,
+            } => {
+                if let Some(tid) = ctx.tournament_id(tournament_idx) {
+                    if let Some(debate_id) = ctx.debate_id(&tid, debate_idx) {
+                        let mut conn = pool.get().unwrap();
+                        let judge_id = get_id_by_idx!(
+                            &mut *conn,
+                            judges_of_debate::table
+                                .filter(
+                                    judges_of_debate::debate_id.eq(&debate_id),
+                                )
+                                .select(judges_of_debate::judge_id)
+                                .order_by(judges_of_debate::judge_id),
+                            judge_idx,
+                        );
+
+                        if let Some(judge_id) = judge_id {
+                            let bytes = serialize_ballot_form_for_debate(
+                                &mut *conn, &debate_id, f_form,
+                            );
+                            drop(conn);
+                            if !bytes.is_empty() {
+                                ctx.post_bytes(
+                                    "EditBallot",
+                                    format!(
+                                        "/tournaments/{}/debates/{}/judges/{}/edit",
+                                        tid, debate_id, judge_id
+                                    ),
+                                    bytes,
+                                )
+                                .await;
+                            }
+                        }
+                    }
+                }
+            }
+            Action::SubmitFeedback {
+                tournament_idx,
+                private_url_idx,
+                round_idx,
+                target_judge_idx,
+                answer,
+            } => {
+                if let Some(tid) = ctx.tournament_id(tournament_idx) {
+                    if let (Some(private_url), Some(rid)) = (
+                        ctx.private_url(&tid, private_url_idx),
+                        ctx.round_id(&tid, round_idx),
+                    ) {
+                        let mut conn = pool.get().unwrap();
+                        let target_judge_id = get_id_by_idx!(
+                            &mut *conn,
+                            judges_of_debate::table
+                                .inner_join(debates::table.on(
+                                    debates::id.eq(judges_of_debate::debate_id),
+                                ),)
+                                .filter(debates::round_id.eq(&rid))
+                                .select(judges_of_debate::judge_id)
+                                .order_by(judges_of_debate::judge_id),
+                            target_judge_idx,
+                        );
+
+                        if let Some(target_judge_id) = target_judge_id {
+                            let question_id = feedback_questions::table
+                                .filter(
+                                    feedback_questions::tournament_id.eq(&tid),
+                                )
+                                .select(feedback_questions::id)
+                                .order_by(feedback_questions::seq)
+                                .first::<String>(&mut *conn)
+                                .ok();
+                            drop(conn);
+
+                            let mut form = vec![(
+                                "target_judge_id".to_string(),
+                                target_judge_id,
+                            )];
+                            if let Some(question_id) = question_id {
+                                form.push((question_id, answer));
+                            }
+
+                            ctx.post_urlencoded(
+                                "SubmitFeedback",
+                                format!(
+                                    "/tournaments/{}/privateurls/{}/rounds/{}/feedback/submit",
+                                    tid, private_url, rid
+                                ),
+                                &form,
+                            )
+                            .await;
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -2460,18 +3261,37 @@ fn serialize_ballot_form(
     _judge_id: &str,
     form: FuzzerBallotForm,
 ) -> Vec<u8> {
+    let debate_id = debates::table
+        .filter(debates::round_id.eq(rid))
+        .select(debates::id)
+        .order_by(debates::id)
+        .first::<String>(conn)
+        .ok();
+
+    if let Some(debate_id) = debate_id {
+        serialize_ballot_form_for_debate(conn, &debate_id, form)
+    } else {
+        Vec::new()
+    }
+}
+
+fn serialize_ballot_form_for_debate(
+    conn: &mut SqliteConnection,
+    debate_id: &str,
+    form: FuzzerBallotForm,
+) -> Vec<u8> {
     use std::collections::HashMap;
 
     // We need to fetch the debate structure to know the teams and speakers
     let debate_info: Vec<(String, String, i64, i64)> = teams_of_debate::table
-        .inner_join(debates::table)
-        .filter(debates::round_id.eq(rid))
+        .filter(teams_of_debate::debate_id.eq(debate_id))
         .select((
             teams_of_debate::team_id,
-            debates::id,
+            teams_of_debate::debate_id,
             teams_of_debate::side,
             teams_of_debate::seq,
         ))
+        .order_by((teams_of_debate::side, teams_of_debate::seq))
         .load(conn)
         .unwrap();
 
@@ -2479,8 +3299,14 @@ fn serialize_ballot_form(
         return Vec::new();
     }
 
+    let rid = debates::table
+        .filter(debates::id.eq(debate_id))
+        .select(debates::round_id)
+        .first::<String>(conn)
+        .unwrap();
+
     let m_ids: Vec<String> = motions_of_round::table
-        .filter(motions_of_round::round_id.eq(rid))
+        .filter(motions_of_round::round_id.eq(&rid))
         .select(motions_of_round::id)
         .order_by(motions_of_round::id)
         .load(conn)

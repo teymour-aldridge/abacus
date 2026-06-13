@@ -4,7 +4,6 @@ use axum::{
 };
 use diesel::prelude::*;
 use hypertext::prelude::*;
-use uuid::Uuid;
 
 use crate::{
     auth::User,
@@ -186,7 +185,6 @@ pub async fn do_edit_judge_details(
 
     diesel::update(judges::table.filter(judges::id.eq(&judge.id)))
         .set((
-            judges::id.eq(Uuid::now_v7().to_string()),
             judges::tournament_id.eq(&tournament.id),
             judges::name.eq(&form.name),
             judges::email.eq(&form.email),

@@ -515,6 +515,35 @@ fn release_full_draw_requires_motion() {
 }
 
 #[test]
+fn fuzz_regression_e515901743664c77() {
+    harness::run_workload(&WorkloadInput {
+        actions: vec![
+            Action::RegisterUser {
+                username: "out".to_string(),
+                email: "l@u.org".to_string(),
+                password: "badger".to_string(),
+            },
+            Action::CreateTournament {
+                name: "ibex".to_string(),
+                abbrv: ",l".to_string(),
+                slug: String::new(),
+            },
+            Action::CreateRound {
+                tournament_idx: 148,
+                name: "lynx".to_string(),
+                category_idx: None,
+                seq: 4019972498,
+            },
+            Action::SetRoundCompleted {
+                tournament_idx: 236,
+                round_idx: 23,
+                completed: true,
+            },
+        ],
+    });
+}
+
+#[test]
 fn fuzz_regression_7ac30aecdb5ffdaf() {
     harness::run_workload(&WorkloadInput {
         actions: vec![

@@ -189,6 +189,18 @@ pub async fn set_round_completed(
             .execute(&mut *conn)
             .unwrap();
     } else {
+        if round.draw_status != "released_full" {
+            return bad_request(
+                Page::new()
+                    .tournament(tournament.clone())
+                    .user(user)
+                    .body(maud! {
+                        (crate::widgets::alert::ErrorAlert { msg: "Cannot mark round as complete before publishing the full draw." })
+                    })
+                    .render(),
+            );
+        }
+
         assert!(
             round_has_motion(&round.id, &mut *conn),
             "completed rounds must have at least one motion"

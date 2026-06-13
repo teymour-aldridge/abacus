@@ -348,7 +348,7 @@ pub async fn move_constraint(
     conn.transaction(|conn| {
         match ptype {
             ParticipantType::Speaker => {
-                let mut constraints = speaker_room_constraints::table
+                let constraints = speaker_room_constraints::table
                     .filter(
                         speaker_room_constraints::speaker_id
                             .eq(&participant_id),
@@ -367,27 +367,37 @@ pub async fn move_constraint(
                     };
 
                     if new_pos != pos {
-                        let item = constraints.remove(pos);
-                        constraints.insert(new_pos, item);
+                        let pref_a = constraints[pos].pref;
+                        let pref_b = constraints[new_pos].pref;
+                        let temp = constraints.len() as i64 + 1;
 
-                        // Update all preferences
-                        for (i, constraint) in constraints.iter().enumerate() {
-                            diesel::update(speaker_room_constraints::table)
-                                .filter(
-                                    speaker_room_constraints::id
-                                        .eq(&constraint.id),
-                                )
-                                .set(
-                                    speaker_room_constraints::pref
-                                        .eq((i + 1) as i64),
-                                )
-                                .execute(conn)?;
-                        }
+                        diesel::update(speaker_room_constraints::table)
+                            .filter(
+                                speaker_room_constraints::id
+                                    .eq(&constraints[pos].id),
+                            )
+                            .set(speaker_room_constraints::pref.eq(temp))
+                            .execute(conn)?;
+
+                        diesel::update(speaker_room_constraints::table)
+                            .filter(
+                                speaker_room_constraints::id
+                                    .eq(&constraints[new_pos].id),
+                            )
+                            .set(speaker_room_constraints::pref.eq(pref_a))
+                            .execute(conn)?;
+                        diesel::update(speaker_room_constraints::table)
+                            .filter(
+                                speaker_room_constraints::id
+                                    .eq(&constraints[pos].id),
+                            )
+                            .set(speaker_room_constraints::pref.eq(pref_b))
+                            .execute(conn)?;
                     }
                 }
             }
             ParticipantType::Judge => {
-                let mut constraints = judge_room_constraints::table
+                let constraints = judge_room_constraints::table
                     .filter(
                         judge_room_constraints::judge_id.eq(&participant_id),
                     )
@@ -405,22 +415,32 @@ pub async fn move_constraint(
                     };
 
                     if new_pos != pos {
-                        let item = constraints.remove(pos);
-                        constraints.insert(new_pos, item);
+                        let pref_a = constraints[pos].pref;
+                        let pref_b = constraints[new_pos].pref;
+                        let temp = constraints.len() as i64 + 1;
 
-                        // Update all preferences
-                        for (i, constraint) in constraints.iter().enumerate() {
-                            diesel::update(judge_room_constraints::table)
-                                .filter(
-                                    judge_room_constraints::id
-                                        .eq(&constraint.id),
-                                )
-                                .set(
-                                    judge_room_constraints::pref
-                                        .eq((i + 1) as i64),
-                                )
-                                .execute(conn)?;
-                        }
+                        diesel::update(judge_room_constraints::table)
+                            .filter(
+                                judge_room_constraints::id
+                                    .eq(&constraints[pos].id),
+                            )
+                            .set(judge_room_constraints::pref.eq(temp))
+                            .execute(conn)?;
+
+                        diesel::update(judge_room_constraints::table)
+                            .filter(
+                                judge_room_constraints::id
+                                    .eq(&constraints[new_pos].id),
+                            )
+                            .set(judge_room_constraints::pref.eq(pref_a))
+                            .execute(conn)?;
+                        diesel::update(judge_room_constraints::table)
+                            .filter(
+                                judge_room_constraints::id
+                                    .eq(&constraints[pos].id),
+                            )
+                            .set(judge_room_constraints::pref.eq(pref_b))
+                            .execute(conn)?;
                     }
                 }
             }

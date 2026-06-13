@@ -294,3 +294,60 @@ fn fuzz_regression_bee2ecfb0de2efff() {
         ],
     });
 }
+
+#[test]
+fn fuzz_regression_5e3a4cdb7c310a40() {
+    harness::run_workload(&WorkloadInput {
+        actions: vec![
+            Action::RegisterUser {
+                username: "out".to_string(),
+                email: "l@u.org".to_string(),
+                password: "badger".to_string(),
+            },
+            Action::CreateTournament {
+                name: "ibex".to_string(),
+                abbrv: ",l".to_string(),
+                slug: "".to_string(),
+            },
+            Action::CreateJudge {
+                tournament_idx: 153,
+                name: "".to_string(),
+                email: "d@l.org".to_string(),
+                institution_idx: None,
+            },
+            Action::CreateRoomCategory {
+                tournament_idx: 123,
+                name: None,
+                private_name: "".to_string(),
+                public_name: "".to_string(),
+                description: "".to_string(),
+            },
+            Action::AddConstraint {
+                tournament_idx: 245,
+                ptype: "judge".to_string(),
+                pid_idx: 156,
+                category_idx: 138,
+            },
+            Action::CreateRoomCategory {
+                tournament_idx: 123,
+                name: None,
+                private_name: "".to_string(),
+                public_name: "".to_string(),
+                description: "".to_string(),
+            },
+            Action::AddConstraint {
+                tournament_idx: 245,
+                ptype: "judge".to_string(),
+                pid_idx: 156,
+                category_idx: 138,
+            },
+            Action::MoveConstraint {
+                tournament_idx: 188,
+                ptype: "".to_string(),
+                pid_idx: 82,
+                constraint_idx: 194,
+                up: false,
+            },
+        ],
+    });
+}

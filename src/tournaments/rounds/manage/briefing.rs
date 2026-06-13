@@ -1,6 +1,6 @@
 use axum::{Form, extract::Path, response::Redirect};
 use chrono::Utc;
-use diesel::prelude::*;
+use diesel::{prelude::*, sqlite::Sqlite};
 use hypertext::prelude::*;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -18,6 +18,7 @@ use crate::{
     util_resp::{
         StandardResponse, bad_request, err_not_found, see_other_ok, success,
     },
+    widgets::alert::ErrorAlert,
 };
 
 const VALID_DRAW_STATUSES: &[&str] = &[
@@ -33,6 +34,7 @@ struct BriefingRoomView {
     tournament: Tournament,
     rounds: Vec<Round>,
     can_publish_motions: HashMap<String, bool>,
+    can_publish_full_draw: HashMap<String, bool>,
 }
 
 impl Renderable for BriefingRoomView {
@@ -83,17 +85,31 @@ impl Renderable for BriefingRoomView {
                                     h6 class="card-subtitle mb-2 text-muted" { "Draw Release" }
                                     div class="mt-auto" {
                                         form action=(format!("/tournaments/{}/rounds/{}/draws/setreleased", self.tournament.id, round.id)) method="post" {
+                                            @let can_publish_full_draw =
+                                                *self.can_publish_full_draw.get(&round.id).unwrap_or(&false);
                                             div class="d-grid gap-2" {
                                                 @if round.draw_status != "released_teams" && round.draw_status != "released_full" {
                                                     button class="btn btn-warning" type="submit" name="status" value="released_teams" {
                                                         "Publish Teams Only"
                                                     }
-                                                    button class="btn btn-danger" type="submit" name="status" value="released_full" {
-                                                        "Publish Teams & Judges"
+                                                    @if can_publish_full_draw {
+                                                        button class="btn btn-danger" type="submit" name="status" value="released_full" {
+                                                            "Publish Teams & Judges"
+                                                        }
+                                                    } @else {
+                                                        button class="btn btn-danger" type="submit" name="status" value="released_full" disabled title="Add a motion before publishing the full draw" {
+                                                            "Publish Teams & Judges"
+                                                        }
                                                     }
                                                 } @else if round.draw_status == "released_teams" {
-                                                    button class="btn btn-danger" type="submit" name="status" value="released_full" {
-                                                        "Publish Judges Too"
+                                                    @if can_publish_full_draw {
+                                                        button class="btn btn-danger" type="submit" name="status" value="released_full" {
+                                                            "Publish Judges Too"
+                                                        }
+                                                    } @else {
+                                                        button class="btn btn-danger" type="submit" name="status" value="released_full" disabled title="Add a motion before publishing the full draw" {
+                                                            "Publish Judges Too"
+                                                        }
                                                     }
                                                     button class="btn btn-secondary" type="submit" name="status" value="confirmed" {
                                                         "Hide Draw"
@@ -144,12 +160,11 @@ pub async fn get_briefing_room(
     let can_publish_motions: HashMap<String, bool> = rounds
         .iter()
         .map(|round| {
-            let has_motions = motions_of_round::table
+            let motions_count = motions_of_round::table
                 .filter(motions_of_round::round_id.eq(&round.id))
                 .count()
                 .get_result::<i64>(&mut *conn)
-                .unwrap_or(0)
-                > 0;
+                .unwrap_or(0);
 
             let has_unpublished_motions = motions_of_round::table
                 .filter(motions_of_round::round_id.eq(&round.id))
@@ -159,7 +174,17 @@ pub async fn get_briefing_room(
                 .unwrap_or(0)
                 > 0;
 
-            (round.id.clone(), has_motions && has_unpublished_motions)
+            (
+                round.id.clone(),
+                motions_count > 0 && has_unpublished_motions,
+            )
+        })
+        .collect();
+
+    let can_publish_full_draw: HashMap<String, bool> = rounds
+        .iter()
+        .map(|round| {
+            (round.id.clone(), round_has_motion(&round.id, &mut *conn))
         })
         .collect();
 
@@ -167,6 +192,7 @@ pub async fn get_briefing_room(
         tournament: tournament.clone(),
         rounds,
         can_publish_motions,
+        can_publish_full_draw,
     };
 
     success(
@@ -216,6 +242,19 @@ pub async fn set_draw_published(
         None => return err_not_found(),
     };
 
+    if form.status == "released_full"
+        && !round_has_motion(&round.id, &mut *conn)
+    {
+        return bad_request(
+            Page::new()
+                .user(user)
+                .body(maud! {
+                    ErrorAlert msg = "Add a motion before publishing the full draw.";
+                })
+                .render(),
+        );
+    }
+
     diesel::update(rounds::table.find(round.id.clone()))
         .set((
             rounds::draw_status.eq(&form.status),
@@ -236,4 +275,16 @@ pub async fn set_draw_published(
         "/tournaments/{}/rounds/{}/briefing",
         tournament_id, round.seq
     )))
+}
+
+fn round_has_motion(
+    round_id: &str,
+    conn: &mut impl diesel::connection::LoadConnection<Backend = Sqlite>,
+) -> bool {
+    motions_of_round::table
+        .filter(motions_of_round::round_id.eq(round_id))
+        .count()
+        .get_result::<i64>(conn)
+        .unwrap_or(0)
+        > 0
 }

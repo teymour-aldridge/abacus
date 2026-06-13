@@ -52,6 +52,12 @@ fn team_standings_are_refreshed_when_completed_rounds_or_teams_change() {
                 category_idx: None,
                 seq: 366268609,
             },
+            Action::CreateMotion {
+                tournament_idx: 65,
+                round_idx: 0,
+                motion: "otter".to_string(),
+                infoslide: None,
+            },
             Action::SetRoundCompleted {
                 tournament_idx: 110,
                 round_idx: 172,
@@ -79,6 +85,12 @@ fn team_standings_are_refreshed_when_completed_rounds_or_teams_change() {
                 name: "lynx".to_string(),
                 category_idx: None,
                 seq: 366268609,
+            },
+            Action::CreateMotion {
+                tournament_idx: 65,
+                round_idx: 0,
+                motion: "lynx".to_string(),
+                infoslide: None,
             },
             Action::CreateTeam {
                 tournament_idx: 242,
@@ -219,6 +231,114 @@ fn briefing_room_handles_new_round_without_draw() {
 }
 
 #[test]
+fn fuzz_regression_c7b6bbb74ff5c56() {
+    harness::run_workload(&WorkloadInput {
+        actions: vec![
+            Action::RegisterUser {
+                username: "out".to_string(),
+                email: "l@u.org".to_string(),
+                password: "badger".to_string(),
+            },
+            Action::CreateTournament {
+                name: "ibex".to_string(),
+                abbrv: ",l".to_string(),
+                slug: String::new(),
+            },
+            Action::CreateRound {
+                tournament_idx: 148,
+                name: "lynx".to_string(),
+                category_idx: None,
+                seq: 4019972498,
+            },
+            Action::CreateMotion {
+                tournament_idx: 148,
+                round_idx: 0,
+                motion: "lynx".to_string(),
+                infoslide: None,
+            },
+            Action::CreateTeam {
+                tournament_idx: 125,
+                name: "Xout".to_string(),
+                institution_idx: None,
+            },
+            Action::CreateSpeaker {
+                tournament_idx: 125,
+                team_idx: 0,
+                name: "speaker".to_string(),
+                email: "s0@u.org".to_string(),
+            },
+            Action::CreateTeam {
+                tournament_idx: 125,
+                name: "Xout".to_string(),
+                institution_idx: None,
+            },
+            Action::CreateSpeaker {
+                tournament_idx: 125,
+                team_idx: 1,
+                name: "speaker".to_string(),
+                email: "s1@u.org".to_string(),
+            },
+            Action::CreateTeam {
+                tournament_idx: 125,
+                name: "Xout".to_string(),
+                institution_idx: None,
+            },
+            Action::CreateSpeaker {
+                tournament_idx: 125,
+                team_idx: 2,
+                name: "speaker".to_string(),
+                email: "s2@u.org".to_string(),
+            },
+            Action::CreateTeam {
+                tournament_idx: 164,
+                name: "lynx".to_string(),
+                institution_idx: None,
+            },
+            Action::CreateSpeaker {
+                tournament_idx: 164,
+                team_idx: 3,
+                name: "speaker".to_string(),
+                email: "s3@u.org".to_string(),
+            },
+            Action::UpdateAllTeamEligibility {
+                tournament_idx: 182,
+                round_idx: 64,
+                eligible: true,
+            },
+            Action::GenerateDraw {
+                tournament_idx: 134,
+                round_idx: 101,
+                force: false,
+            },
+            Action::SetRoundCompleted {
+                tournament_idx: 236,
+                round_idx: 23,
+                completed: true,
+            },
+            Action::CreateJudge {
+                tournament_idx: 153,
+                name: String::new(),
+                email: "v@g.org".to_string(),
+                institution_idx: None,
+            },
+            Action::MoveJudge {
+                tournament_idx: 130,
+                round_idx: 136,
+                judge_idx: 241,
+                debate_idx: 81,
+                role: String::new(),
+                assign: true,
+            },
+            Action::ViewTournamentPage {
+                tournament_idx: 244,
+                round_idx: 153,
+                page_idx: 185,
+            },
+        ],
+    });
+}
+
+#[test]
 fn fuzz_regression_dda7db76ef12f900() {
     harness::run_workload(&WorkloadInput {
         actions: vec![
@@ -237,6 +357,12 @@ fn fuzz_regression_dda7db76ef12f900() {
                 name: "down".to_string(),
                 category_idx: None,
                 seq: 3958213056,
+            },
+            Action::CreateMotion {
+                tournament_idx: 193,
+                round_idx: 0,
+                motion: "down".to_string(),
+                infoslide: None,
             },
             Action::SetRoundCompleted {
                 tournament_idx: 133,
@@ -276,6 +402,12 @@ fn fuzz_regression_bee2ecfb0de2efff() {
                 name: "down".to_string(),
                 category_idx: None,
                 seq: 3958213056,
+            },
+            Action::CreateMotion {
+                tournament_idx: 193,
+                round_idx: 0,
+                motion: "down".to_string(),
+                infoslide: None,
             },
             Action::SetRoundCompleted {
                 tournament_idx: 133,
@@ -407,6 +539,12 @@ fn fuzz_regression_7ac30aecdb5ffdaf() {
                 category_idx: None,
                 seq: 4019972498,
             },
+            Action::CreateMotion {
+                tournament_idx: 148,
+                round_idx: 0,
+                motion: "lynx".to_string(),
+                infoslide: None,
+            },
             Action::CreateTeam {
                 tournament_idx: 125,
                 name: "Xout".to_string(),
@@ -490,6 +628,12 @@ fn fuzz_regression_7ac30aecdb5ffdaf() {
                 name: "lynx".to_string(),
                 category_idx: None,
                 seq: 4019972498,
+            },
+            Action::CreateMotion {
+                tournament_idx: 148,
+                round_idx: 0,
+                motion: "lynx".to_string(),
+                infoslide: None,
             },
             Action::ViewTournamentPage {
                 tournament_idx: 119,

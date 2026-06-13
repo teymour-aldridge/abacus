@@ -74,12 +74,18 @@ pub async fn submit_ballot_page(
     let existing_form = existing_ballot
         .as_ref()
         .map(|ballot| BallotForm::from_repr(ballot, &debate_repr, &tournament));
+    let round_name = round.name.clone();
+
+    assert!(
+        !debate_repr.motions.is_empty(),
+        "ballot submission requires at least one motion"
+    );
 
     let ballot_form = fields_of_single_ballot_form(
         &tournament,
+        &round,
         &debate_repr,
         existing_form.as_ref(),
-        &mut *conn,
     );
 
     success(
@@ -92,7 +98,7 @@ pub async fn submit_ballot_page(
                     header class="mb-5" {
                         h1 class="display-4 fw-bold mb-3" { "Submit Ballot" }
                         span class="badge bg-light text-dark" {
-                            "Round " (round.name)
+                            "Round " (round_name)
                         }
                     }
 

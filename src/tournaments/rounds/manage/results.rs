@@ -8,7 +8,7 @@ use crate::{
     auth::User,
     schema::{
         agg_speaker_results_of_debate, agg_team_results_of_debate, debates,
-        rounds,
+        motions_of_round, rounds,
     },
     state::Conn,
     template::Page,
@@ -189,6 +189,11 @@ pub async fn set_round_completed(
             .execute(&mut *conn)
             .unwrap();
     } else {
+        assert!(
+            round_has_motion(&round.id, &mut *conn),
+            "completed rounds must have at least one motion"
+        );
+
         // Enforce invariant: can only complete if all non-trainee judges have submitted ballots
         // and there are no conflicts.
         let draw = RoundDrawRepr::of_round(round.clone(), &mut *conn);
@@ -284,6 +289,20 @@ pub async fn set_round_completed(
         "/tournaments/{}/rounds/{}/results/manage",
         tournament_id, round.seq
     )))
+}
+
+fn round_has_motion(
+    round_id: &str,
+    conn: &mut impl diesel::connection::LoadConnection<
+        Backend = diesel::sqlite::Sqlite,
+    >,
+) -> bool {
+    motions_of_round::table
+        .filter(motions_of_round::round_id.eq(round_id))
+        .count()
+        .get_result::<i64>(conn)
+        .unwrap_or(0)
+        > 0
 }
 
 #[derive(Deserialize, Debug)]

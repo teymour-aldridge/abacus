@@ -4,7 +4,6 @@ use axum::{
     extract::{FromRequest, Request},
     http::StatusCode,
 };
-use diesel::{connection::LoadConnection, sqlite::Sqlite};
 use hypertext::prelude::*;
 use serde::de::DeserializeOwned;
 
@@ -34,9 +33,9 @@ where
 }
 
 use crate::tournaments::{
-    RoundKind, Tournament,
+    Tournament,
     rounds::{
-        ballots::manage::edit::BallotForm, draws::DebateRepr,
+        Round, ballots::manage::edit::BallotForm, draws::DebateRepr,
         side_names::name_of_side,
     },
 };
@@ -45,17 +44,13 @@ use crate::tournaments::{
 /// submission and editing forms.
 pub fn fields_of_single_ballot_form(
     tournament: &Tournament,
+    round: &Round,
     debate: &DebateRepr,
     existing: Option<&BallotForm>,
-    conn: &mut impl LoadConnection<Backend = Sqlite>,
 ) -> impl Renderable {
-    let requires_speaker_order =
-        tournament.current_round_requires_speaker_order(conn);
-    let requires_speaks = tournament.current_round_requires_speaks(conn);
-    let is_elim =
-        matches!(tournament.current_round_type(conn), RoundKind::Elim);
-
-    assert!(!debate.motions.is_empty());
+    let requires_speaker_order = tournament.round_requires_speaker_order(round);
+    let requires_speaks = tournament.round_requires_speaks(round);
+    let is_elim = round.is_elim();
 
     let expected_version = existing.map(|e| e.expected_version).unwrap_or(0);
 
@@ -109,18 +104,27 @@ pub fn fields_of_single_ballot_form(
                                             label class="form-label d-block fw-bold text-muted small text-uppercase mb-2" { (pos_name) }
                                             div class="row g-2" {
                                                 div class="col-7" {
-                                                    select name=(format!("teams[{no}][speakers][{speaker_idx}][id]")) class="form-select" {
-                                                        @let team_speakers = debate.speakers_of_team.get(&team.team_id).unwrap();
-                                                        @for speaker in team_speakers {
-                                                            @let selected = existing_team.map(|t| {
-                                                                t.speakers.get(speaker_idx as usize)
-                                                                    .map(|s| s.id == speaker.id)
-                                                                    .unwrap_or(false)
-                                                            }).unwrap_or(false);
-                                                            option value=(speaker.id) selected=(selected) {
-                                                                (speaker.name)
+                                                    @if let Some(team_speakers) = debate.speakers_of_team.get(&team.team_id) {
+                                                        @if !team_speakers.is_empty() {
+                                                            select name=(format!("teams[{no}][speakers][{speaker_idx}][id]")) class="form-select" {
+                                                                @for speaker in team_speakers {
+                                                                    @let selected = existing_team.map(|t| {
+                                                                        t.speakers.get(speaker_idx as usize)
+                                                                            .map(|s| s.id == speaker.id)
+                                                                            .unwrap_or(false)
+                                                                    }).unwrap_or(false);
+                                                                    option value=(speaker.id) selected=(selected) {
+                                                                        (speaker.name)
+                                                                    }
+                                                                }
                                                             }
+                                                        } @else {
+                                                            input type="hidden" name=(format!("teams[{no}][speakers][{speaker_idx}][id]")) value="";
+                                                            span class="text-muted small" { "No speakers registered" }
                                                         }
+                                                    } @else {
+                                                        input type="hidden" name=(format!("teams[{no}][speakers][{speaker_idx}][id]")) value="";
+                                                        span class="text-muted small" { "No speakers registered" }
                                                     }
                                                 }
 
@@ -149,18 +153,27 @@ pub fn fields_of_single_ballot_form(
                                             label class="form-label d-block fw-bold text-muted small text-uppercase mb-2" { (pos_name) }
                                             div class="row g-2" {
                                                 div class="col-7" {
-                                                    select name=(format!("teams[{no}][speakers][{reply_idx}][id]")) class="form-select" {
-                                                        @let team_speakers = debate.speakers_of_team.get(&team.team_id).unwrap();
-                                                        @for speaker in team_speakers {
-                                                            @let selected = existing_team.map(|t| {
-                                                                t.speakers.get(reply_idx as usize)
-                                                                    .map(|s| s.id == speaker.id)
-                                                                    .unwrap_or(false)
-                                                            }).unwrap_or(false);
-                                                            option value=(speaker.id) selected=(selected) {
-                                                                (speaker.name) " (Reply)"
+                                                    @if let Some(team_speakers) = debate.speakers_of_team.get(&team.team_id) {
+                                                        @if !team_speakers.is_empty() {
+                                                            select name=(format!("teams[{no}][speakers][{reply_idx}][id]")) class="form-select" {
+                                                                @for speaker in team_speakers {
+                                                                    @let selected = existing_team.map(|t| {
+                                                                        t.speakers.get(reply_idx as usize)
+                                                                            .map(|s| s.id == speaker.id)
+                                                                            .unwrap_or(false)
+                                                                    }).unwrap_or(false);
+                                                                    option value=(speaker.id) selected=(selected) {
+                                                                        (speaker.name) " (Reply)"
+                                                                    }
+                                                                }
                                                             }
+                                                        } @else {
+                                                            input type="hidden" name=(format!("teams[{no}][speakers][{reply_idx}][id]")) value="";
+                                                            span class="text-muted small" { "No speakers registered" }
                                                         }
+                                                    } @else {
+                                                        input type="hidden" name=(format!("teams[{no}][speakers][{reply_idx}][id]")) value="";
+                                                        span class="text-muted small" { "No speakers registered" }
                                                     }
                                                 }
 

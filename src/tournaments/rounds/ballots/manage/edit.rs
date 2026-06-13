@@ -199,6 +199,11 @@ pub async fn edit_ballot_page(
     let debate_repr = DebateRepr::fetch(&debate_id, &mut *conn);
     let round = Round::fetch(&debate_repr.debate.round_id, &mut *conn)?;
 
+    assert!(
+        !debate_repr.motions.is_empty(),
+        "ballot edit requires at least one motion"
+    );
+
     let latest_ballots = debate_repr.latest_ballots(&mut *conn);
     let judge_ballot = latest_ballots
         .into_iter()
@@ -216,9 +221,9 @@ pub async fn edit_ballot_page(
     let cloned_tournament = tournament.clone();
     let ballot_form_fields = fields_of_single_ballot_form(
         &cloned_tournament,
+        &round,
         &debate_repr,
         ballot_form_data.as_ref(),
-        &mut *conn,
     );
 
     success(
@@ -266,6 +271,11 @@ pub async fn do_edit_ballot(
 
     let debate_repr = DebateRepr::fetch(&debate_id, &mut *conn);
     let round = Round::fetch(&debate_repr.debate.round_id, &mut *conn)?;
+
+    assert!(
+        !debate_repr.motions.is_empty(),
+        "ballot edit requires at least one motion"
+    );
 
     let judge = debate_repr.judges.get(&judge_id);
     if judge.is_none() {

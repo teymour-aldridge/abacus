@@ -1,5 +1,5 @@
 use axum::{Form, extract::Path, response::Redirect};
-use diesel::prelude::*;
+use diesel::{prelude::*, result::DatabaseErrorKind};
 use hypertext::prelude::*;
 use serde::Deserialize;
 
@@ -155,13 +155,26 @@ pub async fn do_edit_round(
         ));
     }
 
-    let n = diesel::update(rounds::table.filter(rounds::id.eq(round.id)))
+    let res = diesel::update(rounds::table.filter(rounds::id.eq(round.id)))
         .set((
             rounds::name.eq(&form.name),
             rounds::seq.eq(&(form.seq as i64)),
         ))
-        .execute(&mut *conn)
-        .unwrap();
+        .execute(&mut *conn);
+    let n = match res {
+        Ok(n) => n,
+        Err(diesel::result::Error::DatabaseError(kind, _))
+            if kind == DatabaseErrorKind::UniqueViolation =>
+        {
+            return crate::util_resp::bad_request(
+                maud! {
+                    p { "A round with this name already exists in this tournament." }
+                }
+                .render(),
+            );
+        }
+        Err(e) => return Err(e.into()),
+    };
     assert_eq!(n, 1);
 
     take_snapshot(&tid, &mut *conn);

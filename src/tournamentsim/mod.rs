@@ -485,6 +485,94 @@ fn fuzz_regression_5e3a4cdb7c310a40() {
 }
 
 #[test]
+fn fuzz_regression_53bc4b77764be3d2() {
+    harness::run_workload(&WorkloadInput {
+        actions: vec![
+            Action::RegisterUser {
+                username: "kin".to_string(),
+                email: "g@r.org".to_string(),
+                password: "badger".to_string(),
+            },
+            Action::CreateTournament {
+                name: "ibex".to_string(),
+                abbrv: ",l".to_string(),
+                slug: "".to_string(),
+            },
+            Action::CreateRound {
+                tournament_idx: 148,
+                name: "lynx".to_string(),
+                category_idx: None,
+                seq: 4019972498,
+            },
+            Action::CreateTeam {
+                tournament_idx: 125,
+                name: "Xout".to_string(),
+                institution_idx: None,
+            },
+            Action::CreateTeam {
+                tournament_idx: 125,
+                name: "Xout".to_string(),
+                institution_idx: None,
+            },
+            Action::CreateMotion {
+                tournament_idx: 73,
+                round_idx: 115,
+                motion: "O".to_string(),
+                infoslide: None,
+            },
+            Action::UpdateAllTeamEligibility {
+                tournament_idx: 182,
+                round_idx: 64,
+                eligible: true,
+            },
+            Action::ApplyTournamentPreset {
+                tournament_idx: 207,
+                preset_idx: 217,
+            },
+            Action::GenerateDraw {
+                tournament_idx: 142,
+                round_idx: 67,
+                force: true,
+            },
+            Action::AddFeedbackQuestion {
+                tournament_idx: 114,
+                question: "".to_string(),
+                question_type: "bool".to_string(),
+                for_judges: true,
+                for_teams: false,
+            },
+            Action::SetDrawPublished {
+                tournament_idx: 46,
+                round_idx: 0,
+                status: "released_full".to_string(),
+                published: None,
+            },
+            Action::CreateJudge {
+                tournament_idx: 153,
+                name: "".to_string(),
+                email: "v@g.org".to_string(),
+                institution_idx: None,
+            },
+            Action::MoveJudge {
+                tournament_idx: 130,
+                round_idx: 136,
+                judge_idx: 241,
+                debate_idx: 81,
+                role: "".to_string(),
+                assign: true,
+            },
+            Action::SubmitFeedback {
+                tournament_idx: 4,
+                private_url_idx: 55,
+                round_idx: 107,
+                target_judge_idx: 189,
+                answer: "".to_string(),
+            },
+        ],
+    });
+}
+
+#[test]
 fn release_full_draw_requires_motion() {
     harness::run_workload(&WorkloadInput {
         actions: vec![

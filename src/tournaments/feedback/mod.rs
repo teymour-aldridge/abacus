@@ -53,6 +53,7 @@ pub struct FeedbackOfTeam {
 #[diesel(table_name = answers_of_feedback_from_judges)]
 pub struct FeedbackFromJudgesQuestionAnswer {
     pub id: String,
+    pub tournament_id: String,
     pub feedback_id: String,
     pub question_id: String,
     pub answer: String,
@@ -64,6 +65,7 @@ pub struct FeedbackFromJudgesQuestionAnswer {
 #[diesel(table_name = answers_of_feedback_from_teams)]
 pub struct FeedbackFromTeamsQuestionAnswer {
     pub id: String,
+    pub tournament_id: String,
     pub feedback_id: String,
     pub question_id: String,
     pub answer: String,

@@ -278,6 +278,7 @@ pub async fn do_submit_feedback(
                 diesel::insert_into(answers_of_feedback_from_judges::table)
                     .values(FeedbackFromJudgesQuestionAnswer {
                         id: Uuid::now_v7().to_string(),
+                        tournament_id: tournament.id.clone(),
                         feedback_id: feedback_id.clone(),
                         question_id: q_id.clone(),
                         answer: ans.clone(),
@@ -304,6 +305,7 @@ pub async fn do_submit_feedback(
                 diesel::insert_into(answers_of_feedback_from_teams::table)
                     .values(FeedbackFromTeamsQuestionAnswer {
                         id: Uuid::now_v7().to_string(),
+                        tournament_id: tournament.id.clone(),
                         feedback_id: feedback_id.clone(),
                         question_id: q_id.clone(),
                         answer: ans.clone(),

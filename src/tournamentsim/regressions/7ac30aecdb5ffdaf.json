@@ -1,0 +1,28 @@
+{
+  "actions": [
+    {"RegisterUser":{"username":"out","email":"l@u.org","password":"badger"}},
+    {"CreateTournament":{"name":"ibex","abbrv":",l","slug":""}},
+    {"CreateRoom":{"tournament_idx":97,"name":"","priority":157038913731170864}},
+    {"CreateRound":{"tournament_idx":148,"name":"lynx","category_idx":null,"seq":4019972498}},
+    {"CreateMotion":{"tournament_idx":148,"round_idx":0,"motion":"lynx","infoslide":null}},
+    {"CreateTeam":{"tournament_idx":125,"name":"Xout","institution_idx":null}},
+    {"CreateTeam":{"tournament_idx":125,"name":"Xout","institution_idx":null}},
+    {"CreateTeam":{"tournament_idx":125,"name":"Xout","institution_idx":null}},
+    {"CreateTeam":{"tournament_idx":164,"name":"lynx","institution_idx":null}},
+    {"UpdateAllTeamEligibility":{"tournament_idx":182,"round_idx":64,"eligible":true}},
+    {"GenerateDraw":{"tournament_idx":142,"round_idx":67,"force":true}},
+    {"MoveRoom":{"tournament_idx":46,"round_idx":189,"room_idx":150,"debate_idx":106,"assign":true}},
+    {"CreateJudge":{"tournament_idx":153,"name":"","email":"d@l.org","institution_idx":null}},
+    {"CreateRoomCategory":{"tournament_idx":123,"name":null,"private_name":"","public_name":"","description":""}},
+    {"AddConstraint":{"tournament_idx":245,"ptype":"judge","pid_idx":156,"category_idx":138}},
+    {"DeleteRoomCategory":{"tournament_idx":0,"category_idx":85}},
+    {"ViewTournamentPage":{"tournament_idx":83,"round_idx":8,"page_idx":225}},
+    {"MoveJudge":{"tournament_idx":130,"round_idx":136,"judge_idx":241,"debate_idx":81,"role":"","assign":true}},
+    {"ViewTournamentPage":{"tournament_idx":233,"round_idx":160,"page_idx":70}},
+    {"CreateRound":{"tournament_idx":148,"name":"lynx","category_idx":null,"seq":4019972498}},
+    {"CreateMotion":{"tournament_idx":148,"round_idx":0,"motion":"lynx","infoslide":null}},
+    {"ViewTournamentPage":{"tournament_idx":119,"round_idx":40,"page_idx":97}},
+    {"SetDrawPublished":{"tournament_idx":178,"round_idx":159,"status":"d","published":true}},
+    {"SetRoundCompleted":{"tournament_idx":236,"round_idx":23,"completed":true}}
+  ]
+}

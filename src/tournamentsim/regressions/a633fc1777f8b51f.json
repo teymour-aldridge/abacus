@@ -1,0 +1,18 @@
+{
+  "actions": [
+    {"RegisterUser":{"username":"otter","email":"g@r.org","password":"badger"}},
+    {"CreateTournament":{"name":"ibex","abbrv":",l","slug":""}},
+    {"CreateRound":{"tournament_idx":148,"name":"lynx","category_idx":null,"seq":4019972498}},
+    {"CreateTeam":{"tournament_idx":125,"name":"Xout","institution_idx":null}},
+    {"CreateTeam":{"tournament_idx":125,"name":"Xout","institution_idx":null}},
+    {"CreateTeam":{"tournament_idx":125,"name":"Xout","institution_idx":null}},
+    {"CreateTeam":{"tournament_idx":164,"name":"lynx","institution_idx":null}},
+    {"UpdateAllTeamEligibility":{"tournament_idx":182,"round_idx":64,"eligible":true}},
+    {"UpdateTournamentConfiguration":{"tournament_idx":32,"show_draws":true,"show_round_results":false,"team_tab_public":true,"speaker_tab_public":false,"standings_public":true,"require_prelim_substantive_speaks":true,"require_prelim_speaker_order":true,"require_elim_substantive_speaks":false,"require_elim_speaker_order":false,"reply_speakers":true,"reply_must_speak":true}},
+    {"CreateMotion":{"tournament_idx":235,"round_idx":46,"motion":"O","infoslide":null}},
+    {"GenerateDraw":{"tournament_idx":134,"round_idx":101,"force":false}},
+    {"CreateJudge":{"tournament_idx":153,"name":"","email":"v@g.org","institution_idx":null}},
+    {"MoveJudge":{"tournament_idx":130,"round_idx":136,"judge_idx":241,"debate_idx":81,"role":"","assign":true}},
+    {"ViewTournamentPage":{"tournament_idx":244,"round_idx":153,"page_idx":185}}
+  ]
+}

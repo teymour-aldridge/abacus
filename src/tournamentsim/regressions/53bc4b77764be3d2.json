@@ -1,0 +1,18 @@
+{
+  "actions": [
+    {"RegisterUser":{"username":"kin","email":"g@r.org","password":"badger"}},
+    {"CreateTournament":{"name":"ibex","abbrv":",l","slug":""}},
+    {"CreateRound":{"tournament_idx":148,"name":"lynx","category_idx":null,"seq":4019972498}},
+    {"CreateTeam":{"tournament_idx":125,"name":"Xout","institution_idx":null}},
+    {"CreateTeam":{"tournament_idx":125,"name":"Xout","institution_idx":null}},
+    {"CreateMotion":{"tournament_idx":73,"round_idx":115,"motion":"O","infoslide":null}},
+    {"UpdateAllTeamEligibility":{"tournament_idx":182,"round_idx":64,"eligible":true}},
+    {"ApplyTournamentPreset":{"tournament_idx":207,"preset_idx":217}},
+    {"GenerateDraw":{"tournament_idx":142,"round_idx":67,"force":true}},
+    {"AddFeedbackQuestion":{"tournament_idx":114,"question":"","question_type":"bool","for_judges":true,"for_teams":false}},
+    {"SetDrawPublished":{"tournament_idx":46,"round_idx":0,"status":"released_full","published":null}},
+    {"CreateJudge":{"tournament_idx":153,"name":"","email":"v@g.org","institution_idx":null}},
+    {"MoveJudge":{"tournament_idx":130,"round_idx":136,"judge_idx":241,"debate_idx":81,"role":"","assign":true}},
+    {"SubmitFeedback":{"tournament_idx":4,"private_url_idx":55,"round_idx":107,"target_judge_idx":189,"answer":""}}
+  ]
+}

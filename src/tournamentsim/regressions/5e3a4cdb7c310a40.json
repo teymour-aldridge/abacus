@@ -1,0 +1,12 @@
+{
+  "actions": [
+    {"RegisterUser":{"username":"out","email":"l@u.org","password":"badger"}},
+    {"CreateTournament":{"name":"ibex","abbrv":",l","slug":""}},
+    {"CreateJudge":{"tournament_idx":153,"name":"","email":"d@l.org","institution_idx":null}},
+    {"CreateRoomCategory":{"tournament_idx":123,"name":null,"private_name":"","public_name":"","description":""}},
+    {"AddConstraint":{"tournament_idx":245,"ptype":"judge","pid_idx":156,"category_idx":138}},
+    {"CreateRoomCategory":{"tournament_idx":123,"name":null,"private_name":"","public_name":"","description":""}},
+    {"AddConstraint":{"tournament_idx":245,"ptype":"judge","pid_idx":156,"category_idx":138}},
+    {"MoveConstraint":{"tournament_idx":188,"ptype":"","pid_idx":82,"constraint_idx":194,"up":false}}
+  ]
+}

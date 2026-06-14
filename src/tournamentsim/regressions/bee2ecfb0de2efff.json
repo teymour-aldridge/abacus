@@ -1,0 +1,11 @@
+{
+  "actions": [
+    {"RegisterUser":{"username":"on*","email":"d@r.com","password":"badger"}},
+    {"CreateTournament":{"name":"true","abbrv":"on","slug":""}},
+    {"CreateRound":{"tournament_idx":193,"name":"down","category_idx":null,"seq":3958213056}},
+    {"CreateMotion":{"tournament_idx":193,"round_idx":0,"motion":"down","infoslide":null}},
+    {"SetRoundCompleted":{"tournament_idx":133,"round_idx":159,"completed":true}},
+    {"CreateTeam":{"tournament_idx":160,"name":"lynx","institution_idx":null}},
+    {"ApplyTournamentPreset":{"tournament_idx":122,"preset_idx":179}}
+  ]
+}

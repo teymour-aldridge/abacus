@@ -1,0 +1,22 @@
+{
+  "actions": [
+    {"RegisterUser":{"username":"out","email":"l@u.org","password":"badger"}},
+    {"CreateTournament":{"name":"ibex","abbrv":",l","slug":""}},
+    {"CreateRound":{"tournament_idx":148,"name":"lynx","category_idx":null,"seq":4019972498}},
+    {"CreateMotion":{"tournament_idx":148,"round_idx":0,"motion":"lynx","infoslide":null}},
+    {"CreateTeam":{"tournament_idx":125,"name":"Xout","institution_idx":null}},
+    {"CreateSpeaker":{"tournament_idx":125,"team_idx":0,"name":"speaker","email":"s0@u.org"}},
+    {"CreateTeam":{"tournament_idx":125,"name":"Xout","institution_idx":null}},
+    {"CreateSpeaker":{"tournament_idx":125,"team_idx":1,"name":"speaker","email":"s1@u.org"}},
+    {"CreateTeam":{"tournament_idx":125,"name":"Xout","institution_idx":null}},
+    {"CreateSpeaker":{"tournament_idx":125,"team_idx":2,"name":"speaker","email":"s2@u.org"}},
+    {"CreateTeam":{"tournament_idx":164,"name":"lynx","institution_idx":null}},
+    {"CreateSpeaker":{"tournament_idx":164,"team_idx":3,"name":"speaker","email":"s3@u.org"}},
+    {"UpdateAllTeamEligibility":{"tournament_idx":182,"round_idx":64,"eligible":true}},
+    {"GenerateDraw":{"tournament_idx":134,"round_idx":101,"force":false}},
+    {"SetRoundCompleted":{"tournament_idx":236,"round_idx":23,"completed":true}},
+    {"CreateJudge":{"tournament_idx":153,"name":"","email":"v@g.org","institution_idx":null}},
+    {"MoveJudge":{"tournament_idx":130,"round_idx":136,"judge_idx":241,"debate_idx":81,"role":"","assign":true}},
+    {"ViewTournamentPage":{"tournament_idx":244,"round_idx":153,"page_idx":185}}
+  ]
+}

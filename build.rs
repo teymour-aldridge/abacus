@@ -1,4 +1,5 @@
 use std::env;
+use std::ffi::OsStr;
 use std::path::Path;
 use std::process::Command;
 
@@ -116,5 +117,67 @@ fn main() {
         });
     }
 
+    generate_tournamentsim_regression_tests(out_dir_path);
+
     lalrpop::process_root().unwrap();
+}
+
+fn generate_tournamentsim_regression_tests(out_dir_path: &Path) {
+    let regressions_dir = Path::new("src/tournamentsim/regressions");
+    println!("cargo:rerun-if-changed={}", regressions_dir.display());
+
+    let mut fixtures = std::fs::read_dir(regressions_dir)
+        .unwrap_or_else(|e| {
+            panic!(
+                "Failed to read regression fixtures from {:?}: {}",
+                regressions_dir, e
+            )
+        })
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| path.extension() == Some(OsStr::new("json")))
+        .collect::<Vec<_>>();
+    fixtures.sort();
+
+    let generated = fixtures
+        .iter()
+        .map(|path| {
+            let stem = path
+                .file_stem()
+                .and_then(OsStr::to_str)
+                .expect("fixture filename should be valid UTF-8");
+            let test_name = sanitize_test_name(stem);
+            let fixture_path = path
+                .canonicalize()
+                .unwrap_or_else(|e| {
+                    panic!(
+                        "Failed to canonicalize regression fixture {:?}: {}",
+                        path, e
+                    )
+                })
+                .display()
+                .to_string();
+
+            format!(
+                "#[test]\nfn {test_name}() {{\n    super::run_regression_fixture(\"{stem}\", include_str!(r#\"{fixture_path}\"#));\n}}\n"
+            )
+        })
+        .collect::<String>();
+
+    std::fs::write(
+        out_dir_path.join("tournamentsim_regression_tests.rs"),
+        generated,
+    )
+    .unwrap();
+}
+
+fn sanitize_test_name(name: &str) -> String {
+    let mut out = String::from("regression_");
+    for ch in name.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+        } else {
+            out.push('_');
+        }
+    }
+    out
 }

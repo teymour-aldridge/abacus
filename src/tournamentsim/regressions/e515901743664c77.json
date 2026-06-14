@@ -1,0 +1,8 @@
+{
+  "actions": [
+    {"RegisterUser":{"username":"out","email":"l@u.org","password":"badger"}},
+    {"CreateTournament":{"name":"ibex","abbrv":",l","slug":""}},
+    {"CreateRound":{"tournament_idx":148,"name":"lynx","category_idx":null,"seq":4019972498}},
+    {"SetRoundCompleted":{"tournament_idx":236,"round_idx":23,"completed":true}}
+  ]
+}

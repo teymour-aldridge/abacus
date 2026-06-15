@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::{fs::File, path::PathBuf};
 
 use abacus::MIGRATIONS;
 use abacus::schema::{
@@ -147,9 +147,14 @@ fn main() {
         .execute(&mut conn)
         .unwrap();
 
+    let testdata_dir = std::env::var("ABACUS_TESTDATA_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("src/bin"));
+
     if args.teams {
-        let mut teams =
-            csv::Reader::from_reader(File::open("src/bin/teams.csv").unwrap());
+        let mut teams = csv::Reader::from_reader(
+            File::open(testdata_dir.join("teams.csv")).unwrap(),
+        );
         let headers = teams.headers().unwrap().clone();
 
         for (i, result) in teams.records().enumerate() {
@@ -200,8 +205,9 @@ fn main() {
     }
 
     if args.judges {
-        let mut teams =
-            csv::Reader::from_reader(File::open("src/bin/judges.csv").unwrap());
+        let mut teams = csv::Reader::from_reader(
+            File::open(testdata_dir.join("judges.csv")).unwrap(),
+        );
         let headers = teams.headers().unwrap().clone();
 
         for (i, result) in teams.records().enumerate() {
@@ -231,8 +237,9 @@ fn main() {
     }
 
     if args.rooms {
-        let mut rooms =
-            csv::Reader::from_reader(File::open("src/bin/rooms.csv").unwrap());
+        let mut rooms = csv::Reader::from_reader(
+            File::open(testdata_dir.join("rooms.csv")).unwrap(),
+        );
         let headers = rooms.headers().unwrap().clone();
 
         for (i, result) in rooms.records().enumerate() {

@@ -1,8 +1,8 @@
 use axum::{
     Router,
-    extract::MatchedPath,
-    http::header,
-    response::IntoResponse,
+    extract::{MatchedPath, Path},
+    http::{StatusCode, header},
+    response::{IntoResponse, Response},
     routing::{get, post},
 };
 use axum_extra::extract::cookie::Key;
@@ -118,6 +118,102 @@ async fn style_css() -> impl IntoResponse {
     ([(header::CONTENT_TYPE, "text/css")], css_content)
 }
 
+async fn web_font(Path(font_name): Path<String>) -> Response {
+    let Some(source) = font_source(&font_name) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
+    let env_dir = std::env::var(source.env_key)
+        .ok()
+        .map(std::path::PathBuf::from);
+    let font_dirs = env_dir.into_iter().chain([
+        std::path::PathBuf::from("assets/fonts"),
+        std::path::PathBuf::from("fonts"),
+    ]);
+
+    for dir in font_dirs {
+        for source_name in source.file_names {
+            let path = dir.join(source_name);
+            if let Ok(content) = std::fs::read(path) {
+                return (
+                    [(header::CONTENT_TYPE, source.content_type)],
+                    content,
+                )
+                    .into_response();
+            }
+        }
+    }
+
+    StatusCode::NOT_FOUND.into_response()
+}
+
+struct FontSource {
+    env_key: &'static str,
+    file_names: &'static [&'static str],
+    content_type: &'static str,
+}
+
+fn font_source(font_name: &str) -> Option<FontSource> {
+    match font_name {
+        "cooper-hewitt-book.otf" => Some(FontSource {
+            env_key: "ABACUS_COOPER_HEWITT_FONT_DIR",
+            file_names: &["CooperHewitt-Book.otf", "cooper-hewitt-book.otf"],
+            content_type: "font/otf",
+        }),
+        "cooper-hewitt-bold.otf" => Some(FontSource {
+            env_key: "ABACUS_COOPER_HEWITT_FONT_DIR",
+            file_names: &["CooperHewitt-Bold.otf", "cooper-hewitt-bold.otf"],
+            content_type: "font/otf",
+        }),
+        "cooper-hewitt-heavy.otf" => Some(FontSource {
+            env_key: "ABACUS_COOPER_HEWITT_FONT_DIR",
+            file_names: &["CooperHewitt-Heavy.otf", "cooper-hewitt-heavy.otf"],
+            content_type: "font/otf",
+        }),
+        "charter-regular.otf" => Some(FontSource {
+            env_key: "ABACUS_CHARTER_FONT_DIR",
+            file_names: &[
+                "c0648bt_.otf",
+                "charter-regular.otf",
+                "Charter-Regular.otf",
+                "XCharter-Roman.otf",
+            ],
+            content_type: "font/otf",
+        }),
+        "charter-italic.otf" => Some(FontSource {
+            env_key: "ABACUS_CHARTER_FONT_DIR",
+            file_names: &[
+                "c0649bt_.otf",
+                "charter-italic.otf",
+                "Charter-Italic.otf",
+                "XCharter-Italic.otf",
+            ],
+            content_type: "font/otf",
+        }),
+        "charter-bold.otf" => Some(FontSource {
+            env_key: "ABACUS_CHARTER_FONT_DIR",
+            file_names: &[
+                "c0632bt_.otf",
+                "charter-bold.otf",
+                "Charter-Bold.otf",
+                "XCharter-Bold.otf",
+            ],
+            content_type: "font/otf",
+        }),
+        "charter-bold-italic.otf" => Some(FontSource {
+            env_key: "ABACUS_CHARTER_FONT_DIR",
+            file_names: &[
+                "c0633bt_.otf",
+                "charter-bold-italic.otf",
+                "Charter-BoldItalic.otf",
+                "XCharter-BoldItalic.otf",
+            ],
+            content_type: "font/otf",
+        }),
+        _ => None,
+    }
+}
+
 async fn draw_editor_js() -> impl IntoResponse {
     let content = include_str!(concat!(env!("OUT_DIR"), "/draw_editor.js"));
     ([(header::CONTENT_TYPE, "application/javascript")], content)
@@ -169,6 +265,7 @@ pub fn create_app(pool: DbPool) -> Router {
     Router::new()
         .route("/", get(home))
         .route("/style.css", get(style_css))
+        .route("/fonts/:font_name", get(web_font))
         .route("/login", get(crate::auth::login::login_page).post(crate::auth::login::do_login))
         .route("/logout", post(crate::auth::login::do_logout))
         .route("/register", get(crate::auth::register::register_page).post(crate::auth::register::do_register))

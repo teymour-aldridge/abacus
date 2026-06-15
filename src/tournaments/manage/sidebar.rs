@@ -27,10 +27,10 @@ impl<R: Renderable> Renderable for SidebarWrapper<'_, R> {
     ) {
         maud! {
 
-            div class="border-bottom container-fluid px-4 pt-2 pb-0" style="background-color: #f8f9fa;" {
+            div class="tournament-round-rail container-fluid px-4 py-3" {
                 Sidebar tournament=(&self.tournament) rounds=(&self.rounds) selected_seq=(self.selected_seq) active_page=(self.active_page);
             }
-            div class="px-4 py-4" {
+            div class="abacus-content px-4 py-4" {
                 (self.children)
             }
         }
@@ -75,15 +75,17 @@ impl<'r> Renderable for Sidebar<'r> {
         };
 
         maud! {
-            div class="d-flex align-items-center gap-4" {
-                div class="dropdown" {
-                    button class="btn btn-sm dropdown-toggle d-flex align-items-center gap-2"
-                        type="button" data-bs-toggle="dropdown" aria-expanded="false"
-                        style="font-weight: 600; color: #212529; background: transparent; border: none; padding-left: 0;" {
-                        span class="material-icons" style="font-size: 1rem; color: #6c757d;" { "view_agenda" }
+            div class="round-nav-shell d-flex align-items-center gap-3" {
+                span class="admin-context-label d-inline-flex align-items-center gap-1" {
+                    "Admin tools"
+                }
+
+                div class="dropdown round-selector" {
+                    button class="round-selector-button btn btn-sm dropdown-toggle d-flex align-items-center gap-2"
+                        type="button" data-bs-toggle="dropdown" aria-expanded="false" {
                         (current_round_name)
                     }
-                    ul class="dropdown-menu shadow-sm" style="min-width: 200px;" {
+                    ul class="dropdown-menu round-selector-menu shadow-sm" {
                         @for level in &grouped_rounds {
                             @let seq = level[0].seq;
                             @let name = level.iter().map(|r| r.name.as_str()).collect::<Vec<_>>().join("/");
@@ -99,13 +101,12 @@ impl<'r> Renderable for Sidebar<'r> {
                             @let is_active = active_round_seq == Some(seq);
 
                             li {
-                                a class="dropdown-item py-2"
-                                    href=(url)
-                                    style=(if is_selected { "font-weight: 600; color: #212529;" } else { "color: #495057;" }) {
+                                a class=(format!("dropdown-item round-selector-item py-2 {}", if is_selected { "round-selector-item-active" } else { "" }))
+                                    href=(url) {
                                     div class="d-flex align-items-center justify-content-between gap-3" {
                                         span { (name) }
                                         @if is_active {
-                                            span class="text-muted" style="font-size: 0.6875rem; font-weight: 400; white-space: nowrap;" { "current" }
+                                            span class="round-current-label" { "current" }
                                         }
                                     }
                                 }
@@ -114,11 +115,11 @@ impl<'r> Renderable for Sidebar<'r> {
                     }
                 }
 
-                div class="vr opacity-25" {}
+                div class="round-nav-divider" {}
 
 
                 @if let Some(seq) = self.selected_seq {
-                    nav class="d-flex align-items-center gap-3" style="margin-bottom: -1px;" {
+                    nav class="round-stage-nav d-flex align-items-center gap-2" aria-label="Round stages" {
                         a class=(format!("sidebar-stage-tab text-decoration-none {}", if self.active_page == Some(SidebarPage::Setup) { "sidebar-stage-active" } else { "" }))
                             href=(format!("/tournaments/{}/rounds/{}/setup", self.tournament.id, seq)) {
                             "Setup"

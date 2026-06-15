@@ -9,6 +9,7 @@ use crate::{
     auth::User,
     tournaments::{Tournament, rounds::Round},
 };
+use uuid::Uuid;
 
 pub mod form;
 
@@ -20,6 +21,96 @@ pub enum ActiveNav {
     Standings,
     Motions,
     Rooms,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ChosenColor {
+    accent: &'static str,
+    accent_deep: &'static str,
+    accent_soft: &'static str,
+    accent_wash: &'static str,
+}
+
+fn colour(id: Uuid) -> ChosenColor {
+    let colours = [
+        ChosenColor {
+            accent: "#6aaec5",
+            accent_deep: "#2f6f82",
+            accent_soft: "#d8edf3",
+            accent_wash: "#f4fbfd",
+        },
+        ChosenColor {
+            accent: "#d889aa",
+            accent_deep: "#9b4667",
+            accent_soft: "#f3d8e5",
+            accent_wash: "#fff7fb",
+        },
+        ChosenColor {
+            accent: "#a9bf62",
+            accent_deep: "#687d23",
+            accent_soft: "#e8f0c8",
+            accent_wash: "#fbfdf2",
+        },
+        ChosenColor {
+            accent: "#d0b75b",
+            accent_deep: "#82702a",
+            accent_soft: "#f1e5b7",
+            accent_wash: "#fffbee",
+        },
+        ChosenColor {
+            accent: "#9c8bc2",
+            accent_deep: "#62518b",
+            accent_soft: "#e5def2",
+            accent_wash: "#faf7ff",
+        },
+        ChosenColor {
+            accent: "#d8906a",
+            accent_deep: "#9c5434",
+            accent_soft: "#f3d9ca",
+            accent_wash: "#fff8f4",
+        },
+        ChosenColor {
+            accent: "#86b8a0",
+            accent_deep: "#3f765d",
+            accent_soft: "#dcefe6",
+            accent_wash: "#f5fcf8",
+        },
+        ChosenColor {
+            accent: "#9db6d8",
+            accent_deep: "#526f9a",
+            accent_soft: "#dfe9f6",
+            accent_wash: "#f6faff",
+        },
+    ];
+
+    let hash =
+        id.as_bytes()
+            .iter()
+            .fold(0xcbf29ce484222325_u64, |hash, byte| {
+                hash.wrapping_mul(0x100000001b3).wrapping_add(*byte as u64)
+            });
+
+    colours[(hash as usize) % colours.len()]
+}
+
+fn tournament_theme(tournament: Option<&Tournament>) -> String {
+    let Some(tournament) = tournament else {
+        return String::new();
+    };
+
+    let color = Uuid::parse_str(&tournament.id)
+        .map(colour)
+        .unwrap_or_else(|_| colour(Uuid::nil()));
+    let ChosenColor {
+        accent,
+        accent_deep,
+        accent_soft,
+        accent_wash,
+    } = color;
+
+    format!(
+        "--tournament-accent: {accent}; --tournament-accent-deep: {accent_deep}; --tournament-accent-soft: {accent_soft}; --tournament-accent-wash: {accent_wash};"
+    )
 }
 
 pub struct Page<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool>
@@ -150,40 +241,46 @@ impl<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool> Renderable
                     }
                 }
 
-                body class="d-flex flex-column vh-100 overflow-hidden" {
+                body class=(format!("abacus-shell d-flex flex-column vh-100 overflow-hidden {}", if self.tournament.is_some() { "abacus-has-tournament" } else { "" }))
+                    style=(tournament_theme(self.tournament.as_ref())) {
 
-                    div class="border-bottom bg-white flex-shrink-0" {
+                    div class=(format!("abacus-topbar flex-shrink-0 {}", if self.user.is_some() { "abacus-signed-in-interface" } else { "abacus-public-interface" })) {
                         div class="container-fluid px-4" {
-                            div class="d-flex align-items-center justify-content-between pt-2 pb-1" {
-                                div class="d-flex align-items-center gap-2" {
-                                    a class="text-dark text-decoration-none fw-bold" href="/" style="font-size: 1.125rem;" {
+                            div class="abacus-masthead d-flex align-items-center justify-content-between pt-3 pb-2" {
+                                div class="abacus-brand-line d-flex align-items-center gap-2" {
+                                    a class="abacus-wordmark text-decoration-none" href="/" {
                                         "Abacus"
                                     }
                                     @if let Some(tournament) = &self.tournament {
-                                        span class="text-secondary" style="font-size: 1rem;" { "/" }
-                                        a class="text-dark text-decoration-none fw-semibold"
-                                            href=(format!("/tournaments/{}", tournament.id))
-                                            style="font-size: 1rem;" {
+                                        span class="abacus-breadcrumb-mark" { "/" }
+                                        a class="abacus-tournament-link text-decoration-none"
+                                            href=(format!("/tournaments/{}", tournament.id)) {
                                             (tournament.name)
                                         }
                                     }
                                 }
 
 
-                                div class="d-flex align-items-center gap-3" {
+                                div class="abacus-session-line d-flex align-items-center gap-2 gap-md-3" {
+                                    @if self.user.is_some() {
+                                        span class="abacus-interface-badge abacus-interface-signed-in" { "Signed in" }
+                                    } @else if self.tournament.is_some() {
+                                        span class="abacus-interface-badge abacus-interface-public" { "Public view" }
+                                    }
+
                                     @if let Some(user) = &self.user {
-                                        a class="text-secondary text-decoration-none fw-medium" href="/user" style="font-size: 0.8125rem;" {
+                                        a class="abacus-user-link text-decoration-none" href="/user" {
                                             (user.username)
                                         }
                                     } @else {
-                                        a class="btn btn-sm btn-outline-secondary me-1" href="/login" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;" { "Sign in" }
-                                        a class="btn btn-sm btn-primary" href="/register" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;" { "Sign up" }
+                                        a class="btn btn-sm btn-outline-secondary me-1" href="/login" { "Sign in" }
+                                        a class="btn btn-sm btn-primary" href="/register" { "Sign up" }
                                     }
                                 }
                             }
 
                             @if let Some(tournament) = &self.tournament {
-                                nav class="d-flex gap-3 pb-0" style="margin-left: -0.375rem; margin-bottom: -1px;" {
+                                nav class="abacus-primary-nav d-flex gap-2 pb-3" aria-label="Tournament navigation" {
                                     @if let Some(rounds) = &self.current_rounds {
                                         @if !rounds.is_empty() {
                                             @let seq = rounds[0].seq;
@@ -191,44 +288,38 @@ impl<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool> Renderable
                                             @let is_results_pub = rounds.iter().all(|r| r.is_results_public());
 
                                             @if is_results_pub {
-                                                 a class=(format!("nav-tab-link d-flex align-items-center gap-1 py-2 text-decoration-none {}", if self.active_nav == Some(ActiveNav::Results) { "nav-tab-active" } else { "" }))
+                                                 a class=(format!("nav-tab-link text-decoration-none {}", if self.active_nav == Some(ActiveNav::Results) { "nav-tab-active" } else { "" }))
                                                      href=(format!("/tournaments/{}/rounds/{}/results", tournament.id, seq)) {
-                                                     span class="material-icons" style="font-size: 1rem;" { "assessment" }
                                                      "Results"
                                                  }
                                              } @else if is_draw_pub {
-                                                 a class=(format!("nav-tab-link d-flex align-items-center gap-1 py-2 text-decoration-none {}", if self.active_nav == Some(ActiveNav::Draw) { "nav-tab-active" } else { "" }))
+                                                 a class=(format!("nav-tab-link text-decoration-none {}", if self.active_nav == Some(ActiveNav::Draw) { "nav-tab-active" } else { "" }))
                                                      href=(format!("/tournaments/{}/rounds/{}/draw", tournament.id, seq)) {
-                                                     span class="material-icons" style="font-size: 1rem;" { "grid_view" }
                                                      "Draw"
                                                  }
                                              }
                                          }
                                      }
 
-                                     a class=(format!("nav-tab-link d-flex align-items-center gap-1 py-2 text-decoration-none {}", if self.active_nav == Some(ActiveNav::Participants) { "nav-tab-active" } else { "" }))
+                                     a class=(format!("nav-tab-link text-decoration-none {}", if self.active_nav == Some(ActiveNav::Participants) { "nav-tab-active" } else { "" }))
                                          href=(format!("/tournaments/{}/participants", tournament.id)) {
-                                         span class="material-icons" style="font-size: 1rem;" { "groups" }
                                          "Participants"
                                      }
 
                                      @if tournament.standings_public || tournament.team_tab_public {
-                                         a class=(format!("nav-tab-link d-flex align-items-center gap-1 py-2 text-decoration-none {}", if self.active_nav == Some(ActiveNav::Standings) { "nav-tab-active" } else { "" }))
+                                         a class=(format!("nav-tab-link text-decoration-none {}", if self.active_nav == Some(ActiveNav::Standings) { "nav-tab-active" } else { "" }))
                                              href=(format!("/tournaments/{}/tab/team", tournament.id)) {
-                                             span class="material-icons" style="font-size: 1rem;" { "leaderboard" }
                                              "Standings"
                                          }
                                      }
 
-                                     a class=(format!("nav-tab-link d-flex align-items-center gap-1 py-2 text-decoration-none {}", if self.active_nav == Some(ActiveNav::Motions) { "nav-tab-active" } else { "" }))
+                                     a class=(format!("nav-tab-link text-decoration-none {}", if self.active_nav == Some(ActiveNav::Motions) { "nav-tab-active" } else { "" }))
                                          href=(format!("/tournaments/{}/motions", tournament.id)) {
-                                         span class="material-icons" style="font-size: 1rem;" { "article" }
                                          "Motions"
                                      }
 
-                                     a class=(format!("nav-tab-link d-flex align-items-center gap-1 py-2 text-decoration-none {}", if self.active_nav == Some(ActiveNav::Rooms) { "nav-tab-active" } else { "" }))
+                                     a class=(format!("nav-tab-link text-decoration-none {}", if self.active_nav == Some(ActiveNav::Rooms) { "nav-tab-active" } else { "" }))
                                          href=(format!("/tournaments/{}/rooms", tournament.id)) {
-                                         span class="material-icons" style="font-size: 1rem;" { "meeting_room" }
                                          "Rooms"
                                      }
                                 }
@@ -237,7 +328,7 @@ impl<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool> Renderable
                     }
 
                     @if let Some(sidebar) = &self.sidebar {
-                        div class="border-bottom bg-light" {
+                        div class="abacus-context-nav" {
                             div class="container-fluid px-4" {
                                 (sidebar)
                             }
@@ -245,7 +336,7 @@ impl<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool> Renderable
                     }
 
 
-                    div class="flex-grow-1 overflow-auto bg-white" {
+                    div class="abacus-page flex-grow-1 overflow-auto" {
                         @if let Some(body) = &self.body {
                             (body)
                         }

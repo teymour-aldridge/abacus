@@ -5,7 +5,7 @@ import { resolve } from "path";
 export default defineConfig({
   plugins: [solid()],
   build: {
-    outDir: "../static/dist",
+    outDir: process.env.ABACUS_FRONTEND_OUT_DIR ?? "../static/dist",
     emptyOutDir: true,
     rollupOptions: {
       input: {

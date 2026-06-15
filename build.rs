@@ -8,7 +8,8 @@ fn main() {
 
     // Check for bootstrap
     let bootstrap_dir = Path::new("assets/bootstrap");
-    if !bootstrap_dir.exists() {
+    let bootstrap_load_path = env::var("ABACUS_BOOTSTRAP_LOAD_PATH").ok();
+    if !bootstrap_dir.exists() && bootstrap_load_path.is_none() {
         println!("cargo:warning=Bootstrap source not found, downloading...");
         // Create assets dir
         let assets_dir = Path::new("assets");
@@ -68,8 +69,12 @@ fn main() {
     // Compile sass
     let out_dir = env::var("OUT_DIR").unwrap();
     let dest_path = Path::new(&out_dir).join("style.css");
-    let status = Command::new("sass")
-        .arg("--load-path=assets")
+    let mut sass = Command::new("sass");
+    sass.arg("--load-path=assets");
+    if let Some(load_path) = &bootstrap_load_path {
+        sass.arg(format!("--load-path={load_path}"));
+    }
+    let status = sass
         .arg("assets/scss/main.scss")
         .arg(&dest_path)
         .status()
@@ -81,8 +86,14 @@ fn main() {
 
     println!("cargo:rerun-if-changed=assets/scss");
 
-    // Copy frontend build outputs into OUT_DIR so they can be embedded with include_str!
-    let frontend_dist = Path::new("static/dist");
+    // Copy frontend build outputs into OUT_DIR so they can be embedded with include_str!.
+    // Nix provides these as a separate derivation so frontend and Rust builds
+    // can be cached independently; local development keeps the existing npm path.
+    let frontend_dist_env = env::var("ABACUS_FRONTEND_DIST").ok();
+    let frontend_dist = frontend_dist_env
+        .as_deref()
+        .map(Path::new)
+        .unwrap_or_else(|| Path::new("static/dist"));
     let out_dir_path = Path::new(&out_dir);
 
     let files_to_copy = [
@@ -94,16 +105,18 @@ fn main() {
         ("store.css", "store.css"),
     ];
 
-    let status = Command::new("npm")
-        .arg("run")
-        .arg("build")
-        .arg("--prefix")
-        .arg("frontend")
-        .status()
-        .unwrap();
+    if frontend_dist_env.is_none() {
+        let status = Command::new("npm")
+            .arg("run")
+            .arg("build")
+            .arg("--prefix")
+            .arg("frontend")
+            .status()
+            .unwrap();
 
-    if !status.success() {
-        panic!("Failed to compile frontend");
+        if !status.success() {
+            panic!("Failed to compile frontend");
+        }
     }
 
     println!("cargo:rerun-if-changed=frontend/src");

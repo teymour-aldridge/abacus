@@ -1,38 +1,454 @@
-// Navigation tab links
+
+@font-face {
+    font-family: "Cooper Hewitt";
+    src: url("/fonts/cooper-hewitt-book.otf") format("opentype");
+    font-display: swap;
+    font-style: normal;
+    font-weight: 400;
+}
+
+@font-face {
+    font-family: "Cooper Hewitt";
+    src: url("/fonts/cooper-hewitt-bold.otf") format("opentype");
+    font-display: swap;
+    font-style: normal;
+    font-weight: 700;
+}
+
+@font-face {
+    font-family: "Cooper Hewitt";
+    src: url("/fonts/cooper-hewitt-heavy.otf") format("opentype");
+    font-display: swap;
+    font-style: normal;
+    font-weight: 800;
+}
+
+@font-face {
+    font-family: "Charter";
+    src: url("/fonts/charter-regular.otf") format("opentype");
+    font-display: swap;
+    font-style: normal;
+    font-weight: 400;
+}
+
+@font-face {
+    font-family: "Charter";
+    src: url("/fonts/charter-italic.otf") format("opentype");
+    font-display: swap;
+    font-style: italic;
+    font-weight: 400;
+}
+
+@font-face {
+    font-family: "Charter";
+    src: url("/fonts/charter-bold.otf") format("opentype");
+    font-display: swap;
+    font-style: normal;
+    font-weight: 700;
+}
+
+@font-face {
+    font-family: "Charter";
+    src: url("/fonts/charter-bold-italic.otf") format("opentype");
+    font-display: swap;
+    font-style: italic;
+    font-weight: 700;
+}
+
+:root {
+    --abacus-ink: #000;
+    --abacus-muted: #555;
+    --abacus-paper: #fff;
+    --abacus-panel: #fff;
+    --abacus-rule: #d6d6d6;
+    --abacus-rule-strong: #000;
+    --abacus-link: #07a;
+    --abacus-nav-bg: #a7b0be;
+    --abacus-nav-hover: #edf4fe;
+    --abacus-heading-font: "Cooper Hewitt", Fira, Arial, sans-serif;
+    --abacus-body-font: Charter, "Bitstream Charter", "Iowan Old Style", Georgia, serif;
+}
+
+body.abacus-shell {
+    background: white;
+    color: black;
+    font-family: var(--abacus-body-font);
+    font-size: 1rem;
+    line-height: 1.4;
+}
+
+body.abacus-has-tournament {
+    border-left: 0.45rem solid var(--tournament-accent);
+}
+
+.abacus-topbar {
+    background: white;
+    border-bottom: 1px solid var(--abacus-rule);
+    color: black;
+    box-shadow: none;
+}
+
+.abacus-topbar::after,
+.abacus-wordmark::before {
+    display: none;
+}
+
+.abacus-masthead {
+    gap: 1rem;
+}
+
+.abacus-brand-line {
+    align-items: baseline !important;
+    min-width: 0;
+}
+
+.abacus-wordmark {
+    color: black;
+    font-family: var(--abacus-heading-font);
+    font-size: 1rem;
+    font-weight: 400;
+    line-height: 1.2;
+    text-transform: none;
+}
+
+.abacus-breadcrumb-mark,
+.abacus-interface-badge {
+    color: var(--abacus-muted);
+    font-family: var(--abacus-heading-font);
+    font-size: 0.82rem;
+    font-weight: 400;
+    text-transform: none;
+}
+
+.abacus-tournament-link {
+    color: black;
+    font-family: var(--abacus-heading-font);
+    font-size: 1rem;
+    font-weight: 400;
+    line-height: 1.2;
+    text-decoration: none !important;
+}
+
+.abacus-interface-badge {
+    border: 0;
+    border-left: 1px solid var(--abacus-rule);
+    padding: 0 0 0 0.55rem;
+}
+
+.abacus-user-link,
+a {
+    color: var(--abacus-link);
+    text-decoration: none;
+}
+
+a:hover,
+.abacus-user-link:hover,
+.abacus-tournament-link:hover,
+.abacus-wordmark:hover {
+    color: var(--abacus-link);
+    text-decoration: underline;
+}
+
+.abacus-primary-nav {
+    border-top: 1px solid var(--abacus-rule);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 !important;
+    padding: 0.45rem 0 0.55rem 0 !important;
+}
+
 .nav-tab-link {
-    color: #6c757d;
-    font-size: 0.8125rem;
-    font-weight: 500;
-    padding: 0.375rem;
-    border-bottom: 2px solid transparent;
-    transition: color 0.15s ease, border-color 0.15s ease;
+    border: 0;
+    border-left: 3px solid transparent;
+    color: black;
+    display: block;
+    font-family: var(--abacus-heading-font);
+    font-size: 0.9rem;
+    font-weight: 400;
+    line-height: 1.2;
+    margin: 0;
+    padding: 0.32rem 0.55rem;
+}
 
-    &:hover {
-        color: #212529;
-    }
+.nav-tab-link:hover {
+    background: var(--abacus-nav-hover);
+    border-color: transparent;
+    color: black;
+    text-decoration: none;
+}
 
-    &.nav-tab-active {
-        color: #d9534f;
-        border-bottom-color: #d9534f;
+.nav-tab-link.nav-tab-active {
+    background: transparent;
+    border-color: var(--tournament-accent);
+    color: black;
+    font-weight: 400;
+}
+
+.abacus-context-nav {
+    background: white;
+    border-bottom: 1px solid var(--abacus-rule);
+}
+
+.abacus-page {
+    background: white;
+}
+
+.abacus-content {
+    max-width: 700px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    color: #333;
+    font-family: var(--abacus-heading-font);
+    font-weight: 400;
+    line-height: 1.25;
+    text-transform: none;
+}
+
+h1 {
+    font-size: 2.3rem;
+    font-weight: 400;
+    margin: 2rem 0 1rem;
+}
+
+h2,
+h3,
+h4,
+h5,
+h6 {
+    border-top: 1px solid black;
+    font-size: 1.6rem;
+    margin-top: 2em;
+    margin-bottom: 0.75em;
+    padding-top: 0.1em;
+}
+
+h1.fw-bold,
+h2.fw-bold,
+h3.fw-bold,
+h4.fw-bold,
+h5.fw-bold,
+h6.fw-bold,
+.card-title.fw-bold {
+    font-weight: 400 !important;
+}
+
+p,
+.card-text,
+.list-group-item,
+.table td,
+.form-control,
+.form-select,
+textarea,
+input,
+select,
+.alert p {
+    font-family: var(--abacus-body-font);
+}
+
+.btn,
+.dropdown-menu,
+label,
+.form-label,
+.form-check-label,
+.round-selector-button,
+.round-selector-item,
+.sidebar-stage-tab,
+.admin-context-label,
+.table th {
+    font-family: var(--abacus-heading-font);
+}
+
+.btn {
+    border-radius: 0;
+    font-weight: 400;
+    line-height: 1.2;
+}
+
+.btn-primary {
+    --bs-btn-bg: #000;
+    --bs-btn-border-color: #000;
+    --bs-btn-hover-bg: #333;
+    --bs-btn-hover-border-color: #333;
+}
+
+.btn-outline-secondary {
+    --bs-btn-color: #000;
+    --bs-btn-border-color: var(--abacus-rule);
+    --bs-btn-hover-bg: var(--abacus-nav-hover);
+    --bs-btn-hover-border-color: var(--abacus-rule);
+    --bs-btn-hover-color: #000;
+}
+
+.card,
+.modal-content,
+.dropdown-menu,
+.list-group-item,
+.form-control,
+.form-select,
+.alert {
+    background: white;
+    border-color: var(--abacus-rule);
+    border-radius: 0;
+    box-shadow: none !important;
+}
+
+.card-header,
+.table th {
+    background: white;
+    border-bottom-color: black;
+}
+
+.table {
+    --bs-table-bg: white;
+    --bs-table-striped-bg: white;
+    --bs-table-hover-bg: var(--abacus-nav-hover);
+    border-color: var(--abacus-rule);
+}
+
+.table-striped > tbody > tr:nth-of-type(odd) > * {
+    box-shadow: none;
+}
+
+.form-control,
+.form-select {
+    background: white;
+    color: black;
+}
+
+.form-control:focus,
+.form-select:focus {
+    border-color: black;
+    box-shadow: none;
+}
+
+.form-control::placeholder,
+textarea::placeholder,
+input::placeholder {
+    color: #777;
+    font-family: var(--abacus-heading-font);
+    text-align: left;
+}
+
+.tournament-round-rail {
+    background: white;
+}
+
+.round-nav-shell {
+    gap: 0.6rem !important;
+}
+
+.admin-context-label {
+    color: var(--abacus-muted);
+    font-size: 0.9rem;
+    font-weight: 400;
+    text-transform: none;
+}
+
+.round-selector-button {
+    background: white;
+    border-color: var(--abacus-rule);
+    color: black;
+    font-size: 0.9rem;
+    font-weight: 400;
+}
+
+.round-selector-button:hover,
+.round-selector-button:focus {
+    background: var(--abacus-nav-hover);
+    border-color: var(--abacus-rule);
+    color: black;
+}
+
+.round-selector-menu {
+    border-color: var(--abacus-rule);
+}
+
+.round-selector-item {
+    border-left: 3px solid transparent;
+    color: black;
+    font-weight: 400;
+    padding-left: 0.8125rem;
+}
+
+.round-selector-item:hover,
+.round-selector-item:focus,
+.round-selector-item.round-selector-item-active {
+    background: var(--abacus-nav-hover);
+    border-left-color: var(--tournament-accent);
+    color: black;
+}
+
+.round-current-label {
+    color: var(--abacus-muted);
+    font-size: 0.82rem;
+    font-weight: 400;
+}
+
+.round-nav-divider {
+    background: var(--abacus-rule);
+}
+
+.sidebar-stage-tab {
+    border: 0;
+    border-left: 3px solid transparent;
+    color: black;
+    font-size: 0.9rem;
+    font-weight: 400;
+    padding: 0.32rem 0.55rem;
+}
+
+.sidebar-stage-tab:hover {
+    background: var(--abacus-nav-hover);
+    border-color: transparent;
+    color: black;
+    text-decoration: none;
+}
+
+.sidebar-stage-tab.sidebar-stage-active {
+    background: transparent;
+    border-color: var(--tournament-accent);
+    color: black;
+    font-weight: 400;
+}
+
+@media (min-width: 900px) {
+    body.abacus-has-tournament .abacus-content {
+        margin-left: 0;
+        padding-left: 2rem !important;
+        padding-right: 2rem !important;
     }
 }
 
-// Sidebar stage tabs
-.sidebar-stage-tab {
-    color: #6c757d;
-    font-size: 0.8125rem;
-    font-weight: 500;
-    padding: 0.5rem 0;
-    border-bottom: 2px solid transparent;
-    transition: color 0.15s ease, border-color 0.15s ease;
-
-    &:hover {
-        color: #212529;
+@media (max-width: 640px) {
+    .abacus-masthead,
+    .round-nav-shell {
+        align-items: flex-start !important;
+        flex-direction: column;
     }
 
-    &.sidebar-stage-active {
-        color: #d9534f;
-        border-bottom-color: #d9534f;
+    .abacus-session-line {
+        justify-content: flex-start;
+    }
+
+    .abacus-primary-nav,
+    .round-stage-nav {
+        gap: 0.35rem !important;
+    }
+
+    .round-nav-divider {
+        display: none;
+    }
+
+    .nav-tab-link,
+    .sidebar-stage-tab {
+        font-size: 0.74rem;
+        padding: 0.4rem 0.55rem;
     }
 }
 

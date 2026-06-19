@@ -78,8 +78,8 @@ pub async fn create_judge_page(
                     }
 
                     div class="mb-3" {
-                        label for="institution" { "Institution" }
-                        select name="institution_id" id="institution" {
+                        label for="institution" class="form-label" { "Institution" }
+                        select name="institution_id" id="institution" class="form-select" {
                             option value = "-----" {
                                 "No institution"
                             }
@@ -90,7 +90,7 @@ pub async fn create_judge_page(
                             }
                         }
                     }
-                    button type="submit" class="btn btn-primary" { "Create team" }
+                    button type="submit" class="btn btn-primary" { "Create judge" }
                 }
             }
         })

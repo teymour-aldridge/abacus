@@ -25,32 +25,42 @@ pub async fn public_participants_page(
             .user_opt(user)
             .tournament(tournament.clone())
             .current_rounds(current_rounds)
+            .active_nav(crate::template::ActiveNav::Participants)
             .body(maud! {
-                div class="container py-5 px-4" {
-                    h1 { "Participants" }
+                div class="container py-5 px-4 public-participants-page" {
+                    div class="public-participants-heading" {
+                        h1 { "Participants" }
+                    }
 
                     @if !participants.teams.is_empty() {
-                        h2 class="mt-4" { "Teams" }
-                        div class="table-responsive" {
-                            table class="table table-striped" {
-                                thead {
-                                    tr {
-                                        th scope="col" { "#" }
-                                        th scope="col" { "Team Name" }
-                                        th scope="col" { "Speakers" }
+                        section class="participants-section" {
+                            h2 { "Teams" }
+                            div class="table-responsive participants-table-wrap" {
+                                table class="table participants-table" {
+                                    colgroup {
+                                        col class="participants-table-index";
+                                        col class="participants-table-name";
+                                        col class="participants-table-detail";
                                     }
-                                }
-                                tbody {
-                                    @for (idx, team) in participants.teams.values().enumerate() {
+                                    thead {
                                         tr {
-                                            th scope="row" { (idx + 1) }
-                                            td { (participants.canonical_name_of_team(team)) }
-                                            td {
-                                                @if let Some(speaker_ids) = participants.team_speakers.get(&team.id) {
-                                                    @for (i, speaker_id) in speaker_ids.iter().enumerate() {
-                                                        @if let Some(speaker) = participants.speakers.get(speaker_id) {
-                                                            @if i > 0 { ", " }
-                                                            (speaker.name)
+                                            th scope="col" { "#" }
+                                            th scope="col" { "Team Name" }
+                                            th scope="col" { "Speakers" }
+                                        }
+                                    }
+                                    tbody {
+                                        @for (idx, team) in participants.teams.values().enumerate() {
+                                            tr {
+                                                th scope="row" { (idx + 1) }
+                                                td class="participant-primary" { (participants.canonical_name_of_team(team)) }
+                                                td class="participant-detail" {
+                                                    @if let Some(speaker_ids) = participants.team_speakers.get(&team.id) {
+                                                        @for (i, speaker_id) in speaker_ids.iter().enumerate() {
+                                                            @if let Some(speaker) = participants.speakers.get(speaker_id) {
+                                                                @if i > 0 { ", " }
+                                                                (speaker.name)
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -63,25 +73,32 @@ pub async fn public_participants_page(
                     }
 
                     @if !participants.judges.is_empty() {
-                        h2 class="mt-4" { "Judges" }
-                        div class="table-responsive" {
-                            table class="table table-striped" {
-                                thead {
-                                    tr {
-                                        th scope="col" { "#" }
-                                        th scope="col" { "Name" }
-                                        th scope="col" { "Institution" }
+                        section class="participants-section" {
+                            h2 { "Judges" }
+                            div class="table-responsive participants-table-wrap" {
+                                table class="table participants-table" {
+                                    colgroup {
+                                        col class="participants-table-index";
+                                        col class="participants-table-name";
+                                        col class="participants-table-detail";
                                     }
-                                }
-                                tbody {
-                                    @for (idx, judge) in participants.judges.values().enumerate() {
+                                    thead {
                                         tr {
-                                            th scope="row" { (idx + 1) }
-                                            td { (judge.name) }
-                                            td {
-                                                @if let Some(inst_id) = &judge.institution_id {
-                                                    @if let Some(inst) = participants.institutions.get(inst_id) {
-                                                        (inst.code)
+                                            th scope="col" { "#" }
+                                            th scope="col" { "Name" }
+                                            th scope="col" { "Institution" }
+                                        }
+                                    }
+                                    tbody {
+                                        @for (idx, judge) in participants.judges.values().enumerate() {
+                                            tr {
+                                                th scope="row" { (idx + 1) }
+                                                td class="participant-primary" { (judge.name) }
+                                                td class="participant-detail" {
+                                                    @if let Some(inst_id) = &judge.institution_id {
+                                                        @if let Some(inst) = participants.institutions.get(inst_id) {
+                                                            (inst.code)
+                                                        }
                                                     }
                                                 }
                                             }

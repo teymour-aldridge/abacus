@@ -29,7 +29,7 @@ impl<'r> Renderable for InstitutionSelector<'r> {
     ) {
         maud! {
             div class="mb-3" {
-              label for="institution" { "Institution" }
+              label for="institution" class="form-label" { "Institution" }
               select name=(self.name) id="institution" class="form-select" {
                   option value = "-----"
                       selected=(self.selected.is_none())

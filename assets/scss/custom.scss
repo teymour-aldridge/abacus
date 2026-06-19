@@ -121,12 +121,16 @@ body.abacus-has-tournament {
 }
 
 .abacus-tournament-link {
-    color: black;
+    color: var(--tournament-accent-deep);
     font-family: var(--abacus-heading-font);
     font-size: 1rem;
     font-weight: 400;
     line-height: 1.2;
     text-decoration: none !important;
+}
+
+.abacus-session-line {
+    font-family: var(--abacus-heading-font);
 }
 
 .abacus-interface-badge {
@@ -135,7 +139,13 @@ body.abacus-has-tournament {
     padding: 0 0 0 0.55rem;
 }
 
-.abacus-user-link,
+.abacus-user-link {
+    color: var(--abacus-ink);
+    font-family: var(--abacus-heading-font);
+    font-weight: 600;
+    text-decoration: none;
+}
+
 a {
     color: var(--abacus-link);
     text-decoration: none;
@@ -143,9 +153,17 @@ a {
 
 a:hover,
 .abacus-user-link:hover,
-.abacus-tournament-link:hover,
 .abacus-wordmark:hover {
     color: var(--abacus-link);
+    text-decoration: underline;
+}
+
+.abacus-user-link:hover {
+    color: var(--abacus-ink);
+}
+
+.abacus-tournament-link:hover {
+    color: var(--tournament-accent-deep);
     text-decoration: underline;
 }
 
@@ -159,7 +177,7 @@ a:hover,
 
 .nav-tab-link {
     border: 0;
-    border-left: 3px solid transparent;
+    border-bottom: 3px solid transparent;
     color: black;
     display: block;
     font-family: var(--abacus-heading-font);
@@ -170,16 +188,20 @@ a:hover,
     padding: 0.32rem 0.55rem;
 }
 
+.abacus-primary-nav > .nav-tab-link:first-child {
+    padding-left: 0;
+}
+
 .nav-tab-link:hover {
     background: var(--abacus-nav-hover);
-    border-color: transparent;
+    border-bottom-color: transparent;
     color: black;
     text-decoration: none;
 }
 
 .nav-tab-link.nav-tab-active {
     background: transparent;
-    border-color: var(--tournament-accent);
+    border-bottom-color: var(--tournament-accent);
     color: black;
     font-weight: 400;
 }
@@ -396,7 +418,7 @@ input::placeholder {
 
 .sidebar-stage-tab {
     border: 0;
-    border-left: 3px solid transparent;
+    border-bottom: 3px solid transparent;
     color: black;
     font-size: 0.9rem;
     font-weight: 400;
@@ -405,14 +427,14 @@ input::placeholder {
 
 .sidebar-stage-tab:hover {
     background: var(--abacus-nav-hover);
-    border-color: transparent;
+    border-bottom-color: transparent;
     color: black;
     text-decoration: none;
 }
 
 .sidebar-stage-tab.sidebar-stage-active {
     background: transparent;
-    border-color: var(--tournament-accent);
+    border-bottom-color: var(--tournament-accent);
     color: black;
     font-weight: 400;
 }
@@ -669,5 +691,106 @@ input::placeholder {
     td:nth-child(3) {
         vertical-align: middle;
         font-size: 0.875rem;
+    }
+}
+
+.public-participants-page {
+    max-width: 1120px;
+}
+
+.public-participants-heading {
+    border-bottom: 1px solid var(--abacus-rule-strong);
+    margin-bottom: 1.65rem;
+}
+
+.public-participants-heading h1 {
+    margin-bottom: 0.85rem;
+}
+
+.participants-section {
+    margin-top: 2.25rem;
+}
+
+.participants-section h2 {
+    border-top: 0;
+    color: var(--abacus-ink);
+    font-size: 1.15rem;
+    margin: 0 0 0.75rem;
+    padding-top: 0;
+}
+
+.participants-table-wrap {
+    border-top: 2px solid var(--abacus-rule-strong);
+}
+
+.participants-table {
+    --bs-table-bg: transparent;
+    --bs-table-hover-bg: var(--abacus-nav-hover);
+    border-color: var(--abacus-rule);
+    margin-bottom: 0;
+    table-layout: fixed;
+}
+
+.participants-table-index {
+    width: 4.25rem;
+}
+
+.participants-table-name {
+    width: 34%;
+}
+
+.participants-table > :not(caption) > * > * {
+    border-bottom-color: var(--abacus-rule);
+    padding: 0.78rem 0.95rem;
+}
+
+.participants-table thead th {
+    background: white;
+    border-bottom: 1px solid var(--abacus-rule-strong);
+    color: var(--abacus-ink);
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0;
+    line-height: 1.15;
+    padding-bottom: 0.65rem;
+    padding-top: 0.65rem;
+}
+
+.participants-table tbody th {
+    color: var(--abacus-ink);
+    font-family: var(--abacus-heading-font);
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+
+.participants-table .participant-primary {
+    color: var(--abacus-ink);
+    font-weight: 700;
+}
+
+.participants-table .participant-detail {
+    color: #222;
+}
+
+.participants-table tbody tr:hover > * {
+    background: var(--bs-table-hover-bg);
+}
+
+@media (max-width: 640px) {
+    .public-participants-page {
+        padding-left: 1.1rem !important;
+        padding-right: 1.1rem !important;
+    }
+
+    .participants-table {
+        min-width: 38rem;
+    }
+
+    .participants-table > :not(caption) > * > * {
+        padding: 0.68rem 0.7rem;
+    }
+
+    .participants-table-index {
+        width: 3.2rem;
     }
 }

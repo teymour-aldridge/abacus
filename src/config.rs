@@ -52,7 +52,7 @@ async fn home(
             div class="mx-auto" style="max-width: 960px;" {
                 div class="row" {
                     div class="col-lg-8 pe-lg-5" {
-                        h1 class="h4 fw-bold mb-4 pb-2 border-bottom" { "My Tournaments" }
+                        h1 class="h4 fw-bold mb-4 abacus-home-heading" { "My Tournaments" }
 
                         @if tournaments_list.is_empty() {
                             div class="py-4" {
@@ -79,7 +79,7 @@ async fn home(
                     }
 
                     div class="col-lg-4" {
-                        h2 class="h6 fw-bold mb-3 pb-2 border-bottom" { "Quick Actions" }
+                        h2 class="h6 fw-bold mb-3 abacus-home-heading" { "Quick Actions" }
                         a href="/tournaments/create" class="btn btn-primary" {
                             "+ Create tournament"
                         }

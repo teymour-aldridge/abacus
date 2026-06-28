@@ -2,9 +2,6 @@
 #![cfg_attr(test, feature(coverage_attribute, type_alias_impl_trait))]
 
 use diesel_migrations::EmbeddedMigrations;
-use lalrpop_util::lalrpop_mod;
-
-lalrpop_mod!(pub cmd);
 
 pub const MIGRATIONS: EmbeddedMigrations =
     diesel_migrations::embed_migrations!("migrations");

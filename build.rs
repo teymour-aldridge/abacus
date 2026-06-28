@@ -90,8 +90,6 @@ fn main() {
     let out_dir_path = Path::new(&out_dir);
 
     generate_tournamentsim_regression_tests(out_dir_path);
-
-    lalrpop::process_root().unwrap();
 }
 
 fn generate_tournamentsim_regression_tests(out_dir_path: &Path) {

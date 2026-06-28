@@ -356,7 +356,7 @@ pub fn create_app(pool: DbPool) -> Router {
         .route("/tournaments/:id/rounds/:round_id/availability/teams/all", post(crate::tournaments::rounds::manage::availability::teams::update_eligibility_for_all))
 
         // Draw editing
-        .route("/tournaments/:id/rounds/draws/edit", get(crate::tournaments::rounds::manage::draw_edit::edit_draws_page).post(crate::tournaments::rounds::manage::draw_edit::submit_cmd))
+        .route("/tournaments/:id/rounds/draws/edit", get(crate::tournaments::rounds::manage::draw_edit::edit_draws_page))
         .route("/tournaments/:id/rounds/draws/edit/ws", get(crate::tournaments::rounds::manage::draw_edit::draw_updates))
         .route("/tournaments/:id/rounds/draws/edit/move", post(crate::tournaments::rounds::manage::draw_edit::move_judge))
         .route("/tournaments/:id/rounds/draws/edit/move_room", post(crate::tournaments::rounds::manage::draw_edit::move_room))

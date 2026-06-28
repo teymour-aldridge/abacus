@@ -29,7 +29,7 @@ use crate::{
     tournaments::{
         Tournament,
         manage::sidebar::SidebarWrapper,
-        participants::{DebateJudge, Judge, TournamentParticipants},
+        participants::{Judge, TournamentParticipants},
         rooms::Room,
         rounds::{
             Round, TournamentRounds,
@@ -39,7 +39,6 @@ use crate::{
     util_resp::{
         StandardResponse, bad_request, err_not_found, see_other_ok, success,
     },
-    widgets::alert::ErrorAlert,
 };
 
 #[derive(Deserialize, Debug)]
@@ -1143,196 +1142,6 @@ fn render_draw_allocator(
     .into_inner()
 }
 
-// ... existing code
-
-#[derive(Deserialize)]
-pub struct EditDrawForm {
-    cmd: String,
-}
-
-#[derive(Deserialize)]
-pub struct SubmitQuery {
-    rounds: Option<String>,
-}
-
-pub async fn submit_cmd(
-    Path(tournament_id): Path<String>,
-    Query(query): Query<SubmitQuery>,
-    user: User<true>,
-    mut conn: Conn<true>,
-    Form(form): Form<EditDrawForm>,
-) -> StandardResponse {
-    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
-    tournament.check_user_is_superuser(&user.id, &mut *conn)?;
-
-    let round_ids: Vec<String> = query
-        .rounds
-        .as_deref()
-        .unwrap_or("")
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect();
-
-    let rounds = match rounds::table
-        .filter(rounds::id.eq_any(&round_ids))
-        .load::<Round>(&mut *conn)
-        .optional()
-        .unwrap()
-    {
-        Some(t) => t,
-        None => return err_not_found(),
-    };
-
-    let cmd = match Cmd::parse(&form.cmd) {
-        Ok(cmd) => cmd,
-        Err(e) => {
-            return bad_request(
-                ErrorAlert {
-                    msg: format!("Invalid command provided: {e}"),
-                }
-                .render(),
-            );
-        }
-    };
-
-    let (judge_number, debate_number, role) = match cmd {
-        Cmd::Trainee(judge, debate) => (judge, debate, Role::Trainee),
-        Cmd::Panelist(judge, debate) => (judge, debate, Role::Panelist),
-        Cmd::Chair(judge, debate) => (judge, debate, Role::Chair),
-    };
-
-    let apply_move =
-        apply_move(judge_number, debate_number, role, &rounds, &mut *conn);
-    match apply_move {
-        Ok(()) => see_other_ok(Redirect::to(&format!(
-            "/tournaments/{tournament_id}/rounds/draws/edit?rounds={}",
-            round_ids.iter().join(",")
-        ))),
-        Err(e) => bad_request(
-            ErrorAlert {
-                msg: format!("Error evaluating command: {e}"),
-            }
-            .render(),
-        ),
-    }
-}
-
-pub struct JudgeDebateAllocation {
-    debate: Debate,
-    debate_judge: DebateJudge,
-}
-
-impl JudgeDebateAllocation {
-    /// Find the position to which the given judge has been assigned.
-    fn find(
-        judge_no: u32,
-        rounds: &[String],
-        conn: &mut impl LoadConnection<Backend = Sqlite>,
-    ) -> Option<Self> {
-        match debates::table
-            .filter(debates::round_id.eq_any(rounds))
-            .inner_join(
-                judges_of_debate::table.on(judges_of_debate::debate_id
-                    .eq(debates::id)
-                    .and(
-                        judges_of_debate::judge_id.eq_any(
-                            judges::table
-                                .filter(judges::number.eq(judge_no as i64))
-                                .select(judges::id),
-                        ),
-                    )),
-            )
-            .first::<(Debate, DebateJudge)>(&mut *conn)
-            .optional()
-            .unwrap()
-        {
-            Some((debate, debate_judge)) => Some(Self {
-                debate,
-                debate_judge,
-            }),
-            None => None,
-        }
-    }
-}
-
-fn apply_move(
-    judge_no: u32,
-    debate_no: Option<u32>,
-    role: Role,
-    rounds: &[Round],
-    conn: &mut impl LoadConnection<Backend = Sqlite>,
-) -> Result<(), String> {
-    let judge = match judges::table
-        .filter(judges::number.eq(judge_no as i64))
-        .first::<Judge>(&mut *conn)
-        .optional()
-        .unwrap()
-    {
-        Some(judge) => judge,
-        None => return Err(format!("No such judge with numnber j{judge_no}")),
-    };
-
-    let debate_ids = rounds
-        .iter()
-        .map(|round| round.id.clone())
-        .collect::<Vec<_>>();
-
-    let existing_alloc =
-        JudgeDebateAllocation::find(judge_no, &debate_ids, &mut *conn);
-
-    let debate_to_alloc_to = if let Some(debate_no) = debate_no {
-        match debates::table
-            .filter(
-                debates::round_id
-                    .eq_any(&debate_ids)
-                    .and(debates::number.eq(debate_no as i64)),
-            )
-            .first::<Debate>(conn)
-            .optional()
-            .unwrap()
-        {
-            Some(d) => Some(d),
-            None => {
-                return Err(format!(
-                    "Debate with number {debate_no} does not exist."
-                ));
-            }
-        }
-    } else {
-        None
-    };
-
-    let _delete_existing_alloc = {
-        if let Some(alloc) = existing_alloc {
-            diesel::delete(judges_of_debate::table.filter(
-                judges_of_debate::debate_id.eq(alloc.debate.id).and(
-                    judges_of_debate::judge_id.eq(alloc.debate_judge.judge_id),
-                ),
-            ))
-            .execute(&mut *conn)
-            .unwrap();
-        }
-    };
-
-    let _create_new_alloc = {
-        if let Some(alloc) = debate_to_alloc_to {
-            diesel::insert_into(judges_of_debate::table)
-                .values((
-                    judges_of_debate::id.eq(Uuid::now_v7().to_string()),
-                    judges_of_debate::debate_id.eq(alloc.id),
-                    judges_of_debate::judge_id.eq(judge.id),
-                    judges_of_debate::status.eq(role.to_string()),
-                    judges_of_debate::tournament_id.eq(judge.tournament_id),
-                ))
-                .execute(&mut *conn)
-                .unwrap();
-        }
-    };
-
-    Ok(())
-}
-
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum Role {
     Trainee,
@@ -1359,20 +1168,6 @@ impl Role {
             "" => Ok(Role::Panelist), // Default role
             _ => Err(format!("Invalid role: {}", item)),
         }
-    }
-}
-
-pub enum Cmd {
-    Trainee(u32, Option<u32>),
-    Panelist(u32, Option<u32>),
-    Chair(u32, Option<u32>),
-}
-
-impl Cmd {
-    pub fn parse(input: &str) -> Result<Self, String> {
-        crate::cmd::CmdParser::new()
-            .parse(input)
-            .map_err(|e| e.to_string())
     }
 }
 

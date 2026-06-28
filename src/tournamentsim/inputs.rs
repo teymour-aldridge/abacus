@@ -843,14 +843,6 @@ pub enum Action {
     },
 
     // Draw editing
-    SubmitDrawCommand {
-        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
-        tournament_idx: usize,
-        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
-        round_idx: usize,
-        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
-        cmd: String,
-    },
     MoveJudge {
         #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
@@ -2985,26 +2977,6 @@ impl Action {
                                 "/tournaments/{}/rounds/{}/availability/teams/all?check={}",
                                 tid, rid, check
                             ),
-                        )
-                        .await;
-                    }
-                }
-            }
-            Action::SubmitDrawCommand {
-                tournament_idx,
-                round_idx,
-                cmd,
-            } => {
-                if let Some(tid) = ctx.tournament_id(tournament_idx) {
-                    if let Some(rid) = ctx.round_id(&tid, round_idx) {
-                        let form = [("cmd".to_string(), cmd)];
-                        ctx.post_urlencoded(
-                            "SubmitDrawCommand",
-                            format!(
-                                "/tournaments/{}/rounds/draws/edit?rounds={}",
-                                tid, rid
-                            ),
-                            &form,
                         )
                         .await;
                     }

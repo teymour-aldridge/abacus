@@ -1,4 +1,4 @@
-use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
+use diesel::{ExpressionMethods, JoinOnDsl, QueryDsl, RunQueryDsl};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::schema::{
@@ -15,6 +15,7 @@ pub fn assert_tournament_properties(
 ) {
     let mut conn = pool.get().unwrap();
     assert_draw_team_uniqueness(&mut conn);
+    assert_draw_judge_allocation_invariants(&mut conn);
     assert_confirmed_ballots_are_complete(&mut conn);
     assert_saved_standings_match_recomputed_standings(&mut conn);
 }
@@ -45,6 +46,55 @@ fn assert_draw_team_uniqueness(conn: &mut diesel::SqliteConnection) {
         assert!(
             teams_seen_in_round.insert((round_id.clone(), team_id.clone())),
             "team {team_id} is assigned to multiple debates in round {round_id}",
+        );
+    }
+}
+
+fn assert_draw_judge_allocation_invariants(
+    conn: &mut diesel::SqliteConnection,
+) {
+    let judge_allocations = judges_of_debate::table
+        .inner_join(
+            debates::table.on(debates::id.eq(judges_of_debate::debate_id)),
+        )
+        .inner_join(rounds::table.on(rounds::id.eq(debates::round_id)))
+        .select((
+            judges_of_debate::debate_id,
+            judges_of_debate::judge_id,
+            judges_of_debate::status,
+            debates::tournament_id,
+            rounds::seq,
+        ))
+        .load::<(String, String, String, String, i64)>(conn)
+        .unwrap();
+
+    let mut chairs_by_debate = HashMap::<String, String>::new();
+    let mut judges_seen_in_seq = HashSet::new();
+    for (debate_id, judge_id, status, tournament_id, round_seq) in
+        judge_allocations
+    {
+        assert!(
+            matches!(status.as_str(), "C" | "P" | "T"),
+            "judge {judge_id} has invalid role {status} in debate {debate_id}",
+        );
+
+        if status == "C" {
+            let previous_chair =
+                chairs_by_debate.insert(debate_id.clone(), judge_id.clone());
+            assert!(
+                previous_chair.is_none(),
+                "debate {debate_id} has multiple chairs: {} and {judge_id}",
+                previous_chair.unwrap_or_default(),
+            );
+        }
+
+        assert!(
+            judges_seen_in_seq.insert((
+                tournament_id.clone(),
+                round_seq,
+                judge_id.clone()
+            )),
+            "judge {judge_id} is allocated more than once in tournament {tournament_id} round sequence {round_seq}",
         );
     }
 }

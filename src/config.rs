@@ -214,38 +214,6 @@ fn font_source(font_name: &str) -> Option<FontSource> {
     }
 }
 
-async fn draw_editor_js() -> impl IntoResponse {
-    let content = include_str!(concat!(env!("OUT_DIR"), "/draw_editor.js"));
-    ([(header::CONTENT_TYPE, "application/javascript")], content)
-}
-
-async fn draw_editor_css() -> impl IntoResponse {
-    let content = include_str!(concat!(env!("OUT_DIR"), "/draw_editor.css"));
-    ([(header::CONTENT_TYPE, "text/css")], content)
-}
-
-async fn draw_room_allocator_js() -> impl IntoResponse {
-    let content =
-        include_str!(concat!(env!("OUT_DIR"), "/draw_room_allocator.js"));
-    ([(header::CONTENT_TYPE, "application/javascript")], content)
-}
-
-async fn draw_room_allocator_css() -> impl IntoResponse {
-    let content =
-        include_str!(concat!(env!("OUT_DIR"), "/draw_room_allocator.css"));
-    ([(header::CONTENT_TYPE, "text/css")], content)
-}
-
-async fn store_js() -> impl IntoResponse {
-    let content = include_str!(concat!(env!("OUT_DIR"), "/store.js"));
-    ([(header::CONTENT_TYPE, "application/javascript")], content)
-}
-
-async fn store_css() -> impl IntoResponse {
-    let content = include_str!(concat!(env!("OUT_DIR"), "/store.css"));
-    ([(header::CONTENT_TYPE, "text/css")], content)
-}
-
 pub fn create_app(pool: DbPool) -> Router {
     let secret_str = std::env::var("SECRET_KEY").ok();
     let key = if let Some(secret) = secret_str.filter(|s| s.len() >= 64) {
@@ -388,22 +356,12 @@ pub fn create_app(pool: DbPool) -> Router {
         .route("/tournaments/:id/rounds/:round_id/availability/teams/all", post(crate::tournaments::rounds::manage::availability::teams::update_eligibility_for_all))
 
         // Draw editing
-        .route("/draw_editor.js", get(draw_editor_js))
-        .route("/draw_editor.css", get(draw_editor_css))
-        .route("/tournaments/:id/rounds/draws/edit", get(crate::tournaments::rounds::manage::draw_edit::edit_multiple_draws_page).post(crate::tournaments::rounds::manage::draw_edit::submit_cmd))
+        .route("/tournaments/:id/rounds/draws/edit", get(crate::tournaments::rounds::manage::draw_edit::edit_draws_page).post(crate::tournaments::rounds::manage::draw_edit::submit_cmd))
         .route("/tournaments/:id/rounds/draws/edit/ws", get(crate::tournaments::rounds::manage::draw_edit::draw_updates))
         .route("/tournaments/:id/rounds/draws/edit/move", post(crate::tournaments::rounds::manage::draw_edit::move_judge))
+        .route("/tournaments/:id/rounds/draws/edit/move_room", post(crate::tournaments::rounds::manage::draw_edit::move_room))
         .route("/tournaments/:id/rounds/draws/edit/move_team", post(crate::tournaments::rounds::manage::draw_edit::move_team))
         .route("/tournaments/:id/rounds/draws/edit/role", post(crate::tournaments::rounds::manage::draw_edit::change_judge_role))
-
-        // Draw room allocation
-        .route("/draw_room_allocator.js", get(draw_room_allocator_js))
-        .route("/draw_room_allocator.css", get(draw_room_allocator_css))
-        .route("/store.js", get(store_js))
-        .route("/store.css", get(store_css))
-        .route("/tournaments/:id/rounds/draws/rooms/edit", get(crate::tournaments::rounds::manage::edit_draw_rooms::draw_room_manual_allocation_page))
-        .route("/tournaments/:id/rounds/draws/rooms/edit/ws", get(crate::tournaments::rounds::manage::edit_draw_rooms::draw_room_manual_updates))
-        .route("/tournaments/:id/rounds/draws/rooms/edit/move", post(crate::tournaments::rounds::draws::rooms::rooms::move_room))
 
         // Draw generation
         .route("/tournaments/:id/rounds/:round_id/draws/create", get(crate::tournaments::rounds::draws::manage::create::generate_draw_page).post(crate::tournaments::rounds::draws::manage::create::do_generate_draw))

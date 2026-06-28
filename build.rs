@@ -70,6 +70,7 @@ fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
     let dest_path = Path::new(&out_dir).join("style.css");
     let mut sass = Command::new("sass");
+    sass.arg("--sourcemap=none");
     sass.arg("--load-path=assets");
     if let Some(load_path) = &bootstrap_load_path {
         sass.arg(format!("--load-path={load_path}"));
@@ -86,49 +87,7 @@ fn main() {
 
     println!("cargo:rerun-if-changed=assets/scss");
 
-    // Copy frontend build outputs into OUT_DIR so they can be embedded with include_str!.
-    // Nix provides these as a separate derivation so frontend and Rust builds
-    // can be cached independently; local development keeps the existing npm path.
-    let frontend_dist_env = env::var("ABACUS_FRONTEND_DIST").ok();
-    let frontend_dist = frontend_dist_env
-        .as_deref()
-        .map(Path::new)
-        .unwrap_or_else(|| Path::new("static/dist"));
     let out_dir_path = Path::new(&out_dir);
-
-    let files_to_copy = [
-        ("draw-editor.js", "draw_editor.js"),
-        ("store.css", "draw_editor.css"),
-        ("draw-room-allocator.js", "draw_room_allocator.js"),
-        ("store.css", "draw_room_allocator.css"),
-        ("store.js", "store.js"),
-        ("store.css", "store.css"),
-    ];
-
-    if frontend_dist_env.is_none() {
-        let status = Command::new("npm")
-            .arg("run")
-            .arg("build")
-            .arg("--prefix")
-            .arg("frontend")
-            .status()
-            .unwrap();
-
-        if !status.success() {
-            panic!("Failed to compile frontend");
-        }
-    }
-
-    println!("cargo:rerun-if-changed=frontend/src");
-    println!("cargo:rerun-if-changed=frontend/vite.config.ts");
-
-    for (src_name, dst_name) in &files_to_copy {
-        let src = frontend_dist.join(src_name);
-        let dst = out_dir_path.join(dst_name);
-        std::fs::copy(&src, &dst).unwrap_or_else(|e| {
-            panic!("Failed to copy {:?} to {:?}: {}", src, dst, e)
-        });
-    }
 
     generate_tournamentsim_regression_tests(out_dir_path);
 

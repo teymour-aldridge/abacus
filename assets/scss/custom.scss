@@ -419,6 +419,170 @@ input::placeholder {
     font-weight: 400;
 }
 
+.draw-allocator {
+    max-width: 1180px;
+}
+
+.draw-allocator-header {
+    align-items: baseline;
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+}
+
+.draw-allocator-header h1 {
+    margin-top: 0;
+}
+
+.draw-selection-panel,
+.draw-unallocated-bar {
+    background: white;
+    margin-bottom: 1rem;
+    padding: 0.75rem 0;
+}
+
+.draw-selection-panel {
+    background: var(--tournament-accent-wash);
+    border-top: 3px solid var(--tournament-accent);
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+}
+
+.draw-selection-panel h2,
+.draw-unallocated-bar h2,
+.draw-round-section h2 {
+    font-size: 1.05rem;
+    margin: 0 0 0.55rem;
+}
+
+.draw-judge-strip,
+.draw-option-grid,
+.draw-role-judges {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    min-height: 1.9rem;
+}
+
+.judge-pill {
+    border: 1px solid var(--abacus-rule);
+    color: black;
+    display: inline-flex;
+    font-family: var(--abacus-heading-font);
+    font-size: 0.82rem;
+    line-height: 1.15;
+    padding: 0.22rem 0.42rem;
+    text-decoration: none;
+}
+
+.judge-pill:hover,
+.judge-pill.selected {
+    background: var(--abacus-nav-hover);
+    border-color: black;
+    color: black;
+    text-decoration: none;
+}
+
+.judge-pill-chair {
+    border-left: 4px solid var(--tournament-accent-deep);
+}
+
+.judge-pill-panelist {
+    border-left: 4px solid var(--tournament-accent);
+}
+
+.judge-pill-trainee {
+    border-left: 4px solid var(--abacus-rule);
+}
+
+.draw-table {
+    table-layout: fixed;
+}
+
+.draw-table th:first-child {
+    width: 4rem;
+}
+
+.draw-team-cell {
+    width: 16%;
+}
+
+.draw-panel-cell {
+    min-width: 22rem;
+}
+
+.draw-room-cell {
+    min-width: 10rem;
+    width: 12rem;
+}
+
+.draw-room-slot {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    min-height: 1.9rem;
+    padding-right: 9.25rem;
+    position: relative;
+}
+
+.draw-role-judges {
+    padding-right: 9.25rem;
+    position: relative;
+}
+
+.room-pill {
+    border-left: 4px solid var(--abacus-rule-strong);
+}
+
+.draw-role-row {
+    align-items: flex-start;
+    display: grid;
+    gap: 0.6rem;
+    grid-template-columns: 5.5rem minmax(0, 1fr);
+    padding: 0.35rem 0;
+}
+
+.draw-role-row:last-child {
+    border-bottom: 0;
+}
+
+.draw-role-label {
+    color: var(--abacus-muted);
+    font-family: var(--abacus-heading-font);
+    font-size: 0.78rem;
+    padding-top: 0.25rem;
+}
+
+.draw-empty-slot {
+    color: var(--abacus-muted);
+    font-family: var(--abacus-heading-font);
+    font-size: 0.78rem;
+}
+
+.draw-move-form {
+    display: inline;
+}
+
+.draw-move-form .btn {
+    font-size: 0.78rem;
+    padding: 0.2rem 0.4rem;
+    white-space: nowrap;
+}
+
+.draw-cell-action {
+    position: absolute;
+    right: 0;
+    top: 0;
+}
+
+.draw-inline-action {
+    display: inline-flex;
+    margin-left: 0.35rem;
+}
+
 .round-nav-divider {
     background: var(--abacus-rule);
 }

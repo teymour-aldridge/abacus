@@ -28,7 +28,6 @@ use serde::{Deserialize, Serialize};
 
 pub mod manage;
 pub mod public;
-pub mod rooms;
 
 #[derive(Queryable, Serialize, Deserialize, Debug, Clone)]
 pub struct Room {

@@ -36,40 +36,6 @@
           ln -s "${bootstrapSrc}" "$out/bootstrap"
         '';
 
-        frontendSrc = lib.fileset.toSource {
-          root = ./.;
-          fileset = lib.fileset.unions [
-            ./assets/scss
-            ./frontend
-          ];
-        };
-
-        frontend = pkgs.buildNpmPackage {
-          pname = "abacus-frontend";
-          version = "0.1.0";
-          src = frontendSrc;
-          npmDepsHash = "sha256-Aq1tU3ULp6CpUHHmHZkbWWLRPlhRLVqyGB430+MDt1M=";
-
-          env = {
-            ABACUS_FRONTEND_OUT_DIR = "dist";
-          };
-
-          postPatch = ''
-            cp frontend/package.json frontend/package-lock.json .
-          '';
-
-          preBuild = ''
-            cd frontend
-          '';
-
-          installPhase = ''
-            runHook preInstall
-            mkdir -p "$out"
-            cp -r dist/. "$out/"
-            runHook postInstall
-          '';
-        };
-
         cargoLock = ./Cargo.lock;
         nixCargoLock =
           let
@@ -171,7 +137,6 @@ features = ["discover"]'
           src = appSrc;
           inherit cargoArtifacts;
           env = {
-            ABACUS_FRONTEND_DIST = "${frontend}";
             ABACUS_BOOTSTRAP_LOAD_PATH = "${bootstrapLoadPath}";
           };
         });
@@ -211,7 +176,7 @@ features = ["discover"]'
       {
         packages = {
           default = abacus;
-          inherit abacus frontend;
+          inherit abacus;
         };
 
         apps = {
@@ -229,7 +194,6 @@ features = ["discover"]'
             pkg-config
             sqlite
             diesel-cli
-            nodejs
             dart-sass
             curl
             gnutar

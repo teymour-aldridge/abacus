@@ -11,7 +11,8 @@ use fuzzcheck::mutators::map::MapMutator;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use serde::{Deserialize, Serialize};
 use std::any::Any;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::fmt::Write;
 use std::rc::{Rc, Weak};
 
 const TABDA_DICTIONARY_STRINGS: [&str; 48] = [
@@ -1213,6 +1214,97 @@ fn assert_response_no_5xx(action: &str, path: &str, response: &TestResponse) {
     );
 }
 
+fn panel_snapshot_for_debate_id(
+    conn: &mut SqliteConnection,
+    debate_id: &str,
+) -> QueryResult<String> {
+    let rows = judges_of_debate::table
+        .filter(judges_of_debate::debate_id.eq(debate_id))
+        .select((judges_of_debate::judge_id, judges_of_debate::status))
+        .load::<(String, String)>(conn)?;
+    Ok(panel_snapshot("debate", Some(debate_id), rows))
+}
+
+fn panel_snapshot_for_unallocated(
+    conn: &mut SqliteConnection,
+    tournament_id: &str,
+    round_ids: &[String],
+) -> QueryResult<String> {
+    let allocated_ids = judges_of_debate::table
+        .inner_join(
+            debates::table.on(debates::id.eq(judges_of_debate::debate_id)),
+        )
+        .filter(debates::round_id.eq_any(round_ids))
+        .select(judges_of_debate::judge_id)
+        .load::<String>(conn)?
+        .into_iter()
+        .collect::<HashSet<_>>();
+    let rows = judges::table
+        .filter(judges::tournament_id.eq(tournament_id))
+        .select(judges::id)
+        .load::<String>(conn)?
+        .into_iter()
+        .filter(|judge_id| !allocated_ids.contains(judge_id))
+        .map(|judge_id| (judge_id, "U".to_string()))
+        .collect();
+    Ok(panel_snapshot("unallocated", None, rows))
+}
+
+fn current_debate_for_judge_in_rounds(
+    conn: &mut SqliteConnection,
+    judge_id: &str,
+    round_ids: &[String],
+) -> QueryResult<Option<String>> {
+    judges_of_debate::table
+        .inner_join(
+            debates::table.on(debates::id.eq(judges_of_debate::debate_id)),
+        )
+        .filter(judges_of_debate::judge_id.eq(judge_id))
+        .filter(debates::round_id.eq_any(round_ids))
+        .select(judges_of_debate::debate_id)
+        .first::<String>(conn)
+        .optional()
+}
+
+fn panel_snapshot(
+    kind: &str,
+    debate_id: Option<&str>,
+    mut rows: Vec<(String, String)>,
+) -> String {
+    rows.sort_unstable();
+    let mut canonical = String::new();
+    canonical.push_str(kind);
+    if let Some(debate_id) = debate_id {
+        canonical.push(':');
+        canonical.push_str(debate_id);
+    }
+    for (judge_id, status) in rows {
+        canonical.push('|');
+        canonical.push_str(&judge_id);
+        canonical.push(':');
+        canonical.push_str(&status);
+    }
+    canonical
+}
+
+fn panel_change_key(from_panel: &str, to_panel: &str) -> String {
+    let mut canonical = String::new();
+    canonical.push_str("from:");
+    canonical.push_str(from_panel);
+    canonical.push_str("|to:");
+    canonical.push_str(to_panel);
+    stable_signature(&canonical)
+}
+
+fn stable_signature(input: &str) -> String {
+    let mut hash = 0xcbf29ce484222325_u64;
+    for byte in input.as_bytes() {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("{hash:016x}")
+}
+
 impl Action {
     #[tracing::instrument(skip_all)]
     pub async fn run(
@@ -1482,12 +1574,7 @@ impl Action {
                                 tid, rid
                             )
                         }),
-                        27 => round_id.map(|rid| {
-                            format!(
-                                "/tournaments/{}/rounds/draws/rooms/edit?rounds={}",
-                                tid, rid
-                            )
-                        }),
+                        27 => None,
                         28 => ctx.private_url(&tid, round_idx).map(|private_url| {
                             format!(
                                 "/tournaments/{}/privateurls/{}",
@@ -2936,12 +3023,62 @@ impl Action {
                         ctx.round_id(&tid, round_idx),
                         ctx.judge_id(&tid, judge_idx),
                     ) {
-                        let to_debate_id = if assign {
-                            ctx.debate_id_in_round(&rid, debate_idx)
-                                .unwrap_or_default()
-                        } else {
-                            String::new()
+                        let mut conn = pool.get().unwrap();
+                        let round_ids = vec![rid.clone()];
+                        let source_debate_id =
+                            current_debate_for_judge_in_rounds(
+                                &mut *conn, &judge_id, &round_ids,
+                            )
+                            .unwrap_or(None);
+                        let source_panel = match source_debate_id.as_deref() {
+                            Some(debate_id) => panel_snapshot_for_debate_id(
+                                &mut *conn, debate_id,
+                            )
+                            .unwrap_or_default(),
+                            None => panel_snapshot_for_unallocated(
+                                &mut *conn, &tid, &round_ids,
+                            )
+                            .unwrap_or_default(),
                         };
+                        let to_debate_id = if assign {
+                            get_id_by_idx!(
+                                &mut *conn,
+                                debates::table
+                                    .filter(debates::round_id.eq(&rid))
+                                    .select(debates::id)
+                                    .order_by(debates::id),
+                                debate_idx,
+                            )
+                        } else {
+                            None
+                        };
+                        let target_panel = match to_debate_id.as_deref() {
+                            Some(debate_id) => panel_snapshot_for_debate_id(
+                                &mut *conn, debate_id,
+                            )
+                            .unwrap_or_default(),
+                            None => panel_snapshot_for_unallocated(
+                                &mut *conn, &tid, &round_ids,
+                            )
+                            .unwrap_or_default(),
+                        };
+                        drop(conn);
+
+                        let mut select_path = format!(
+                            "/tournaments/{}/rounds/draws/edit?rounds={}&selected_judge_id={}",
+                            tid, rid, judge_id
+                        );
+                        if let Some(source_debate_id) =
+                            source_debate_id.as_deref()
+                        {
+                            write!(
+                                select_path,
+                                "&source_debate_id={source_debate_id}"
+                            )
+                            .unwrap();
+                        }
+                        ctx.get("SelectJudgeForMove", select_path).await;
+
                         let role = match role.as_str() {
                             "C" | "chair" => "C",
                             "T" | "trainee" => "T",
@@ -2949,9 +3086,19 @@ impl Action {
                         };
                         let form = [
                             ("judge_id".to_string(), judge_id),
-                            ("to_debate_id".to_string(), to_debate_id),
+                            (
+                                "to_debate_id".to_string(),
+                                to_debate_id.unwrap_or_default(),
+                            ),
                             ("role".to_string(), role.to_string()),
-                            ("rounds".to_string(), rid),
+                            (
+                                "from_debate_id".to_string(),
+                                source_debate_id.unwrap_or_default(),
+                            ),
+                            (
+                                "change_key".to_string(),
+                                panel_change_key(&source_panel, &target_panel),
+                            ),
                         ];
                         ctx.post_urlencoded(
                             "MoveJudge",
@@ -3101,7 +3248,7 @@ impl Action {
                         ctx.post_urlencoded(
                             "MoveRoom",
                             format!(
-                                "/tournaments/{}/rounds/draws/rooms/edit/move",
+                                "/tournaments/{}/rounds/draws/edit/move_room",
                                 tid
                             ),
                             &form,

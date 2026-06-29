@@ -44,7 +44,7 @@ pub async fn submit_ballot_page(
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     let judge =
         Judge::of_private_url(&private_url, &tournament.id, &mut *conn)?;
-    let round = Round::fetch(&round_id, &mut *conn)?;
+    let round = Round::fetch(&tournament_id, &round_id, &mut *conn)?;
 
     check_round_released(
         &tournament_id,
@@ -233,7 +233,7 @@ pub async fn do_submit_ballot(
     let judge =
         Judge::of_private_url(&private_url, &tournament_id, &mut *conn)?;
 
-    let round = Round::fetch(&round_id, &mut *conn)?;
+    let round = Round::fetch(&tournament_id, &round_id, &mut *conn)?;
 
     tracing::debug!(
         "Resolved tournament={}, judge={}, round={}.",

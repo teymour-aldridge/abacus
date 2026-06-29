@@ -39,6 +39,12 @@ pub async fn create_motion(
         .map(str::trim)
         .filter(|value| !value.is_empty());
 
+    let round_seq: i64 = rounds::table
+        .filter(rounds::id.eq(&rid))
+        .filter(rounds::tournament_id.eq(&tid))
+        .select(rounds::seq)
+        .first(&mut *conn)?;
+
     diesel::insert_into(motions_of_round::table)
         .values((
             motions_of_round::id.eq(uuid::Uuid::now_v7().to_string()),
@@ -49,12 +55,6 @@ pub async fn create_motion(
             motions_of_round::published_at.eq(None::<chrono::NaiveDateTime>),
         ))
         .execute(&mut *conn)
-        .unwrap();
-
-    let round_seq: i64 = rounds::table
-        .filter(rounds::id.eq(&rid))
-        .select(rounds::seq)
-        .first(&mut *conn)
         .unwrap();
 
     see_other_ok(Redirect::to(&format!(
@@ -71,10 +71,16 @@ pub async fn publish_motions(
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
-    let round_id = rid.clone();
+    let round_seq: i64 = rounds::table
+        .filter(rounds::id.eq(&rid))
+        .filter(rounds::tournament_id.eq(&tid))
+        .select(rounds::seq)
+        .first(&mut *conn)?;
+
     match diesel::update(
         motions_of_round::table
-            .filter(motions_of_round::round_id.eq(&round_id)),
+            .filter(motions_of_round::tournament_id.eq(&tid))
+            .filter(motions_of_round::round_id.eq(&rid)),
     )
     .set(motions_of_round::published_at.eq(diesel::dsl::now))
     .execute(&mut *conn)
@@ -91,12 +97,6 @@ pub async fn publish_motions(
             )
         }
     }
-
-    let round_seq: i64 = crate::schema::rounds::table
-        .filter(rounds::id.eq(&rid))
-        .select(rounds::seq)
-        .first(&mut *conn)
-        .unwrap();
 
     see_other_ok(Redirect::to(&format!(
         "/tournaments/{}/rounds/{}/draw/manage",

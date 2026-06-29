@@ -177,7 +177,7 @@ pub async fn set_round_completed(
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
-    let round = Round::fetch(&round_id, &mut *conn)?;
+    let round = Round::fetch(&tournament_id, &round_id, &mut *conn)?;
 
     // If marking as incomplete, also unpublish results (maintain invariant)
     if !form.completed {
@@ -331,7 +331,7 @@ pub async fn set_results_published(
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
-    let round = Round::fetch(&round_id, &mut *conn)?;
+    let round = Round::fetch(&tournament_id, &round_id, &mut *conn)?;
 
     // Enforce invariant: can only publish if round is complete
     if form.published && !round.completed {

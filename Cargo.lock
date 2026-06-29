@@ -16,6 +16,7 @@ dependencies = [
  "csv",
  "diesel",
  "diesel_migrations",
+ "fnv",
  "futures",
  "fuzzcheck",
  "good_lp",

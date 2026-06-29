@@ -121,6 +121,7 @@ pub async fn do_generate_draw(
 
         let round = match rounds::table
             .filter(rounds::id.eq(&round_id_clone))
+            .filter(rounds::tournament_id.eq(&tournament.id))
             .first::<Round>(&mut conn)
             .optional()
             .unwrap()

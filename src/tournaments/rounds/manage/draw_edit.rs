@@ -190,27 +190,32 @@ enum DrawAllocatorState<'a> {
 #[derive(Clone)]
 struct SelectedJudge<'a> {
     judge: &'a Judge,
-    location: JudgeAllocatedAt<'a>,
-    panel_snapshot: String,
+    source: DrawLocOcc<'a>,
 }
 
 #[derive(Clone)]
 struct SelectedRoom<'a> {
     room_id: &'a str,
-    location: JudgeAllocatedAt<'a>,
+    location: DrawLocation<'a>,
 }
 
 #[derive(Clone, Copy)]
-enum JudgeAllocatedAt<'a> {
+enum DrawLocation<'a> {
     Unallocated,
     Debate(&'a str),
 }
 
-impl JudgeAllocatedAt<'_> {
+#[derive(Clone)]
+struct DrawLocOcc<'a> {
+    location: DrawLocation<'a>,
+    panel_snapshot: String,
+}
+
+impl DrawLocation<'_> {
     fn debate_id(&self) -> Option<&str> {
         match self {
-            JudgeAllocatedAt::Unallocated => None,
-            JudgeAllocatedAt::Debate(debate_id) => Some(debate_id),
+            DrawLocation::Unallocated => None,
+            DrawLocation::Debate(debate_id) => Some(debate_id),
         }
     }
 }
@@ -228,24 +233,26 @@ impl<'a> DrawAllocatorState<'a> {
         if let Some(judge) =
             selected_judge_id.and_then(|id| participants.judges.get(id))
         {
-            let Some(panel_snapshot) = source_panel_snapshot_from_repr(
-                participants,
-                reprs,
-                source_debate_id,
-            ) else {
+            let location = match source_debate_id {
+                Some(debate_id)
+                    if reprs
+                        .iter()
+                        .flat_map(|repr| &repr.debates)
+                        .any(|debate| debate.debate.id == debate_id) =>
+                {
+                    DrawLocation::Debate(debate_id)
+                }
+                Some(_) => return Self::Allocation,
+                None => DrawLocation::Unallocated,
+            };
+
+            let Some(source) =
+                draw_loc_occ_from_repr(participants, reprs, location)
+            else {
                 return Self::Allocation;
             };
 
-            let location = match source_debate_id {
-                Some(debate_id) => JudgeAllocatedAt::Debate(debate_id),
-                None => JudgeAllocatedAt::Unallocated,
-            };
-
-            return Self::JudgeSelected(SelectedJudge {
-                judge,
-                location,
-                panel_snapshot,
-            });
+            return Self::JudgeSelected(SelectedJudge { judge, source });
         }
 
         if let Some(room_id) = selected_room_id {
@@ -335,7 +342,7 @@ impl Renderable for DrawAllocatorPage<'_> {
                                     source_debate_id: source.location.debate_id(),
                                     target_debate_id: None,
                                     label: "De-allocate".to_string(),
-                                    disabled: matches!(source.location, JudgeAllocatedAt::Unallocated),
+                                    disabled: matches!(source.location, DrawLocation::Unallocated),
                                 })
                             }
                         }
@@ -359,16 +366,19 @@ impl Renderable for DrawAllocatorPage<'_> {
                         }
                         @if let DrawAllocatorState::JudgeSelected(source) = &self.state {
                             span class="draw-inline-action" {
-                                (MoveJudgeActionForm {
+                                (MoveJudgeHtmlForm {
                                     tournament: self.tournament,
                                     judge: source.judge,
-                                    source_debate_id: source.location.debate_id(),
-                                    source_panel: Some(&source.panel_snapshot),
-                                    target_debate_id: None,
-                                    target_panel: panel_snapshot_for_unallocated_from_repr(self.participants, self.reprs),
-                                    role: Role::Panelist,
+                                    source: source.source.clone(),
+                                    dest: MoveJudgeDestination {
+                                        target: DrawLocOcc {
+                                            location: DrawLocation::Unallocated,
+                                            panel_snapshot: panel_snapshot_for_unallocated_from_repr(self.participants, self.reprs),
+                                        },
+                                        role: Role::Panelist,
+                                    },
                                     label: "Move here".to_string(),
-                                    disabled: matches!(source.location, JudgeAllocatedAt::Unallocated),
+                                    disabled: matches!(source.source.location, DrawLocation::Unallocated),
                                 })
                             }
                         }
@@ -498,7 +508,8 @@ mod render {
         let selected_already_in_target_role = match state {
             DrawAllocatorState::Allocation => false,
             DrawAllocatorState::JudgeSelected(source) => {
-                source.location.debate_id() == Some(debate.debate.id.as_str())
+                source.source.location.debate_id()
+                    == Some(debate.debate.id.as_str())
                     && judges.iter().any(|dj| dj.judge_id == source.judge.id)
             }
             DrawAllocatorState::RoomSelected(_) => false,
@@ -525,14 +536,19 @@ mod render {
                     }
                     @if let DrawAllocatorState::JudgeSelected(source) = state {
                         div class="draw-cell-action" {
-                            (MoveJudgeActionForm {
+                            (MoveJudgeHtmlForm {
                                 tournament,
                                 judge: source.judge,
-                                source_debate_id: source.location.debate_id(),
-                                source_panel: Some(&source.panel_snapshot),
-                                target_debate_id: Some(&debate.debate.id),
-                                target_panel: panel_snapshot.clone(),
-                                role,
+                                source: source.source.clone(),
+                                dest: MoveJudgeDestination {
+                                    target: DrawLocOcc {
+                                        location: DrawLocation::Debate(
+                                            &debate.debate.id,
+                                        ),
+                                        panel_snapshot: panel_snapshot.clone(),
+                                    },
+                                    role,
+                                },
                                 label: format!("Move here as {}", role_label.to_lowercase()),
                                 disabled: selected_already_in_target_role,
                             })
@@ -589,10 +605,10 @@ fn selected_room_from_repr<'a>(
     unallocated_rooms: &'a [Room],
     reprs: &'a [RoundDrawRepr],
     room_id: &str,
-) -> Option<(&'a str, JudgeAllocatedAt<'a>)> {
+) -> Option<(&'a str, DrawLocation<'a>)> {
     if let Some(room) = unallocated_rooms.iter().find(|room| room.id == room_id)
     {
-        return Some((&room.id, JudgeAllocatedAt::Unallocated));
+        return Some((&room.id, DrawLocation::Unallocated));
     }
 
     reprs
@@ -602,10 +618,7 @@ fn selected_room_from_repr<'a>(
             debate.room.as_ref()?;
             let debate_room_id = debate.debate.room_id.as_deref()?;
             if debate_room_id == room_id {
-                Some((
-                    debate_room_id,
-                    JudgeAllocatedAt::Debate(&debate.debate.id),
-                ))
+                Some((debate_room_id, DrawLocation::Debate(&debate.debate.id)))
             } else {
                 None
             }
@@ -619,6 +632,7 @@ fn load_draw_allocator_context(
 ) -> Option<DrawAllocatorContext> {
     let rounds2edit = rounds::table
         .filter(rounds::id.eq_any(requested_round_ids))
+        .filter(rounds::tournament_id.eq(tournament_id))
         .load::<Round>(conn)
         .optional()
         .unwrap()?;
@@ -747,24 +761,6 @@ fn role_class(role: Role) -> String {
     }
 }
 
-fn source_panel_snapshot_from_repr(
-    participants: &TournamentParticipants,
-    reprs: &[RoundDrawRepr],
-    source_debate_id: Option<&str>,
-) -> Option<String> {
-    match source_debate_id {
-        Some(source_debate_id) => reprs
-            .iter()
-            .flat_map(|repr| &repr.debates)
-            .find(|debate| debate.debate.id == source_debate_id)
-            .map(panel_snapshot_for_debate),
-        None => Some(panel_snapshot_for_unallocated_from_repr(
-            participants,
-            reprs,
-        )),
-    }
-}
-
 fn panel_snapshot_for_debate(debate: &DebateRepr) -> String {
     let rows = debate
         .judges_of_debate
@@ -788,6 +784,28 @@ fn panel_snapshot_for_unallocated_from_repr(
     panel_snapshot("unallocated", None, rows)
 }
 
+fn draw_loc_occ_from_repr<'a>(
+    participants: &TournamentParticipants,
+    reprs: &'a [RoundDrawRepr],
+    location: DrawLocation<'a>,
+) -> Option<DrawLocOcc<'a>> {
+    let panel_snapshot = match location {
+        DrawLocation::Debate(debate_id) => reprs
+            .iter()
+            .flat_map(|repr| &repr.debates)
+            .find(|debate| debate.debate.id == debate_id)
+            .map(panel_snapshot_for_debate)?,
+        DrawLocation::Unallocated => {
+            panel_snapshot_for_unallocated_from_repr(participants, reprs)
+        }
+    };
+
+    Some(DrawLocOcc {
+        location,
+        panel_snapshot,
+    })
+}
+
 fn panel_snapshot(
     kind: &str,
     debate_id: Option<&str>,
@@ -809,13 +827,22 @@ fn panel_snapshot(
     canonical
 }
 
+/// Computes a key used for optimistic concurrency control on the source and
+/// destination panels. Where another request modified either panel since the
+/// button was rendered, we abort the request and require the user to retry it.
 fn panel_change_key(from_panel: &str, to_panel: &str) -> String {
+    use std::hash::Hasher as _;
+
     let mut canonical = String::new();
     canonical.push_str("from:");
     canonical.push_str(from_panel);
-    canonical.push_str("|to:");
+    canonical.push_str("|");
+    canonical.push_str("to:");
     canonical.push_str(to_panel);
-    stable_signature(&canonical)
+
+    let mut hasher = fnv::FnvHasher::default();
+    hasher.write(canonical.as_bytes());
+    format!("{:016x}", hasher.finish())
 }
 
 fn panel_snapshot_for_debate_id(
@@ -900,37 +927,28 @@ fn current_debate_for_judge_in_seq(
         .optional()
 }
 
-fn stable_signature(input: &str) -> String {
-    let mut hash = 0xcbf29ce484222325_u64;
-    for byte in input.as_bytes() {
-        hash ^= *byte as u64;
-        hash = hash.wrapping_mul(0x100000001b3);
-    }
-    format!("{hash:016x}")
-}
-
 fn draw_error_message(code: Option<&str>) -> Option<&'static str> {
     match code {
-        Some("conflict") => {
-            Some("One of those panels was modified, please try again.")
-        }
+        Some("conflict") => Some("That panel was modified, please try again."),
         _ => None,
     }
 }
 
-struct MoveJudgeActionForm<'a> {
+struct MoveJudgeHtmlForm<'a> {
     tournament: &'a Tournament,
     judge: &'a Judge,
-    source_debate_id: Option<&'a str>,
-    source_panel: Option<&'a str>,
-    target_debate_id: Option<&'a str>,
-    target_panel: String,
-    role: Role,
+    source: DrawLocOcc<'a>,
+    dest: MoveJudgeDestination<'a>,
     label: String,
     disabled: bool,
 }
 
-impl Renderable for MoveJudgeActionForm<'_> {
+struct MoveJudgeDestination<'a> {
+    target: DrawLocOcc<'a>,
+    role: Role,
+}
+
+impl Renderable for MoveJudgeHtmlForm<'_> {
     fn render_to(
         &self,
         buffer: &mut hypertext::Buffer<hypertext::context::Node>,
@@ -938,10 +956,10 @@ impl Renderable for MoveJudgeActionForm<'_> {
         maud! {
             form class="draw-move-form" method="post" action=(format!("/tournaments/{}/rounds/draws/edit/move", self.tournament.id)) {
                 input type="hidden" name="judge_id" value=(self.judge.id);
-                input type="hidden" name="to_debate_id" value=(self.target_debate_id.unwrap_or(""));
-                input type="hidden" name="role" value=(self.role.to_string());
-                input type="hidden" name="from_debate_id" value=(self.source_debate_id.unwrap_or(""));
-                input type="hidden" name="change_key" value=(panel_change_key(self.source_panel.unwrap_or(""), &self.target_panel));
+                input type="hidden" name="to_debate_id" value=(self.dest.target.location.debate_id().unwrap_or(""));
+                input type="hidden" name="role" value=(self.dest.role.to_string());
+                input type="hidden" name="from_debate_id" value=(self.source.location.debate_id().unwrap_or(""));
+                input type="hidden" name="change_key" value=(panel_change_key(&self.source.panel_snapshot, &self.dest.target.panel_snapshot));
                 button class="btn btn-outline-secondary btn-sm" type="submit" disabled[self.disabled] {
                     (self.label)
                 }

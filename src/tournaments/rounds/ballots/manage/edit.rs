@@ -207,7 +207,8 @@ pub async fn edit_ballot_page(
     let all_rounds =
         TournamentRounds::fetch(&tournament_id, &mut *conn).unwrap();
     let debate_repr = DebateRepr::fetch(&debate_id, &mut *conn);
-    let round = Round::fetch(&debate_repr.debate.round_id, &mut *conn)?;
+    let round =
+        Round::fetch(&tournament_id, &debate_repr.debate.round_id, &mut *conn)?;
 
     assert!(
         !debate_repr.motions.is_empty(),
@@ -285,7 +286,8 @@ pub async fn do_edit_ballot(
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
     let debate_repr = DebateRepr::fetch(&debate_id, &mut *conn);
-    let round = Round::fetch(&debate_repr.debate.round_id, &mut *conn)?;
+    let round =
+        Round::fetch(&tournament_id, &debate_repr.debate.round_id, &mut *conn)?;
 
     assert!(
         !debate_repr.motions.is_empty(),

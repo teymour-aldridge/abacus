@@ -1,5 +1,10 @@
-use diesel::{ExpressionMethods, JoinOnDsl, QueryDsl, RunQueryDsl};
+use diesel::sql_types::BigInt;
+use diesel::{
+    ExpressionMethods, JoinOnDsl, QueryDsl, QueryableByName, RunQueryDsl,
+    sql_query,
+};
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::OnceLock;
 
 use crate::schema::{
     ballots, debates, judges_of_debate, rounds, team_ranks_of_ballot,
@@ -14,10 +19,409 @@ pub fn assert_tournament_properties(
     >,
 ) {
     let mut conn = pool.get().unwrap();
+    assert_no_cross_tournament_references(&mut conn);
     assert_draw_team_uniqueness(&mut conn);
     assert_draw_judge_allocation_invariants(&mut conn);
     assert_confirmed_ballots_are_complete(&mut conn);
     assert_saved_standings_match_recomputed_standings(&mut conn);
+}
+
+#[derive(QueryableByName)]
+struct CrossTournamentMismatch {
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    relationship: String,
+    #[diesel(sql_type = BigInt)]
+    mismatch_count: i64,
+}
+
+#[derive(QueryableByName)]
+struct SchemaTable {
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    name: String,
+}
+
+#[derive(QueryableByName)]
+struct SchemaColumn {
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    name: String,
+}
+
+#[derive(QueryableByName)]
+struct SchemaForeignKeyRow {
+    #[diesel(sql_type = BigInt)]
+    id: i64,
+    #[diesel(sql_type = BigInt)]
+    seq: i64,
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    parent_table: String,
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    child_column: String,
+    #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Text>)]
+    parent_column: Option<String>,
+}
+
+#[derive(Clone)]
+struct CrossTournamentCheck {
+    relationship: String,
+    sql: String,
+}
+
+struct CrossTournamentAssertionPlan {
+    sql: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+struct ForeignKey {
+    parent_table: String,
+    column_pairs: Vec<(String, String)>,
+}
+
+#[derive(Clone, Debug)]
+struct TableSchema {
+    columns: HashSet<String>,
+    foreign_keys: Vec<ForeignKey>,
+}
+
+type SchemaGraph = BTreeMap<String, TableSchema>;
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+struct TournamentPath {
+    description: String,
+    joins: Vec<ForeignKey>,
+}
+
+fn quote_identifier(identifier: &str) -> String {
+    format!("\"{}\"", identifier.replace('"', "\"\""))
+}
+
+fn quote_string(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
+fn read_schema_graph(conn: &mut diesel::SqliteConnection) -> SchemaGraph {
+    let tables = sql_query(
+        "SELECT name \
+         FROM sqlite_schema \
+         WHERE type = 'table' \
+           AND name NOT LIKE 'sqlite_%' \
+         ORDER BY name",
+    )
+    .load::<SchemaTable>(conn)
+    .unwrap();
+
+    let mut graph = BTreeMap::new();
+    for table in tables {
+        let table_name_literal = quote_string(&table.name);
+        let columns = sql_query(format!(
+            "SELECT name FROM pragma_table_info({table_name_literal})"
+        ))
+        .load::<SchemaColumn>(conn)
+        .unwrap()
+        .into_iter()
+        .map(|column| column.name)
+        .collect::<HashSet<_>>();
+
+        let foreign_key_rows = sql_query(format!(
+            "SELECT id, seq, \"table\" AS parent_table, \
+                    \"from\" AS child_column, \"to\" AS parent_column \
+             FROM pragma_foreign_key_list({table_name_literal}) \
+             ORDER BY id, seq"
+        ))
+        .load::<SchemaForeignKeyRow>(conn)
+        .unwrap();
+
+        let mut grouped_foreign_keys =
+            BTreeMap::<i64, (String, Vec<(i64, String, String)>)>::new();
+        for row in foreign_key_rows {
+            let parent_column =
+                row.parent_column.unwrap_or_else(|| "id".to_string());
+            let entry = grouped_foreign_keys
+                .entry(row.id)
+                .or_insert_with(|| (row.parent_table, Vec::new()));
+            entry.1.push((row.seq, row.child_column, parent_column));
+        }
+
+        let foreign_keys = grouped_foreign_keys
+            .into_values()
+            .map(|(parent_table, mut column_pairs)| {
+                column_pairs.sort_by_key(|(seq, _, _)| *seq);
+                ForeignKey {
+                    parent_table,
+                    column_pairs: column_pairs
+                        .into_iter()
+                        .map(|(_, child_column, parent_column)| {
+                            (child_column, parent_column)
+                        })
+                        .collect(),
+                }
+            })
+            .collect();
+
+        graph.insert(
+            table.name,
+            TableSchema {
+                columns,
+                foreign_keys,
+            },
+        );
+    }
+
+    graph
+}
+
+fn direct_tournament_path(
+    table_name: &str,
+    table: &TableSchema,
+) -> Option<TournamentPath> {
+    table
+        .columns
+        .contains("tournament_id")
+        .then(|| TournamentPath {
+            description: format!("{table_name}.tournament_id"),
+            joins: Vec::new(),
+        })
+}
+
+fn prepend_foreign_key_path(
+    table_name: &str,
+    foreign_key: &ForeignKey,
+    parent_path: TournamentPath,
+) -> TournamentPath {
+    let mut joins = Vec::with_capacity(parent_path.joins.len() + 1);
+    joins.push(foreign_key.clone());
+    joins.extend(parent_path.joins);
+
+    let through_columns = foreign_key
+        .column_pairs
+        .iter()
+        .map(|(child_column, _)| child_column.as_str())
+        .collect::<Vec<_>>()
+        .join("+");
+    let description = format!(
+        "{table_name}.{through_columns} -> {}",
+        parent_path.description
+    );
+
+    TournamentPath { description, joins }
+}
+
+fn canonical_tournament_path(
+    table_name: &str,
+    graph: &SchemaGraph,
+) -> Option<TournamentPath> {
+    let mut visiting = HashSet::new();
+    canonical_tournament_path_inner(table_name, graph, &mut visiting)
+}
+
+fn canonical_tournament_path_inner(
+    table_name: &str,
+    graph: &SchemaGraph,
+    visiting: &mut HashSet<String>,
+) -> Option<TournamentPath> {
+    let Some(table) = graph.get(table_name) else {
+        return None;
+    };
+
+    if let Some(path) = direct_tournament_path(table_name, table) {
+        return Some(path);
+    }
+
+    visiting.insert(table_name.to_string());
+    let mut candidates = Vec::new();
+    for foreign_key in &table.foreign_keys {
+        if visiting.contains(&foreign_key.parent_table) {
+            continue;
+        }
+
+        if let Some(parent_path) = canonical_tournament_path_inner(
+            &foreign_key.parent_table,
+            graph,
+            visiting,
+        ) {
+            candidates.push(prepend_foreign_key_path(
+                table_name,
+                foreign_key,
+                parent_path,
+            ));
+        }
+    }
+    visiting.remove(table_name);
+
+    candidates
+        .into_iter()
+        .min_by_key(|path| (path.joins.len(), path.description.clone()))
+}
+
+fn tournament_paths_for_table(
+    table_name: &str,
+    graph: &SchemaGraph,
+) -> Vec<TournamentPath> {
+    let Some(table) = graph.get(table_name) else {
+        return Vec::new();
+    };
+
+    let mut paths = BTreeMap::new();
+    if let Some(path) = direct_tournament_path(table_name, table) {
+        paths.insert(path.description.clone(), path);
+    }
+
+    for foreign_key in &table.foreign_keys {
+        if let Some(parent_path) =
+            canonical_tournament_path(&foreign_key.parent_table, graph)
+        {
+            let path =
+                prepend_foreign_key_path(table_name, foreign_key, parent_path);
+            paths.insert(path.description.clone(), path);
+        }
+    }
+
+    paths.into_values().collect()
+}
+
+fn tournament_checks_for_table(
+    table_name: &str,
+    graph: &SchemaGraph,
+) -> Vec<CrossTournamentCheck> {
+    let Some(canonical_path) = canonical_tournament_path(table_name, graph)
+    else {
+        return Vec::new();
+    };
+
+    tournament_paths_for_table(table_name, graph)
+        .into_iter()
+        .filter(|path| path != &canonical_path)
+        .map(|path| {
+            build_cross_tournament_check(table_name, &canonical_path, &path)
+        })
+        .collect()
+}
+
+fn render_join_path(
+    path: &TournamentPath,
+    path_index: usize,
+) -> (String, String) {
+    if path.joins.is_empty() {
+        return ("".to_string(), "child.tournament_id".to_string());
+    }
+
+    let mut joins = Vec::new();
+    let mut previous_alias = "child".to_string();
+    for (step_index, foreign_key) in path.joins.iter().enumerate() {
+        let alias = format!("path{path_index}_step{step_index}");
+        let conditions = foreign_key
+            .column_pairs
+            .iter()
+            .map(|(child_column, parent_column)| {
+                format!(
+                    "{}.{} = {}.{}",
+                    previous_alias,
+                    quote_identifier(child_column),
+                    alias,
+                    quote_identifier(parent_column)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(" AND ");
+
+        joins.push(format!(
+            "JOIN {} {alias} ON {conditions}",
+            quote_identifier(&foreign_key.parent_table),
+        ));
+        previous_alias = alias;
+    }
+
+    (
+        joins.join(" "),
+        format!("{previous_alias}.{}", quote_identifier("tournament_id")),
+    )
+}
+
+fn build_cross_tournament_check(
+    table_name: &str,
+    left_path: &TournamentPath,
+    right_path: &TournamentPath,
+) -> CrossTournamentCheck {
+    let (left_joins, left_tournament_id) = render_join_path(left_path, 0);
+    let (right_joins, right_tournament_id) = render_join_path(right_path, 1);
+    let relationship = format!(
+        "{}: {} matches {}",
+        table_name, left_path.description, right_path.description
+    );
+    let sql = format!(
+        "SELECT COUNT(*) AS mismatch_count \
+         FROM {} child \
+         {} \
+         {} \
+         WHERE {} != {}",
+        quote_identifier(table_name),
+        left_joins,
+        right_joins,
+        left_tournament_id,
+        right_tournament_id,
+    );
+
+    CrossTournamentCheck { relationship, sql }
+}
+
+fn build_cross_tournament_checks(
+    conn: &mut diesel::SqliteConnection,
+) -> Vec<CrossTournamentCheck> {
+    let graph = read_schema_graph(conn);
+    let mut checks = Vec::new();
+
+    for table_name in graph.keys() {
+        checks.extend(tournament_checks_for_table(table_name, &graph));
+    }
+
+    checks
+}
+
+fn build_cross_tournament_assertion_plan(
+    conn: &mut diesel::SqliteConnection,
+) -> CrossTournamentAssertionPlan {
+    let checks = build_cross_tournament_checks(conn);
+    let sql = (!checks.is_empty()).then(|| {
+        checks
+            .iter()
+            .map(|check| {
+                format!(
+                    "SELECT {} AS relationship, \
+                            ({}) AS mismatch_count",
+                    quote_string(&check.relationship),
+                    check.sql,
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(" UNION ALL ")
+    });
+
+    CrossTournamentAssertionPlan { sql }
+}
+
+fn cross_tournament_assertion_plan(
+    conn: &mut diesel::SqliteConnection,
+) -> &'static CrossTournamentAssertionPlan {
+    static PLAN: OnceLock<CrossTournamentAssertionPlan> = OnceLock::new();
+    PLAN.get_or_init(|| build_cross_tournament_assertion_plan(conn))
+}
+
+fn assert_no_cross_tournament_references(conn: &mut diesel::SqliteConnection) {
+    let Some(sql) = cross_tournament_assertion_plan(conn).sql.as_ref() else {
+        return;
+    };
+
+    for mismatch in sql_query(sql)
+        .load::<CrossTournamentMismatch>(conn)
+        .unwrap()
+    {
+        assert_eq!(
+            mismatch.mismatch_count,
+            0,
+            "{} has {mismatch_count} cross-tournament references",
+            mismatch.relationship,
+            mismatch_count = mismatch.mismatch_count,
+        );
+    }
 }
 
 fn assert_draw_team_uniqueness(conn: &mut diesel::SqliteConnection) {

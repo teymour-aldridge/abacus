@@ -47,7 +47,7 @@ pub fn aggregate_ballot_set(
     conn: &mut impl LoadConnection<Backend = Sqlite>,
 ) {
     assert!(!ballots.is_empty());
-    let round = Round::fetch(&debate.debate.round_id, conn).unwrap();
+    let round = Round::fetch_direct(&debate.debate.round_id, conn).unwrap();
     let is_elim = round.kind == "E";
     let method = if is_elim {
         if tournament.elim_is_consensus() {

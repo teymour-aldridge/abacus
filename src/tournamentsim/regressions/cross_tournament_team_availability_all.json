@@ -1,0 +1,67 @@
+{
+  "actions": [
+    {
+      "RegisterUser": {
+        "username": "released_teams",
+        "email": "q@n.com",
+        "password": "n_times_achieved_3"
+      }
+    },
+    {
+      "CreateTournament": {
+        "name": "quetzal",
+        "abbrv": "draft",
+        "slug": "e"
+      }
+    },
+    {
+      "CreateTournament": {
+        "name": "nsw@pfqdnye.org",
+        "abbrv": "jrandom",
+        "slug": "speakers"
+      }
+    },
+    {
+      "ApplyTournamentPreset": {
+        "tournament_idx": 158,
+        "preset_idx": 199
+      }
+    },
+    {
+      "CreateRound": {
+        "tournament_idx": 61,
+        "name": "random",
+        "category_idx": 870970621257461904,
+        "seq": 4153283418
+      }
+    },
+    {
+      "CreateTeam": {
+        "tournament_idx": 12,
+        "name": "otter",
+        "institution_idx": null
+      }
+    },
+    {
+      "UpdateAllTeamEligibility": {
+        "tournament_idx": 136,
+        "round_idx": 98,
+        "eligible": true
+      }
+    },
+    {
+      "GenerateDraw": {
+        "tournament_idx": 223,
+        "round_idx": 132,
+        "force": false
+      }
+    },
+    {
+      "ViewTournamentPage": {
+        "tournament_idx": 59,
+        "round_idx": 82,
+        "page_idx": 64
+      }
+    }
+  ]
+}

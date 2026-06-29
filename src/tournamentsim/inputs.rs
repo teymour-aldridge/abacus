@@ -1016,62 +1016,47 @@ impl<'a> ActionContext<'a> {
         )
     }
 
-    fn round_id(&self, tournament_id: &str, idx: usize) -> Option<String> {
+    fn round_id(&self, _tournament_id: &str, idx: usize) -> Option<String> {
         let mut conn = self.conn();
         get_id_by_idx!(
             &mut *conn,
-            rounds::table
-                .filter(rounds::tournament_id.eq(tournament_id))
-                .select(rounds::id)
-                .order_by(rounds::id),
+            rounds::table.select(rounds::id).order_by(rounds::id),
             idx,
         )
     }
 
-    fn team_id(&self, tournament_id: &str, idx: usize) -> Option<String> {
+    fn team_id(&self, _tournament_id: &str, idx: usize) -> Option<String> {
         let mut conn = self.conn();
         get_id_by_idx!(
             &mut *conn,
-            teams::table
-                .filter(teams::tournament_id.eq(tournament_id))
-                .select(teams::id)
-                .order_by(teams::id),
+            teams::table.select(teams::id).order_by(teams::id),
             idx,
         )
     }
 
-    fn judge_id(&self, tournament_id: &str, idx: usize) -> Option<String> {
+    fn judge_id(&self, _tournament_id: &str, idx: usize) -> Option<String> {
         let mut conn = self.conn();
         get_id_by_idx!(
             &mut *conn,
-            judges::table
-                .filter(judges::tournament_id.eq(tournament_id))
-                .select(judges::id)
-                .order_by(judges::id),
+            judges::table.select(judges::id).order_by(judges::id),
             idx,
         )
     }
 
-    fn room_id(&self, tournament_id: &str, idx: usize) -> Option<String> {
+    fn room_id(&self, _tournament_id: &str, idx: usize) -> Option<String> {
         let mut conn = self.conn();
         get_id_by_idx!(
             &mut *conn,
-            rooms::table
-                .filter(rooms::tournament_id.eq(tournament_id))
-                .select(rooms::id)
-                .order_by(rooms::id),
+            rooms::table.select(rooms::id).order_by(rooms::id),
             idx,
         )
     }
 
-    fn debate_id(&self, tournament_id: &str, idx: usize) -> Option<String> {
+    fn debate_id(&self, _tournament_id: &str, idx: usize) -> Option<String> {
         let mut conn = self.conn();
         get_id_by_idx!(
             &mut *conn,
-            debates::table
-                .filter(debates::tournament_id.eq(tournament_id))
-                .select(debates::id)
-                .order_by(debates::id),
+            debates::table.select(debates::id).order_by(debates::id),
             idx,
         )
     }
@@ -1090,14 +1075,13 @@ impl<'a> ActionContext<'a> {
 
     fn room_category_id(
         &self,
-        tournament_id: &str,
+        _tournament_id: &str,
         idx: usize,
     ) -> Option<String> {
         let mut conn = self.conn();
         get_id_by_idx!(
             &mut *conn,
             room_categories::table
-                .filter(room_categories::tournament_id.eq(tournament_id))
                 .select(room_categories::id)
                 .order_by(room_categories::id),
             idx,
@@ -1106,29 +1090,26 @@ impl<'a> ActionContext<'a> {
 
     fn feedback_question_id(
         &self,
-        tournament_id: &str,
+        _tournament_id: &str,
         idx: usize,
     ) -> Option<String> {
         let mut conn = self.conn();
         get_id_by_idx!(
             &mut *conn,
             feedback_questions::table
-                .filter(feedback_questions::tournament_id.eq(tournament_id))
                 .select(feedback_questions::id)
                 .order_by(feedback_questions::id),
             idx,
         )
     }
 
-    fn private_url(&self, tournament_id: &str, idx: usize) -> Option<String> {
+    fn private_url(&self, _tournament_id: &str, idx: usize) -> Option<String> {
         let mut conn = self.conn();
         let judge_count = judges::table
-            .filter(judges::tournament_id.eq(tournament_id))
             .count()
             .get_result::<i64>(&mut *conn)
             .unwrap_or(0);
         let speaker_count = speakers::table
-            .filter(speakers::tournament_id.eq(tournament_id))
             .count()
             .get_result::<i64>(&mut *conn)
             .unwrap_or(0);
@@ -1139,7 +1120,6 @@ impl<'a> ActionContext<'a> {
         let idx = (idx as i64) % total;
         if idx < judge_count {
             judges::table
-                .filter(judges::tournament_id.eq(tournament_id))
                 .select(judges::private_url)
                 .order_by(judges::id)
                 .offset(idx)
@@ -1148,7 +1128,6 @@ impl<'a> ActionContext<'a> {
                 .ok()
         } else {
             speakers::table
-                .filter(speakers::tournament_id.eq(tournament_id))
                 .select(speakers::private_url)
                 .order_by(speakers::id)
                 .offset(idx - judge_count)
@@ -1280,21 +1259,18 @@ fn panel_snapshot(
 }
 
 fn panel_change_key(from_panel: &str, to_panel: &str) -> String {
+    use std::hash::Hasher as _;
+
     let mut canonical = String::new();
     canonical.push_str("from:");
     canonical.push_str(from_panel);
-    canonical.push_str("|to:");
+    canonical.push_str("|");
+    canonical.push_str("to:");
     canonical.push_str(to_panel);
-    stable_signature(&canonical)
-}
 
-fn stable_signature(input: &str) -> String {
-    let mut hash = 0xcbf29ce484222325_u64;
-    for byte in input.as_bytes() {
-        hash ^= *byte as u64;
-        hash = hash.wrapping_mul(0x100000001b3);
-    }
-    format!("{hash:016x}")
+    let mut hasher = fnv::FnvHasher::default();
+    hasher.write(canonical.as_bytes());
+    format!("{:016x}", hasher.finish())
 }
 
 impl Action {
@@ -1480,7 +1456,6 @@ impl Action {
                     tournament_idx,
                 ) {
                     let round_count = rounds::table
-                        .filter(rounds::tournament_id.eq(&tid))
                         .count()
                         .get_result::<i64>(&mut *conn)
                         .unwrap_or(0);
@@ -1488,7 +1463,6 @@ impl Action {
                         None
                     } else {
                         rounds::table
-                            .filter(rounds::tournament_id.eq(&tid))
                             .select((rounds::id, rounds::seq))
                             .order_by(rounds::id)
                             .offset((round_idx as i64) % round_count)
@@ -1612,7 +1586,6 @@ impl Action {
                                         rounds::id.eq(debates::round_id),
                                     )
                                 )
-                                .filter(debates::tournament_id.eq(&tid))
                                 .filter(rounds::draw_status.eq("released_full"))
                                 .select((
                                     judges_of_debate::debate_id,
@@ -1640,7 +1613,6 @@ impl Action {
                         34 => {
                             let mut conn = pool.get().unwrap();
                             let targets = ballots::table
-                                .filter(ballots::tournament_id.eq(&tid))
                                 .select((ballots::debate_id, ballots::id))
                                 .order_by(ballots::id)
                                 .load::<(String, String)>(&mut *conn)
@@ -1699,9 +1671,6 @@ impl Action {
                             get_id_by_idx!(
                                 &mut *conn,
                                 institutions::table
-                                    .filter(
-                                        institutions::tournament_id.eq(&tid),
-                                    )
                                     .select(institutions::id)
                                     .order_by(institutions::id),
                                 idx,
@@ -1735,10 +1704,7 @@ impl Action {
                 ) {
                     if let Some(team_id) = get_id_by_idx!(
                         &mut *conn,
-                        teams::table
-                            .filter(teams::tournament_id.eq(&tid))
-                            .select(teams::id)
-                            .order_by(teams::id),
+                        teams::table.select(teams::id).order_by(teams::id),
                         team_idx,
                     ) {
                         let inst_id = institution_idx
@@ -1746,10 +1712,6 @@ impl Action {
                                 get_id_by_idx!(
                                     &mut *conn,
                                     institutions::table
-                                        .filter(
-                                            institutions::tournament_id
-                                                .eq(&tid),
-                                        )
                                         .select(institutions::id)
                                         .order_by(institutions::id),
                                     idx,
@@ -1790,9 +1752,6 @@ impl Action {
                             get_id_by_idx!(
                                 &mut *conn,
                                 institutions::table
-                                    .filter(
-                                        institutions::tournament_id.eq(&tid),
-                                    )
                                     .select(institutions::id)
                                     .order_by(institutions::id),
                                 idx,
@@ -1831,10 +1790,7 @@ impl Action {
                 ) {
                     if let Some(judge_id) = get_id_by_idx!(
                         &mut *conn,
-                        judges::table
-                            .filter(judges::tournament_id.eq(&tid))
-                            .select(judges::id)
-                            .order_by(judges::id),
+                        judges::table.select(judges::id).order_by(judges::id),
                         judge_idx,
                     ) {
                         let inst_id = institution_idx
@@ -1842,10 +1798,6 @@ impl Action {
                                 get_id_by_idx!(
                                     &mut *conn,
                                     institutions::table
-                                        .filter(
-                                            institutions::tournament_id
-                                                .eq(&tid),
-                                        )
                                         .select(institutions::id)
                                         .order_by(institutions::id),
                                     idx,
@@ -1886,10 +1838,7 @@ impl Action {
                 ) {
                     if let Some(team_id) = get_id_by_idx!(
                         &mut *conn,
-                        teams::table
-                            .filter(teams::tournament_id.eq(&tid))
-                            .select(teams::id)
-                            .order_by(teams::id),
+                        teams::table.select(teams::id).order_by(teams::id),
                         team_idx,
                     ) {
                         drop(conn);
@@ -1924,7 +1873,6 @@ impl Action {
                         get_id_by_idx!(
                             &mut *conn,
                             speakers::table
-                                .filter(speakers::tournament_id.eq(&tid))
                                 .select(speakers::id)
                                 .order_by(speakers::id),
                             pid_idx,
@@ -1933,7 +1881,6 @@ impl Action {
                         get_id_by_idx!(
                             &mut *conn,
                             judges::table
-                                .filter(judges::tournament_id.eq(&tid))
                                 .select(judges::id)
                                 .order_by(judges::id),
                             pid_idx,
@@ -1945,7 +1892,6 @@ impl Action {
                         get_id_by_idx!(
                             &mut *conn,
                             room_categories::table
-                                .filter(room_categories::tournament_id.eq(&tid))
                                 .select(room_categories::id)
                                 .order_by(room_categories::id),
                             category_idx,
@@ -1984,7 +1930,6 @@ impl Action {
                         get_id_by_idx!(
                             &mut *conn,
                             speakers::table
-                                .filter(speakers::tournament_id.eq(&tid))
                                 .select(speakers::id)
                                 .order_by(speakers::id),
                             pid_idx,
@@ -1993,7 +1938,6 @@ impl Action {
                         get_id_by_idx!(
                             &mut *conn,
                             judges::table
-                                .filter(judges::tournament_id.eq(&tid))
                                 .select(judges::id)
                                 .order_by(judges::id),
                             pid_idx,
@@ -2075,7 +2019,6 @@ impl Action {
                         get_id_by_idx!(
                             &mut *conn,
                             speakers::table
-                                .filter(speakers::tournament_id.eq(&tid))
                                 .select(speakers::id)
                                 .order_by(speakers::id),
                             pid_idx,
@@ -2084,7 +2027,6 @@ impl Action {
                         get_id_by_idx!(
                             &mut *conn,
                             judges::table
-                                .filter(judges::tournament_id.eq(&tid))
                                 .select(judges::id)
                                 .order_by(judges::id),
                             pid_idx,
@@ -2187,10 +2129,7 @@ impl Action {
                 ) {
                     if let Some(room_id) = get_id_by_idx!(
                         &mut *conn,
-                        rooms::table
-                            .filter(rooms::tournament_id.eq(&tid))
-                            .select(rooms::id)
-                            .order_by(rooms::id),
+                        rooms::table.select(rooms::id).order_by(rooms::id),
                         room_idx,
                     ) {
                         drop(conn);
@@ -2260,7 +2199,6 @@ impl Action {
                     if let Some(cat_id) = get_id_by_idx!(
                         &mut *conn,
                         room_categories::table
-                            .filter(room_categories::tournament_id.eq(&tid))
                             .select(room_categories::id)
                             .order_by(room_categories::id),
                         category_idx,
@@ -2294,17 +2232,13 @@ impl Action {
                         get_id_by_idx!(
                             &mut *conn,
                             room_categories::table
-                                .filter(room_categories::tournament_id.eq(&tid))
                                 .select(room_categories::id)
                                 .order_by(room_categories::id),
                             category_idx,
                         ),
                         get_id_by_idx!(
                             &mut *conn,
-                            rooms::table
-                                .filter(rooms::tournament_id.eq(&tid))
-                                .select(rooms::id)
-                                .order_by(rooms::id),
+                            rooms::table.select(rooms::id).order_by(rooms::id),
                             room_idx,
                         ),
                     ) {
@@ -2339,17 +2273,13 @@ impl Action {
                         get_id_by_idx!(
                             &mut *conn,
                             room_categories::table
-                                .filter(room_categories::tournament_id.eq(&tid))
                                 .select(room_categories::id)
                                 .order_by(room_categories::id),
                             category_idx,
                         ),
                         get_id_by_idx!(
                             &mut *conn,
-                            rooms::table
-                                .filter(rooms::tournament_id.eq(&tid))
-                                .select(rooms::id)
-                                .order_by(rooms::id),
+                            rooms::table.select(rooms::id).order_by(rooms::id),
                             room_idx,
                         ),
                     ) {
@@ -2420,7 +2350,6 @@ impl Action {
                     if let Some(q_id) = get_id_by_idx!(
                         &mut *conn,
                         feedback_questions::table
-                            .filter(feedback_questions::tournament_id.eq(&tid))
                             .select(feedback_questions::id)
                             .order_by(feedback_questions::id),
                         question_idx,
@@ -2457,7 +2386,6 @@ impl Action {
                     if let Some(q_id) = get_id_by_idx!(
                         &mut *conn,
                         feedback_questions::table
-                            .filter(feedback_questions::tournament_id.eq(&tid))
                             .select(feedback_questions::id)
                             .order_by(feedback_questions::id),
                         question_idx,
@@ -2497,7 +2425,6 @@ impl Action {
                     if let Some(q_id) = get_id_by_idx!(
                         &mut *conn,
                         feedback_questions::table
-                            .filter(feedback_questions::tournament_id.eq(&tid))
                             .select(feedback_questions::id)
                             .order_by(feedback_questions::id),
                         question_idx,
@@ -2538,10 +2465,6 @@ impl Action {
                             get_id_by_idx!(
                                 &mut *conn,
                                 break_categories::table
-                                    .filter(
-                                        break_categories::tournament_id
-                                            .eq(&tid)
-                                    )
                                     .select(break_categories::id)
                                     .order_by(break_categories::id),
                                 idx,
@@ -2611,10 +2534,7 @@ impl Action {
                 ) {
                     if let Some(rid) = get_id_by_idx!(
                         &mut *conn,
-                        rounds::table
-                            .filter(rounds::tournament_id.eq(&tid))
-                            .select(rounds::id)
-                            .order_by(rounds::id),
+                        rounds::table.select(rounds::id).order_by(rounds::id),
                         round_idx,
                     ) {
                         drop(conn);
@@ -2649,10 +2569,7 @@ impl Action {
                 ) {
                     if let Some(rid) = get_id_by_idx!(
                         &mut *conn,
-                        rounds::table
-                            .filter(rounds::tournament_id.eq(&tid))
-                            .select(rounds::id)
-                            .order_by(rounds::id),
+                        rounds::table.select(rounds::id).order_by(rounds::id),
                         round_idx,
                     ) {
                         drop(conn);
@@ -2685,10 +2602,7 @@ impl Action {
                 ) {
                     if let Some(rid) = get_id_by_idx!(
                         &mut *conn,
-                        rounds::table
-                            .filter(rounds::tournament_id.eq(&tid))
-                            .select(rounds::id)
-                            .order_by(rounds::id),
+                        rounds::table.select(rounds::id).order_by(rounds::id),
                         round_idx,
                     ) {
                         drop(conn);
@@ -2720,10 +2634,7 @@ impl Action {
                 ) {
                     if let Some(rid) = get_id_by_idx!(
                         &mut *conn,
-                        rounds::table
-                            .filter(rounds::tournament_id.eq(&tid))
-                            .select(rounds::id)
-                            .order_by(rounds::id),
+                        rounds::table.select(rounds::id).order_by(rounds::id),
                         round_idx,
                     ) {
                         drop(conn);
@@ -2757,10 +2668,7 @@ impl Action {
                 ) {
                     if let Some(rid) = get_id_by_idx!(
                         &mut *conn,
-                        rounds::table
-                            .filter(rounds::tournament_id.eq(&tid))
-                            .select(rounds::id)
-                            .order_by(rounds::id),
+                        rounds::table.select(rounds::id).order_by(rounds::id),
                         round_idx,
                     ) {
                         drop(conn);
@@ -2789,10 +2697,7 @@ impl Action {
                 ) {
                     if let Some(rid) = get_id_by_idx!(
                         &mut *conn,
-                        rounds::table
-                            .filter(rounds::tournament_id.eq(&tid))
-                            .select(rounds::id)
-                            .order_by(rounds::id),
+                        rounds::table.select(rounds::id).order_by(rounds::id),
                         round_idx,
                     ) {
                         drop(conn);
@@ -2827,7 +2732,6 @@ impl Action {
                         get_id_by_idx!(
                             &mut *conn,
                             rounds::table
-                                .filter(rounds::tournament_id.eq(&tid))
                                 .select(rounds::id)
                                 .order_by(rounds::id),
                             round_idx,
@@ -2835,7 +2739,6 @@ impl Action {
                         get_id_by_idx!(
                             &mut *conn,
                             judges::table
-                                .filter(judges::tournament_id.eq(&tid))
                                 .select(judges::id)
                                 .order_by(judges::id),
                             judge_idx,
@@ -2876,10 +2779,7 @@ impl Action {
                 ) {
                     if let Some(rid) = get_id_by_idx!(
                         &mut *conn,
-                        rounds::table
-                            .filter(rounds::tournament_id.eq(&tid))
-                            .select(rounds::id)
-                            .order_by(rounds::id),
+                        rounds::table.select(rounds::id).order_by(rounds::id),
                         round_idx,
                     ) {
                         drop(conn);
@@ -2913,17 +2813,13 @@ impl Action {
                         get_id_by_idx!(
                             &mut *conn,
                             rounds::table
-                                .filter(rounds::tournament_id.eq(&tid))
                                 .select(rounds::id)
                                 .order_by(rounds::id),
                             round_idx,
                         ),
                         get_id_by_idx!(
                             &mut *conn,
-                            teams::table
-                                .filter(teams::tournament_id.eq(&tid))
-                                .select(teams::id)
-                                .order_by(teams::id),
+                            teams::table.select(teams::id).order_by(teams::id),
                             team_idx,
                         ),
                     ) {
@@ -2963,10 +2859,7 @@ impl Action {
                 ) {
                     if let Some(rid) = get_id_by_idx!(
                         &mut *conn,
-                        rounds::table
-                            .filter(rounds::tournament_id.eq(&tid))
-                            .select(rounds::id)
-                            .order_by(rounds::id),
+                        rounds::table.select(rounds::id).order_by(rounds::id),
                         round_idx,
                     ) {
                         drop(conn);
@@ -3244,7 +3137,6 @@ impl Action {
                     tournament_idx,
                 ) {
                     let judges_with_urls: Vec<(String, String)> = judges::table
-                        .filter(judges::tournament_id.eq(&tid))
                         .select((judges::id, judges::private_url))
                         .load(&mut *conn)
                         .unwrap();
@@ -3256,7 +3148,6 @@ impl Action {
                         if let Some(rid) = get_id_by_idx!(
                             &mut *conn,
                             rounds::table
-                                .filter(rounds::tournament_id.eq(&tid))
                                 .select(rounds::id)
                                 .order_by(rounds::id),
                             round_idx,

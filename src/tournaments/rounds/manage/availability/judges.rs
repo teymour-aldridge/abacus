@@ -545,7 +545,7 @@ pub async fn update_judge_availability_for_all(
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
-    let round = Round::fetch(&round_id, &mut *conn)?;
+    let round = Round::fetch(&tournament_id, &round_id, &mut *conn)?;
 
     match query.check.as_str() {
         "in" => {

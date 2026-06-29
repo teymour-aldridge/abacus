@@ -39,7 +39,7 @@ pub async fn submit_feedback_page(
     mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
-    let round = Round::fetch(&round_id, &mut *conn)?;
+    let round = Round::fetch(&tournament_id, &round_id, &mut *conn)?;
 
     let judge = judges::table
         .filter(
@@ -201,7 +201,7 @@ pub async fn do_submit_feedback(
     Form(form): Form<FeedbackSubmissionForm>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
-    let round = Round::fetch(&round_id, &mut *conn)?;
+    let round = Round::fetch(&tournament_id, &round_id, &mut *conn)?;
 
     // Identify submitter
     let judge = judges::table

@@ -1,0 +1,91 @@
+{
+  "actions": [
+    {
+      "RegisterUser": {
+        "username": "in{",
+        "email": "q@j.edu",
+        "password": "badger"
+      }
+    },
+    { "CreateTournament": { "name": "lynx", "abbrv": "up", "slug": "" } },
+    {
+      "CreateRound": {
+        "tournament_idx": 88,
+        "name": "lynx",
+        "category_idx": null,
+        "seq": 3573171053
+      }
+    },
+    {
+      "CreateTeam": {
+        "tournament_idx": 99,
+        "name": "lynx",
+        "institution_idx": null
+      }
+    },
+    { "ApplyTournamentPreset": { "tournament_idx": 173, "preset_idx": 101 } },
+    {
+      "CreateTeam": {
+        "tournament_idx": 99,
+        "name": "lynx",
+        "institution_idx": null
+      }
+    },
+    { "CreateTournament": { "name": "lynx", "abbrv": "up", "slug": "" } },
+    {
+      "CreateTournament": {
+        "name": "false",
+        "abbrv": "-----",
+        "slug": "wombat"
+      }
+    },
+    {
+      "CreateRound": {
+        "tournament_idx": 88,
+        "name": "lynx",
+        "category_idx": null,
+        "seq": 3573171053
+      }
+    },
+    {
+      "ViewTournamentPage": {
+        "tournament_idx": 217,
+        "round_idx": 231,
+        "page_idx": 22
+      }
+    },
+    {
+      "UpdateAllTeamEligibility": {
+        "tournament_idx": 50,
+        "round_idx": 41,
+        "eligible": true
+      }
+    },
+    {
+      "GenerateDraw": { "tournament_idx": 158, "round_idx": 26, "force": false }
+    },
+    {
+      "CreateRoom": {
+        "tournament_idx": 71,
+        "name": "",
+        "priority": 5387337351905879852
+      }
+    },
+    {
+      "MoveRoom": {
+        "tournament_idx": 208,
+        "round_idx": 22,
+        "room_idx": 193,
+        "debate_idx": 125,
+        "assign": true
+      }
+    },
+    {
+      "ViewTournamentPage": {
+        "tournament_idx": 111,
+        "round_idx": 193,
+        "page_idx": 140
+      }
+    }
+  ]
+}

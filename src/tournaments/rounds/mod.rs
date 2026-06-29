@@ -91,6 +91,26 @@ impl Round {
     }
 
     pub fn fetch(
+        tournament_id: &str,
+        round_id: &str,
+        conn: &mut impl LoadConnection<Backend = Sqlite>,
+    ) -> Result<Self, FailureResponse> {
+        rounds::table
+            .filter(
+                rounds::tournament_id
+                    .eq(tournament_id)
+                    .and(rounds::id.eq(round_id)),
+            )
+            .first::<Round>(conn)
+            .optional()
+            .unwrap()
+            .map(Ok)
+            .unwrap_or(err_not_found().map(|_| {
+                unreachable!("err_not_found always returns an `Err` variant")
+            }))
+    }
+
+    pub fn fetch_direct(
         round_id: &str,
         conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Result<Self, FailureResponse> {

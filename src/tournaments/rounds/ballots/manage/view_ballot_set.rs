@@ -44,10 +44,10 @@ pub async fn view_ballot_set_page(
     let problems = BallotRepr::problems_of_set(&ballots, &tournament, &debate);
 
     let round = crate::tournaments::rounds::Round::fetch(
+        &tournament_id,
         &debate.debate.round_id,
         &mut *conn,
-    )
-    .unwrap();
+    )?;
 
     let history = debate.ballot_history(&mut *conn);
     let grouped_history = history
@@ -322,10 +322,10 @@ pub async fn view_single_ballot_page(
         TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
     let debate = DebateRepr::fetch(&debate_id, &mut *conn);
     let round = crate::tournaments::rounds::Round::fetch(
+        &tournament_id,
         &debate.debate.round_id,
         &mut *conn,
-    )
-    .unwrap();
+    )?;
 
     let ballot = BallotRepr::fetch(&ballot_id, &mut *conn);
     let judge = debate.judges.get(&ballot.ballot().judge_id).unwrap();

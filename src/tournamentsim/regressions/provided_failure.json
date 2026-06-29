@@ -1,0 +1,199 @@
+{
+  "actions": [
+    {
+      "RegisterUser": {
+        "username": "in{",
+        "email": "q@j.edu",
+        "password": "badger"
+      }
+    },
+    { "CreateTournament": { "name": "lynx", "abbrv": "up", "slug": "O" } },
+    {
+      "CreateRound": {
+        "tournament_idx": 88,
+        "name": "lynx",
+        "category_idx": null,
+        "seq": 3573171053
+      }
+    },
+    {
+      "CreateTeam": {
+        "tournament_idx": 99,
+        "name": "otter",
+        "institution_idx": null
+      }
+    },
+    { "ApplyTournamentPreset": { "tournament_idx": 173, "preset_idx": 101 } },
+    {
+      "CreateTeam": {
+        "tournament_idx": 99,
+        "name": "onup",
+        "institution_idx": null
+      }
+    },
+    {
+      "UpdateAllTeamEligibility": {
+        "tournament_idx": 50,
+        "round_idx": 41,
+        "eligible": true
+      }
+    },
+    {
+      "GenerateDraw": { "tournament_idx": 158, "round_idx": 26, "force": true }
+    },
+    { "CreateTournament": { "name": "lynx", "abbrv": "up", "slug": "" } },
+    { "RegisterUser": { "username": "6", "email": "in", "password": "{" } },
+    {
+      "AddFeedbackQuestion": {
+        "tournament_idx": 222,
+        "question": "o",
+        "question_type": "q",
+        "for_judges": true,
+        "for_teams": false
+      }
+    },
+    {
+      "CreateRoom": {
+        "tournament_idx": 45,
+        "name": "E",
+        "priority": 8785877726649349100
+      }
+    },
+    {
+      "UpdateTournamentConfiguration": {
+        "tournament_idx": 213,
+        "abbrv": "�",
+        "slug": "��",
+        "show_draws": false,
+        "show_round_results": true,
+        "team_tab_public": true,
+        "speaker_tab_public": true,
+        "standings_public": false,
+        "require_prelim_substantive_speaks": false,
+        "require_prelim_speaker_order": false,
+        "require_elim_substantive_speaks": true,
+        "require_elim_speaker_order": false,
+        "reply_speakers": false,
+        "reply_must_speak": false
+      }
+    },
+    {
+      "CreateJudge": {
+        "tournament_idx": 179,
+        "name": "otter",
+        "email": "p@pspqg.edu",
+        "institution_idx": 1707556045816248422
+      }
+    },
+    {
+      "CreateJudge": {
+        "tournament_idx": 224,
+        "name": ":",
+        "email": "cup",
+        "institution_idx": null
+      }
+    },
+    {
+      "ViewTournamentPage": {
+        "tournament_idx": 163,
+        "round_idx": 239,
+        "page_idx": 248
+      }
+    },
+    {
+      "MoveJudge": {
+        "tournament_idx": 212,
+        "round_idx": 112,
+        "judge_idx": 240,
+        "debate_idx": 246,
+        "role": "narwhal",
+        "assign": true
+      }
+    },
+    {
+      "ViewTournamentPage": {
+        "tournament_idx": 123,
+        "round_idx": 27,
+        "page_idx": 156
+      }
+    },
+    {
+      "SetRoundCompleted": {
+        "tournament_idx": 91,
+        "round_idx": 78,
+        "completed": false
+      }
+    },
+    {
+      "ViewTournamentPage": {
+        "tournament_idx": 98,
+        "round_idx": 4,
+        "page_idx": 46
+      }
+    },
+    {
+      "ViewTournamentPage": {
+        "tournament_idx": 10,
+        "round_idx": 231,
+        "page_idx": 199
+      }
+    },
+    {
+      "CreateMotion": {
+        "tournament_idx": 175,
+        "round_idx": 109,
+        "motion": "g",
+        "infoslide": ""
+      }
+    },
+    {
+      "UpdateTournamentConfiguration": {
+        "tournament_idx": 160,
+        "abbrv": "E�-",
+        "show_draws": true,
+        "show_round_results": true,
+        "team_tab_public": false,
+        "speaker_tab_public": false,
+        "standings_public": true,
+        "require_prelim_substantive_speaks": false,
+        "require_prelim_speaker_order": false,
+        "require_elim_substantive_speaks": false,
+        "require_elim_speaker_order": false,
+        "reply_speakers": true,
+        "reply_must_speak": false
+      }
+    },
+    { "RegisterUser": { "username": "6", "email": "in", "password": "{" } },
+    {
+      "ViewTournamentPage": {
+        "tournament_idx": 122,
+        "round_idx": 61,
+        "page_idx": 175
+      }
+    },
+    {
+      "EditTeam": {
+        "tournament_idx": 62,
+        "team_idx": 44,
+        "name": "#",
+        "institution_idx": null
+      }
+    },
+    { "LoginUser": { "user_idx": 125 } },
+    {
+      "GenerateDraw": {
+        "tournament_idx": 158,
+        "round_idx": 211,
+        "force": false
+      }
+    },
+    {
+      "ViewTournamentPage": {
+        "tournament_idx": 199,
+        "round_idx": 239,
+        "page_idx": 184
+      }
+    },
+    "LogoutUser"
+  ]
+}

@@ -70,7 +70,6 @@ fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
     let dest_path = Path::new(&out_dir).join("style.css");
     let mut sass = Command::new("sass");
-    sass.arg("--sourcemap=none");
     sass.arg("--load-path=assets");
     if let Some(load_path) = &bootstrap_load_path {
         sass.arg(format!("--load-path={load_path}"));

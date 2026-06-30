@@ -419,8 +419,13 @@ input::placeholder {
     font-weight: 400;
 }
 
+.abacus-content:has(.draw-allocator) {
+    max-width: none;
+}
+
 .draw-allocator {
-    max-width: 1180px;
+    max-width: none;
+    width: 100%;
 }
 
 .draw-allocator-header {
@@ -428,32 +433,51 @@ input::placeholder {
     display: flex;
     gap: 1rem;
     justify-content: space-between;
-    margin-bottom: 1rem;
+    margin-bottom: 1.25rem;
 }
 
 .draw-allocator-header h1 {
+    font-size: 1.65rem;
+    line-height: 1.1;
     margin-top: 0;
 }
 
 .draw-selection-panel,
 .draw-unallocated-bar {
-    background: white;
-    margin-bottom: 1rem;
-    padding: 0.75rem 0;
+    background: var(--abacus-panel);
+    margin-bottom: 0.85rem;
+    padding: 0.35rem 0 0.7rem;
+    width: 100%;
 }
 
 .draw-selection-panel {
     background: var(--tournament-accent-wash);
-    border-top: 3px solid var(--tournament-accent);
-    padding-left: 0.75rem;
-    padding-right: 0.75rem;
+    padding: 0.75rem 0.85rem;
 }
 
 .draw-selection-panel h2,
 .draw-unallocated-bar h2,
 .draw-round-section h2 {
+    color: var(--abacus-ink);
+    font-family: var(--abacus-heading-font);
     font-size: 1.05rem;
+    font-weight: 700;
+    line-height: 1.15;
     margin: 0 0 0.55rem;
+    border-top: 0;
+    padding-top: 0;
+}
+
+.draw-round-section {
+    margin-top: 1.4rem;
+}
+
+.draw-round-section h2 {
+    align-items: center;
+    background: var(--abacus-paper);
+    display: flex;
+    min-height: 2.45rem;
+    padding: 0.62rem 0.25rem 0.55rem;
 }
 
 .draw-judge-strip,
@@ -467,14 +491,25 @@ input::placeholder {
 }
 
 .judge-pill {
+    background: #fff;
     border: 1px solid var(--abacus-rule);
     color: black;
     display: inline-flex;
     font-family: var(--abacus-heading-font);
-    font-size: 0.82rem;
+    font-size: 0.78rem;
+    font-weight: 700;
     line-height: 1.15;
-    padding: 0.22rem 0.42rem;
+    max-width: 100%;
+    min-width: 0;
+    min-height: 1.75rem;
+    overflow-wrap: anywhere;
+    padding: 0.28rem 0.48rem;
     text-decoration: none;
+    transition:
+        background-color 0.12s ease,
+        border-color 0.12s ease,
+        box-shadow 0.12s ease,
+        color 0.12s ease;
 }
 
 .judge-pill:hover,
@@ -482,6 +517,7 @@ input::placeholder {
     background: var(--abacus-nav-hover);
     border-color: black;
     color: black;
+    box-shadow: inset 0 -2px 0 var(--tournament-accent);
     text-decoration: none;
 }
 
@@ -498,68 +534,140 @@ input::placeholder {
 }
 
 .draw-table {
+    --bs-table-bg: transparent;
+    --bs-table-hover-bg: var(--abacus-nav-hover);
+    border-color: var(--abacus-rule);
+    border-top: 1px solid var(--abacus-rule);
+    margin-bottom: 0;
     table-layout: fixed;
+    width: 100%;
+}
+
+.draw-table > :not(caption) > * > * {
+    border-bottom-color: var(--abacus-rule);
+    padding: 0.62rem 0.72rem;
+}
+
+.draw-table thead th {
+    background: #f8f8f8;
+    border-bottom: 1px solid var(--abacus-rule-strong);
+    color: var(--abacus-ink);
+    font-family: var(--abacus-heading-font);
+    font-size: 0.76rem;
+    font-weight: 700;
+    line-height: 1.15;
+    vertical-align: middle;
+}
+
+.draw-table tbody tr {
+    background: #fff;
+}
+
+.draw-table tbody tr:hover > * {
+    background: var(--bs-table-hover-bg);
 }
 
 .draw-table th:first-child {
-    width: 4rem;
+    width: 3.5rem;
+}
+
+.draw-table th:nth-child(2) {
+    width: 10.5rem;
+}
+
+.draw-table th:last-child {
+    width: 34%;
+}
+
+.draw-table tbody th {
+    color: var(--abacus-ink);
+    font-family: var(--abacus-heading-font);
+    font-size: 0.9rem;
+    font-weight: 700;
+    vertical-align: middle;
 }
 
 .draw-team-cell {
-    width: 16%;
+    color: var(--abacus-ink);
+    font-size: 0.94rem;
+    line-height: 1.2;
+    vertical-align: middle;
+    width: auto;
+}
+
+.draw-team-cell a {
+    color: var(--abacus-ink);
+    text-decoration-color: var(--abacus-rule);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.16em;
+}
+
+.draw-team-cell a:hover {
+    color: var(--abacus-link);
 }
 
 .draw-panel-cell {
-    min-width: 22rem;
+    min-width: 0;
+    padding-bottom: 0.36rem !important;
+    padding-top: 0.36rem !important;
+    vertical-align: top;
 }
 
 .draw-room-cell {
-    min-width: 10rem;
-    width: 12rem;
+    min-width: 0;
+    width: 10.5rem;
 }
 
 .draw-room-slot {
     align-items: center;
+    background: rgba(0, 0, 0, 0.015);
+    border-left: 3px solid var(--abacus-rule);
     display: flex;
     flex-wrap: wrap;
     gap: 0.35rem;
     min-height: 1.9rem;
+    padding-bottom: 0.35rem;
+    padding-left: 0.5rem;
     padding-right: 9.25rem;
+    padding-top: 0.35rem;
     position: relative;
 }
 
-.draw-role-judges {
-    padding-right: 9.25rem;
-    position: relative;
+.draw-panel-grid {
+    display: grid;
+    gap: 0.45rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    min-width: 0;
 }
 
 .room-pill {
     border-left: 4px solid var(--abacus-rule-strong);
 }
 
-.draw-role-row {
+.draw-role-column {
+    min-width: 0;
+}
+
+.draw-role-judges {
+    align-content: flex-start;
     align-items: flex-start;
-    display: grid;
-    gap: 0.6rem;
-    grid-template-columns: 5.5rem minmax(0, 1fr);
-    padding: 0.35rem 0;
-}
-
-.draw-role-row:last-child {
-    border-bottom: 0;
-}
-
-.draw-role-label {
-    color: var(--abacus-muted);
-    font-family: var(--abacus-heading-font);
-    font-size: 0.78rem;
-    padding-top: 0.25rem;
+    background: rgba(0, 0, 0, 0.015);
+    border-left: 3px solid var(--abacus-rule);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.32rem;
+    min-height: 2.6rem;
+    min-width: 0;
+    padding: 0.38rem 0.45rem;
+    overflow: hidden;
 }
 
 .draw-empty-slot {
     color: var(--abacus-muted);
     font-family: var(--abacus-heading-font);
     font-size: 0.78rem;
+    line-height: 1.2;
+    padding: 0.22rem 0;
 }
 
 .draw-move-form {
@@ -567,6 +675,7 @@ input::placeholder {
 }
 
 .draw-move-form .btn {
+    border-radius: 0;
     font-size: 0.78rem;
     padding: 0.2rem 0.4rem;
     white-space: nowrap;
@@ -576,6 +685,10 @@ input::placeholder {
     position: absolute;
     right: 0;
     top: 0;
+}
+
+.draw-role-judges .draw-cell-action {
+    position: static;
 }
 
 .draw-inline-action {
@@ -642,6 +755,43 @@ input::placeholder {
     .sidebar-stage-tab {
         font-size: 0.74rem;
         padding: 0.4rem 0.55rem;
+    }
+
+    .draw-allocator {
+        max-width: none;
+    }
+
+    .draw-allocator-header {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 0.65rem;
+    }
+
+    .draw-unallocated-bar {
+        padding: 0.7rem;
+    }
+
+    .draw-round-section {
+        overflow-x: auto;
+    }
+
+    .draw-table {
+        min-width: 58rem;
+    }
+
+    .draw-table > :not(caption) > * > * {
+        padding-left: 0.55rem;
+        padding-right: 0.55rem;
+    }
+
+    .draw-room-slot,
+    .draw-role-judges {
+        padding-right: 0;
+    }
+
+    .draw-cell-action {
+        margin-top: 0.3rem;
+        position: static;
     }
 }
 

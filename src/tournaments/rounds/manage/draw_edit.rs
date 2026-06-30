@@ -419,9 +419,11 @@ impl Renderable for DrawAllocatorPage<'_> {
                                             }
                                         }
                                         td class="draw-panel-cell" {
+                                            div class="draw-panel-grid" {
                                             (render::judge_role(self.tournament, self.round_ids, self.participants, debate, &self.state, Role::Chair, "Chair"))
                                             (render::judge_role(self.tournament, self.round_ids, self.participants, debate, &self.state, Role::Panelist, "Panelist"))
                                             (render::judge_role(self.tournament, self.round_ids, self.participants, debate, &self.state, Role::Trainee, "Trainee"))
+                                            }
                                         }
                                     }
                                 }
@@ -516,8 +518,7 @@ mod render {
         };
 
         maud! {
-            div class="draw-role-row" {
-                div class="draw-role-label" { (role_label) }
+            div class=(format!("draw-role-column draw-role-{}", role.to_string().to_lowercase())) {
                 div class="draw-role-judges" {
                     @for debate_judge in &judges {
                         @let judge = participants.judges.get(&debate_judge.judge_id).unwrap();
@@ -531,27 +532,42 @@ mod render {
                             (judge.name) " (j" (judge.number) ")"
                         }
                     }
-                    @if judges.is_empty() {
-                        span class="draw-empty-slot" { "Open" }
+                    @let show_open_slot = judges.is_empty() || role != Role::Chair;
+                    @if show_open_slot {
+                        span class="draw-empty-slot" {
+                            @if judges.is_empty() {
+                                (role_label)
+                            } @else {
+                                "Add another"
+                            }
+                        }
                     }
                     @if let DrawAllocatorState::JudgeSelected(source) = state {
-                        div class="draw-cell-action" {
-                            (MoveJudgeHtmlForm {
-                                tournament,
-                                judge: source.judge,
-                                source: source.source.clone(),
-                                dest: MoveJudgeDestination {
-                                    target: DrawLocOcc {
-                                        location: DrawLocation::Debate(
-                                            &debate.debate.id,
-                                        ),
-                                        panel_snapshot: panel_snapshot.clone(),
+                        @if show_open_slot || role == Role::Chair {
+                            div class="draw-cell-action" {
+                                (MoveJudgeHtmlForm {
+                                    tournament,
+                                    judge: source.judge,
+                                    source: source.source.clone(),
+                                    dest: MoveJudgeDestination {
+                                        target: DrawLocOcc {
+                                            location: DrawLocation::Debate(
+                                                &debate.debate.id,
+                                            ),
+                                            panel_snapshot: panel_snapshot.clone(),
+                                        },
+                                        role,
                                     },
-                                    role,
-                                },
-                                label: format!("Move here as {}", role_label.to_lowercase()),
-                                disabled: selected_already_in_target_role,
-                            })
+                                    label: if role == Role::Chair && !judges.is_empty() {
+                                        "Replace chair".to_string()
+                                    } else if !judges.is_empty() {
+                                        "Add another".to_string()
+                                    } else {
+                                        role_label.to_string()
+                                    },
+                                    disabled: selected_already_in_target_role,
+                                })
+                            }
                         }
                     }
                 }

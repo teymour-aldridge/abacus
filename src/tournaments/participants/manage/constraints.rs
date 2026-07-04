@@ -1,7 +1,8 @@
 use crate::{
     auth::User,
     schema::{
-        judge_room_constraints, room_categories, speaker_room_constraints,
+        judge_room_constraints, judges, room_categories,
+        speaker_room_constraints, speakers,
     },
     state::Conn,
     template::Page,
@@ -75,6 +76,7 @@ fn fetch_speaker_constraints(
         .map_err(FailureResponse::from)?;
 
     let constraints = speaker_room_constraints::table
+        .filter(speaker_room_constraints::tournament_id.eq(tid))
         .filter(speaker_room_constraints::speaker_id.eq(speaker_id))
         .order_by(speaker_room_constraints::pref.asc())
         .load::<SpeakerRoomConstraint>(conn)
@@ -91,12 +93,11 @@ fn fetch_speaker_constraints(
 
     let active_constraints: Vec<(RoomCategory, i64)> = constraints
         .iter()
-        .map(|c| {
-            let cat = all_categories
+        .filter_map(|c| {
+            all_categories
                 .iter()
                 .find(|cat| cat.id == c.category_id)
-                .unwrap();
-            (cat.clone(), c.pref)
+                .map(|cat| (cat.clone(), c.pref))
         })
         .collect();
 
@@ -118,6 +119,7 @@ fn fetch_judge_constraints(
         .map_err(FailureResponse::from)?;
 
     let constraints = judge_room_constraints::table
+        .filter(judge_room_constraints::tournament_id.eq(tid))
         .filter(judge_room_constraints::judge_id.eq(judge_id))
         .order_by(judge_room_constraints::pref.asc())
         .load::<JudgeRoomConstraint>(conn)
@@ -134,12 +136,11 @@ fn fetch_judge_constraints(
 
     let active_constraints: Vec<(RoomCategory, i64)> = constraints
         .iter()
-        .map(|c| {
-            let cat = all_categories
+        .filter_map(|c| {
+            all_categories
                 .iter()
                 .find(|cat| cat.id == c.category_id)
-                .unwrap();
-            (cat.clone(), c.pref)
+                .map(|cat| (cat.clone(), c.pref))
         })
         .collect();
 
@@ -171,9 +172,9 @@ pub async fn manage_constraints_page(
 
     let (participant_name, constraint_data) = match ptype {
         ParticipantType::Speaker => {
-            use crate::schema::speakers;
             let speaker = speakers::table
                 .filter(speakers::id.eq(&participant_id))
+                .filter(speakers::tournament_id.eq(&tid))
                 .first::<Speaker>(&mut *conn)
                 .map_err(FailureResponse::from)?;
             let data =
@@ -181,9 +182,9 @@ pub async fn manage_constraints_page(
             (speaker.name, data)
         }
         ParticipantType::Judge => {
-            use crate::schema::judges;
             let judge = judges::table
                 .filter(judges::id.eq(&participant_id))
+                .filter(judges::tournament_id.eq(&tid))
                 .first::<Judge>(&mut *conn)
                 .map_err(FailureResponse::from)?;
             let data =
@@ -349,6 +350,7 @@ pub async fn move_constraint(
         match ptype {
             ParticipantType::Speaker => {
                 let constraints = speaker_room_constraints::table
+                    .filter(speaker_room_constraints::tournament_id.eq(&tid))
                     .filter(
                         speaker_room_constraints::speaker_id
                             .eq(&participant_id),
@@ -398,6 +400,7 @@ pub async fn move_constraint(
             }
             ParticipantType::Judge => {
                 let constraints = judge_room_constraints::table
+                    .filter(judge_room_constraints::tournament_id.eq(&tid))
                     .filter(
                         judge_room_constraints::judge_id.eq(&participant_id),
                     )
@@ -474,10 +477,32 @@ pub async fn add_constraint(
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
+    let category_exists = room_categories::table
+        .filter(room_categories::id.eq(&form.category_id))
+        .filter(room_categories::tournament_id.eq(&tid))
+        .first::<RoomCategory>(&mut *conn)
+        .optional()
+        .map_err(FailureResponse::from)?
+        .is_some();
+    if !category_exists {
+        return Err(FailureResponse::NotFound(()));
+    }
+
     conn.transaction(|conn| {
         match ptype {
             ParticipantType::Speaker => {
+                let participant_exists = speakers::table
+                    .filter(speakers::id.eq(&participant_id))
+                    .filter(speakers::tournament_id.eq(&tid))
+                    .first::<Speaker>(conn)
+                    .optional()?
+                    .is_some();
+                if !participant_exists {
+                    return Err(diesel::result::Error::NotFound);
+                }
+
                 let exists = speaker_room_constraints::table
+                    .filter(speaker_room_constraints::tournament_id.eq(&tid))
                     .filter(
                         speaker_room_constraints::speaker_id
                             .eq(&participant_id),
@@ -491,6 +516,9 @@ pub async fn add_constraint(
 
                 if exists.is_none() {
                     let max_pref = speaker_room_constraints::table
+                        .filter(
+                            speaker_room_constraints::tournament_id.eq(&tid),
+                        )
                         .filter(
                             speaker_room_constraints::speaker_id
                                 .eq(&participant_id),
@@ -514,7 +542,18 @@ pub async fn add_constraint(
                 }
             }
             ParticipantType::Judge => {
+                let participant_exists = judges::table
+                    .filter(judges::id.eq(&participant_id))
+                    .filter(judges::tournament_id.eq(&tid))
+                    .first::<Judge>(conn)
+                    .optional()?
+                    .is_some();
+                if !participant_exists {
+                    return Err(diesel::result::Error::NotFound);
+                }
+
                 let exists = judge_room_constraints::table
+                    .filter(judge_room_constraints::tournament_id.eq(&tid))
                     .filter(
                         judge_room_constraints::judge_id.eq(&participant_id),
                     )
@@ -527,6 +566,7 @@ pub async fn add_constraint(
 
                 if exists.is_none() {
                     let max_pref = judge_room_constraints::table
+                        .filter(judge_room_constraints::tournament_id.eq(&tid))
                         .filter(
                             judge_room_constraints::judge_id
                                 .eq(&participant_id),
@@ -583,6 +623,9 @@ pub async fn remove_constraint(
                 diesel::delete(
                     speaker_room_constraints::table
                         .filter(
+                            speaker_room_constraints::tournament_id.eq(&tid),
+                        )
+                        .filter(
                             speaker_room_constraints::speaker_id
                                 .eq(&participant_id),
                         )
@@ -595,6 +638,7 @@ pub async fn remove_constraint(
 
                 // Renumber remaining constraints
                 let constraints = speaker_room_constraints::table
+                    .filter(speaker_room_constraints::tournament_id.eq(&tid))
                     .filter(
                         speaker_room_constraints::speaker_id
                             .eq(&participant_id),
@@ -612,6 +656,7 @@ pub async fn remove_constraint(
             ParticipantType::Judge => {
                 diesel::delete(
                     judge_room_constraints::table
+                        .filter(judge_room_constraints::tournament_id.eq(&tid))
                         .filter(
                             judge_room_constraints::judge_id
                                 .eq(&participant_id),
@@ -625,6 +670,7 @@ pub async fn remove_constraint(
 
                 // Renumber remaining constraints
                 let constraints = judge_room_constraints::table
+                    .filter(judge_room_constraints::tournament_id.eq(&tid))
                     .filter(
                         judge_room_constraints::judge_id.eq(&participant_id),
                     )

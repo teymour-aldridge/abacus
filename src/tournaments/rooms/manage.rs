@@ -313,6 +313,15 @@ pub async fn delete_room(
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
+    rooms::table
+        .filter(rooms::id.eq(&room_id))
+        .filter(rooms::tournament_id.eq(&tid))
+        .select(rooms::id)
+        .first::<String>(&mut *conn)
+        .optional()
+        .map_err(FailureResponse::from)?
+        .ok_or_else(|| FailureResponse::NotFound(()))?;
+
     diesel::update(
         debates::table.filter(
             debates::tournament_id
@@ -371,6 +380,15 @@ pub async fn delete_category(
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
+    room_categories::table
+        .filter(room_categories::id.eq(&cat_id))
+        .filter(room_categories::tournament_id.eq(&tid))
+        .select(room_categories::id)
+        .first::<String>(&mut *conn)
+        .optional()
+        .map_err(FailureResponse::from)?
+        .ok_or_else(|| FailureResponse::NotFound(()))?;
+
     conn.transaction(|conn| {
         diesel::delete(
             speaker_room_constraints::table
@@ -407,6 +425,26 @@ pub async fn add_room_to_category(
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
+    let category_exists = room_categories::table
+        .filter(room_categories::id.eq(&cat_id))
+        .filter(room_categories::tournament_id.eq(&tid))
+        .select(room_categories::id)
+        .first::<String>(&mut *conn)
+        .optional()
+        .map_err(FailureResponse::from)?
+        .is_some();
+    let room_exists = rooms::table
+        .filter(rooms::id.eq(&form.room_id))
+        .filter(rooms::tournament_id.eq(&tid))
+        .select(rooms::id)
+        .first::<String>(&mut *conn)
+        .optional()
+        .map_err(FailureResponse::from)?
+        .is_some();
+    if !category_exists || !room_exists {
+        return Err(FailureResponse::NotFound(()));
+    }
+
     use crate::tournaments::rooms::RoomsOfRoomCategory;
 
     // Check if relation already exists to avoid unique constraint error
@@ -441,6 +479,26 @@ pub async fn remove_room_from_category(
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+
+    let category_exists = room_categories::table
+        .filter(room_categories::id.eq(&cat_id))
+        .filter(room_categories::tournament_id.eq(&tid))
+        .select(room_categories::id)
+        .first::<String>(&mut *conn)
+        .optional()
+        .map_err(FailureResponse::from)?
+        .is_some();
+    let room_exists = rooms::table
+        .filter(rooms::id.eq(&form.room_id))
+        .filter(rooms::tournament_id.eq(&tid))
+        .select(rooms::id)
+        .first::<String>(&mut *conn)
+        .optional()
+        .map_err(FailureResponse::from)?
+        .is_some();
+    if !category_exists || !room_exists {
+        return Err(FailureResponse::NotFound(()));
+    }
 
     diesel::delete(
         rooms_of_category::table

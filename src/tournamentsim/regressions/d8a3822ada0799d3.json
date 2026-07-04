@@ -1,0 +1,171 @@
+{
+  "actions": [
+    {
+      "RegisterUser": {
+        "username": "otter",
+        "email": "q@n.com",
+        "password": "n_times_achieved_3"
+      }
+    },
+    { "CreateTournament": { "name": "lynx", "abbrv": "&W", "slug": "" } },
+    {
+      "AddFeedbackQuestion": {
+        "tournament_idx": 190,
+        "question": "L",
+        "question_type": "score",
+        "for_judges": false,
+        "for_teams": true
+      }
+    },
+    {
+      "MoveFeedbackQuestion": {
+        "tournament_idx": 80,
+        "question_idx": 39,
+        "up": false
+      }
+    },
+    {
+      "CreateRound": {
+        "tournament_idx": 61,
+        "name": "random",
+        "category_idx": 870970621257461904,
+        "seq": 4153283418
+      }
+    },
+    {
+      "CreateMotion": {
+        "tournament_idx": 34,
+        "round_idx": 55,
+        "motion": "otter",
+        "infoslide": ""
+      }
+    },
+    {
+      "CreateTournament": { "name": "gecko", "abbrv": "d@r.edu+", "slug": "t" }
+    },
+    {
+      "CreateTeam": {
+        "tournament_idx": 152,
+        "name": "down",
+        "institution_idx": null
+      }
+    },
+    {
+      "CreateRoom": {
+        "tournament_idx": 97,
+        "name": "on",
+        "priority": 6873783914337893516
+      }
+    },
+    {
+      "CreateRoom": {
+        "tournament_idx": 17,
+        "name": "ibex",
+        "priority": 1891168825884399618
+      }
+    },
+    {
+      "CreateRoom": {
+        "tournament_idx": 17,
+        "name": "ibex",
+        "priority": 1891168825884399618
+      }
+    },
+    {
+      "UpdateTournamentConfiguration": {
+        "tournament_idx": 173,
+        "abbrv": "",
+        "show_draws": true,
+        "show_round_results": true,
+        "team_tab_public": true,
+        "speaker_tab_public": true,
+        "standings_public": true,
+        "require_prelim_substantive_speaks": false,
+        "require_prelim_speaker_order": false,
+        "require_elim_substantive_speaks": false,
+        "require_elim_speaker_order": false,
+        "reply_speakers": false,
+        "reply_must_speak": true
+      }
+    },
+    {
+      "CreateTournament": {
+        "name": "text",
+        "abbrv": "gecko",
+        "slug": "x@y.org"
+      }
+    },
+    {
+      "ViewTournamentPage": {
+        "tournament_idx": 176,
+        "round_idx": 111,
+        "page_idx": 183
+      }
+    },
+    {
+      "CreateRoomCategory": {
+        "tournament_idx": 78,
+        "private_name": "",
+        "public_name": "otter",
+        "description": "%"
+      }
+    },
+    {
+      "AddRoomToCategory": {
+        "tournament_idx": 187,
+        "category_idx": 233,
+        "room_idx": 31
+      }
+    },
+    {
+      "ViewTournamentPage": {
+        "tournament_idx": 31,
+        "round_idx": 220,
+        "page_idx": 156
+      }
+    },
+    {
+      "CreateJudge": {
+        "tournament_idx": 155,
+        "name": "<",
+        "email": "n@p.edu",
+        "institution_idx": null
+      }
+    },
+    {
+      "SubmitBallot": {
+        "tournament_idx": 177,
+        "private_url_idx": 128,
+        "round_idx": 104,
+        "form": {
+          "motion_idx": 5364802499302514831,
+          "teams": [],
+          "expected_version": -7188797620456143842
+        }
+      }
+    },
+    {
+      "ViewTournamentPage": {
+        "tournament_idx": 147,
+        "round_idx": 186,
+        "page_idx": 182
+      }
+    },
+    {
+      "EditJudge": {
+        "tournament_idx": 126,
+        "judge_idx": 34,
+        "name": "v@z.edudraft",
+        "email": "otter",
+        "institution_idx": 8190353438036688638
+      }
+    },
+    {
+      "ViewTournamentPage": {
+        "tournament_idx": 59,
+        "round_idx": 82,
+        "page_idx": 64
+      }
+    }
+  ]
+}

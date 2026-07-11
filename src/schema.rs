@@ -70,6 +70,13 @@ diesel::table! {
         tournament_id -> Text,
         name -> Text,
         priority -> BigInt,
+        slug -> Text,
+        seq -> BigInt,
+        break_size -> BigInt,
+        reserve_size -> BigInt,
+        public -> Bool,
+        limit_ -> BigInt,
+        eligibility_rule_json -> Text,
     }
 }
 
@@ -289,6 +296,36 @@ diesel::table! {
 }
 
 diesel::table! {
+    speaker_categories (id) {
+        id -> Text,
+        tournament_id -> Text,
+        name -> Text,
+        slug -> Text,
+        seq -> BigInt,
+        public -> Bool,
+        limit_ -> BigInt,
+    }
+}
+
+diesel::table! {
+    speaker_category_implications (id) {
+        id -> Text,
+        tournament_id -> Text,
+        child_category_id -> Text,
+        parent_category_id -> Text,
+    }
+}
+
+diesel::table! {
+    speaker_category_memberships (id) {
+        id -> Text,
+        tournament_id -> Text,
+        speaker_id -> Text,
+        category_id -> Text,
+    }
+}
+
+diesel::table! {
     speaker_metrics (id) {
         id -> Text,
         tournament_id -> Text,
@@ -354,6 +391,19 @@ diesel::table! {
         round_id -> Text,
         team_id -> Text,
         available -> Bool,
+    }
+}
+
+diesel::table! {
+    team_break_eligibility (id) {
+        id -> Text,
+        tournament_id -> Text,
+        team_id -> Text,
+        break_category_id -> Text,
+        eligible -> Bool,
+        source -> Text,
+        explanation -> Text,
+        computed_at -> Timestamp,
     }
 }
 
@@ -545,6 +595,11 @@ diesel::joinable!(rooms_of_category -> rooms (room_id));
 diesel::joinable!(rounds -> break_categories (break_category));
 diesel::joinable!(rounds -> tournaments (tournament_id));
 diesel::joinable!(snapshots -> tournaments (tournament_id));
+diesel::joinable!(speaker_categories -> tournaments (tournament_id));
+diesel::joinable!(speaker_category_implications -> tournaments (tournament_id));
+diesel::joinable!(speaker_category_memberships -> speaker_categories (category_id));
+diesel::joinable!(speaker_category_memberships -> speakers (speaker_id));
+diesel::joinable!(speaker_category_memberships -> tournaments (tournament_id));
 diesel::joinable!(speaker_metrics -> speakers (speaker_id));
 diesel::joinable!(speaker_metrics -> tournaments (tournament_id));
 diesel::joinable!(speaker_room_constraints -> rooms_of_category (category_id));
@@ -562,6 +617,9 @@ diesel::joinable!(speakers_of_team -> teams (team_id));
 diesel::joinable!(team_availability -> rounds (round_id));
 diesel::joinable!(team_availability -> teams (team_id));
 diesel::joinable!(team_availability -> tournaments (tournament_id));
+diesel::joinable!(team_break_eligibility -> break_categories (break_category_id));
+diesel::joinable!(team_break_eligibility -> teams (team_id));
+diesel::joinable!(team_break_eligibility -> tournaments (tournament_id));
 diesel::joinable!(team_clashes_of_judge -> judges (judge_id));
 diesel::joinable!(team_clashes_of_judge -> teams (team_id));
 diesel::joinable!(team_clashes_of_judge -> tournaments (tournament_id));
@@ -608,6 +666,9 @@ diesel::allow_tables_to_appear_in_same_query!(
     rooms_of_category,
     rounds,
     snapshots,
+    speaker_categories,
+    speaker_category_implications,
+    speaker_category_memberships,
     speaker_metrics,
     speaker_room_constraints,
     speaker_scores_of_ballot,
@@ -615,6 +676,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     speakers,
     speakers_of_team,
     team_availability,
+    team_break_eligibility,
     team_clashes_of_judge,
     team_metrics,
     team_ranks_of_ballot,

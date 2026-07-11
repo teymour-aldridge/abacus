@@ -45,6 +45,14 @@ drop table if exists motions_of_round;
 
 drop table if exists rounds;
 
+drop table if exists team_break_eligibility;
+
+drop table if exists speaker_category_implications;
+
+drop table if exists speaker_category_memberships;
+
+drop table if exists speaker_categories;
+
 drop table if exists break_categories;
 
 drop table if exists judge_room_constraints;

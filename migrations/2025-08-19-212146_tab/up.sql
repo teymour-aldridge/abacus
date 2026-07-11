@@ -351,8 +351,58 @@ create table if not exists break_categories (
     id text primary key not null,
     tournament_id text not null references tournaments (id),
     name text not null,
+    slug text not null,
+    seq integer not null,
     priority integer not null,
-    check (priority >= 0)
+    break_size integer not null check (break_size >= 2),
+    reserve_size integer not null check (reserve_size >= 0),
+    public boolean not null default true,
+    limit_ integer not null default 0 check (limit_ >= 0),
+    eligibility_rule_json text not null default '{"type":"everyone"}',
+    check (priority >= 0),
+    unique (tournament_id, slug),
+    unique (tournament_id, seq)
+);
+
+create table if not exists speaker_categories (
+    id text primary key not null,
+    tournament_id text not null references tournaments (id),
+    name text not null,
+    slug text not null,
+    seq integer not null,
+    public boolean not null default true,
+    limit_ integer not null default 0 check (limit_ >= 0),
+    unique (tournament_id, slug),
+    unique (tournament_id, seq)
+);
+
+create table if not exists speaker_category_memberships (
+    id text primary key not null,
+    tournament_id text not null references tournaments (id),
+    speaker_id text not null references speakers (id),
+    category_id text not null references speaker_categories (id),
+    unique (speaker_id, category_id)
+);
+
+create table if not exists speaker_category_implications (
+    id text primary key not null,
+    tournament_id text not null references tournaments (id),
+    child_category_id text not null references speaker_categories (id),
+    parent_category_id text not null references speaker_categories (id),
+    check (child_category_id != parent_category_id),
+    unique (child_category_id, parent_category_id)
+);
+
+create table if not exists team_break_eligibility (
+    id text primary key not null,
+    tournament_id text not null references tournaments (id),
+    team_id text not null references teams (id),
+    break_category_id text not null references break_categories (id),
+    eligible boolean not null,
+    source text not null check (source in ('derived', 'manual_include', 'manual_exclude')),
+    explanation text not null,
+    computed_at timestamp not null default current_timestamp,
+    unique (team_id, break_category_id)
 );
 
 create table if not exists rounds (

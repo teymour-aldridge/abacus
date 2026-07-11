@@ -8,11 +8,15 @@ use serde::Deserialize;
 
 use crate::{
     auth::User,
-    schema::{speakers, speakers_of_team},
+    schema::{
+        speaker_categories, speaker_category_memberships, speakers,
+        speakers_of_team,
+    },
     state::Conn,
     template::Page,
     tournaments::{
-        Tournament, manage::sidebar::SidebarWrapper,
+        Tournament, categories::SpeakerCategory,
+        manage::sidebar::SidebarWrapper,
         participants::manage::gen_private_url::get_unique_private_url,
         rounds::TournamentRounds, teams::Team,
     },
@@ -29,6 +33,11 @@ pub async fn create_speaker_page(
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
     let team = Team::fetch(&team_id, &tournament_id, &mut *conn)?;
+    let categories = speaker_categories::table
+        .filter(speaker_categories::tournament_id.eq(&tournament_id))
+        .order_by(speaker_categories::seq.asc())
+        .load::<SpeakerCategory>(&mut *conn)
+        .unwrap();
 
     let rounds = TournamentRounds::fetch(&tournament_id, &mut *conn).unwrap();
 
@@ -50,6 +59,19 @@ pub async fn create_speaker_page(
                             label for="email" class="form-label" { "Email" }
                             input type="email" class="form-control" id="email" name="email";
                         }
+                        @if !categories.is_empty() {
+                            div class="mb-3" {
+                                label class="form-label" { "Speaker categories" }
+                                div class="d-flex flex-wrap gap-3" {
+                                    @for category in &categories {
+                                        div class="form-check" {
+                                            input class="form-check-input" type="checkbox" name="category_ids" value=(category.id) id=(format!("cat-{}", category.id));
+                                            label class="form-check-label" for=(format!("cat-{}", category.id)) { (category.name) }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         button type="submit" class="btn btn-primary" { "Register" }
                     }
                 }
@@ -62,6 +84,8 @@ pub async fn create_speaker_page(
 pub struct CreateSpeakerForm {
     pub name: String,
     pub email: String,
+    #[serde(default)]
+    pub category_ids: Vec<String>,
 }
 
 #[tracing::instrument(skip(conn, form))]
@@ -158,11 +182,41 @@ pub async fn do_create_speaker(
         .values((
             speakers_of_team::id.eq(uuid::Uuid::now_v7().to_string()),
             speakers_of_team::team_id.eq(team.id),
-            speakers_of_team::speaker_id.eq(speaker_id),
+            speakers_of_team::speaker_id.eq(&speaker_id),
         ))
         .execute(&mut *conn)
         .unwrap();
     assert_eq!(n, 1);
+
+    let valid_category_ids: std::collections::HashSet<String> =
+        speaker_categories::table
+            .filter(speaker_categories::tournament_id.eq(&tournament.id))
+            .select(speaker_categories::id)
+            .load::<String>(&mut *conn)
+            .unwrap()
+            .into_iter()
+            .collect();
+    for category_id in form
+        .category_ids
+        .into_iter()
+        .filter(|id| valid_category_ids.contains(id))
+    {
+        diesel::insert_into(speaker_category_memberships::table)
+            .values((
+                speaker_category_memberships::id
+                    .eq(uuid::Uuid::now_v7().to_string()),
+                speaker_category_memberships::tournament_id.eq(&tournament.id),
+                speaker_category_memberships::speaker_id.eq(&speaker_id),
+                speaker_category_memberships::category_id.eq(category_id),
+            ))
+            .execute(&mut *conn)
+            .unwrap();
+    }
+
+    crate::tournaments::categories::speaker::recompute_break_eligibility(
+        &tournament.id,
+        &mut *conn,
+    );
 
     // todo: should probably redirect back to team page if this is where the
     // user first navigated to the edit form

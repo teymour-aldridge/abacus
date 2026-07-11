@@ -594,6 +594,55 @@ pub enum Action {
         #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         email: String,
     },
+    CreateSpeakerWithCategories {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        team_idx: usize,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
+        name: String,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
+        email: String,
+        category_indices: Vec<usize>,
+    },
+    CreateSpeakerCategory {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        tournament_idx: usize,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
+        name: String,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
+        slug: String,
+        seq: i64,
+    },
+    CreateBreakCategory {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        tournament_idx: usize,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
+        name: String,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
+        slug: String,
+        seq: i64,
+        priority: i64,
+        break_size: i64,
+    },
+    AddSpeakerCategoryImplication {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        child_category_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        parent_category_idx: usize,
+    },
+    SetBreakEligibilityRule {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        break_category_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        speaker_category_idx: usize,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
+        threshold_type: String,
+    },
     CreateJudge {
         #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
@@ -1848,6 +1897,237 @@ impl Action {
                             format!(
                                 "/tournaments/{}/teams/{}/speakers/create",
                                 tid, team_id
+                            ),
+                            &form,
+                        )
+                        .await;
+                    }
+                }
+            }
+            Action::CreateSpeakerWithCategories {
+                tournament_idx,
+                team_idx,
+                name,
+                email,
+                category_indices,
+            } => {
+                let mut conn = pool.get().unwrap();
+                if let Some(tid) = get_id_by_idx!(
+                    &mut *conn,
+                    tournaments::table
+                        .select(tournaments::id)
+                        .order_by(tournaments::id),
+                    tournament_idx,
+                ) {
+                    if let Some(team_id) = get_id_by_idx!(
+                        &mut *conn,
+                        teams::table.select(teams::id).order_by(teams::id),
+                        team_idx,
+                    ) {
+                        let category_ids = category_indices
+                            .into_iter()
+                            .filter_map(|idx| {
+                                get_id_by_idx!(
+                                    &mut *conn,
+                                    speaker_categories::table
+                                        .select(speaker_categories::id)
+                                        .order_by(speaker_categories::id),
+                                    idx,
+                                )
+                            })
+                            .collect::<Vec<_>>();
+                        drop(conn);
+                        let mut form = vec![
+                            ("name".to_string(), name),
+                            ("email".to_string(), email),
+                        ];
+                        for category_id in category_ids {
+                            form.push((
+                                "category_ids".to_string(),
+                                category_id,
+                            ));
+                        }
+                        ctx.post_urlencoded(
+                            "CreateSpeakerWithCategories",
+                            format!(
+                                "/tournaments/{}/teams/{}/speakers/create",
+                                tid, team_id
+                            ),
+                            &form,
+                        )
+                        .await;
+                    }
+                }
+            }
+            Action::CreateSpeakerCategory {
+                tournament_idx,
+                name,
+                slug,
+                seq,
+            } => {
+                let mut conn = pool.get().unwrap();
+                if let Some(tid) = get_id_by_idx!(
+                    &mut *conn,
+                    tournaments::table
+                        .select(tournaments::id)
+                        .order_by(tournaments::id),
+                    tournament_idx,
+                ) {
+                    drop(conn);
+                    let limit = 0_i64;
+                    let form = [
+                        ("name", name),
+                        ("slug", slug),
+                        ("seq", seq.to_string()),
+                        ("limit_", limit.to_string()),
+                        ("public", "on".to_string()),
+                    ];
+                    ctx.post_form(
+                        "CreateSpeakerCategory",
+                        format!(
+                            "/tournaments/{}/categories/speaker/create",
+                            tid
+                        ),
+                        &form,
+                    )
+                    .await;
+                }
+            }
+            Action::CreateBreakCategory {
+                tournament_idx,
+                name,
+                slug,
+                seq,
+                priority,
+                break_size,
+            } => {
+                let mut conn = pool.get().unwrap();
+                if let Some(tid) = get_id_by_idx!(
+                    &mut *conn,
+                    tournaments::table
+                        .select(tournaments::id)
+                        .order_by(tournaments::id),
+                    tournament_idx,
+                ) {
+                    drop(conn);
+                    let reserve_size = 0_i64;
+                    let limit = 0_i64;
+                    let break_size = break_size.max(2);
+                    let form = [
+                        ("name", name),
+                        ("slug", slug),
+                        ("seq", seq.to_string()),
+                        ("priority", priority.max(0).to_string()),
+                        ("break_size", break_size.to_string()),
+                        ("reserve_size", reserve_size.to_string()),
+                        ("limit_", limit.to_string()),
+                        ("public", "on".to_string()),
+                    ];
+                    ctx.post_form(
+                        "CreateBreakCategory",
+                        format!("/tournaments/{}/categories/break/create", tid),
+                        &form,
+                    )
+                    .await;
+                }
+            }
+            Action::AddSpeakerCategoryImplication {
+                tournament_idx,
+                child_category_idx,
+                parent_category_idx,
+            } => {
+                let mut conn = pool.get().unwrap();
+                if let Some(tid) = get_id_by_idx!(
+                    &mut *conn,
+                    tournaments::table
+                        .select(tournaments::id)
+                        .order_by(tournaments::id),
+                    tournament_idx,
+                ) {
+                    let child_category_id = get_id_by_idx!(
+                        &mut *conn,
+                        speaker_categories::table
+                            .select(speaker_categories::id)
+                            .order_by(speaker_categories::id),
+                        child_category_idx,
+                    );
+                    let parent_category_id = get_id_by_idx!(
+                        &mut *conn,
+                        speaker_categories::table
+                            .select(speaker_categories::id)
+                            .order_by(speaker_categories::id),
+                        parent_category_idx,
+                    );
+                    drop(conn);
+                    if let (Some(child_category_id), Some(parent_category_id)) =
+                        (child_category_id, parent_category_id)
+                    {
+                        let form = [
+                            ("child_category_id", child_category_id),
+                            ("parent_category_id", parent_category_id),
+                        ];
+                        ctx.post_form(
+                            "AddSpeakerCategoryImplication",
+                            format!(
+                                "/tournaments/{}/categories/implications/add",
+                                tid
+                            ),
+                            &form,
+                        )
+                        .await;
+                    }
+                }
+            }
+            Action::SetBreakEligibilityRule {
+                tournament_idx,
+                break_category_idx,
+                speaker_category_idx,
+                threshold_type,
+            } => {
+                let mut conn = pool.get().unwrap();
+                if let Some(tid) = get_id_by_idx!(
+                    &mut *conn,
+                    tournaments::table
+                        .select(tournaments::id)
+                        .order_by(tournaments::id),
+                    tournament_idx,
+                ) {
+                    let break_category_id = get_id_by_idx!(
+                        &mut *conn,
+                        break_categories::table
+                            .select(break_categories::id)
+                            .order_by(break_categories::id),
+                        break_category_idx,
+                    );
+                    let speaker_category_id = get_id_by_idx!(
+                        &mut *conn,
+                        speaker_categories::table
+                            .select(speaker_categories::id)
+                            .order_by(speaker_categories::id),
+                        speaker_category_idx,
+                    );
+                    drop(conn);
+                    if let (
+                        Some(break_category_id),
+                        Some(speaker_category_id),
+                    ) = (break_category_id, speaker_category_id)
+                    {
+                        let threshold_type = match threshold_type.as_str() {
+                            "everyone" | "all" | "at_least"
+                            | "at_least_minus" => threshold_type,
+                            _ => "all".to_string(),
+                        };
+                        let form = vec![
+                            ("threshold_type".to_string(), threshold_type),
+                            ("count".to_string(), "1".to_string()),
+                            ("minus".to_string(), "1".to_string()),
+                            ("category_ids".to_string(), speaker_category_id),
+                        ];
+                        ctx.post_urlencoded(
+                            "SetBreakEligibilityRule",
+                            format!(
+                                "/tournaments/{}/categories/break/{}/rule",
+                                tid, break_category_id
                             ),
                             &form,
                         )

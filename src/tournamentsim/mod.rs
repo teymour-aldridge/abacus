@@ -260,6 +260,74 @@ fn release_full_draw_requires_motion() {
     });
 }
 
+#[test]
+fn speaker_category_implications_drive_break_eligibility() {
+    harness::run_workload(&WorkloadInput {
+        actions: vec![
+            Action::RegisterUser {
+                username: "tabuser".to_string(),
+                email: "tab@example.com".to_string(),
+                password: "Igecko".to_string(),
+            },
+            Action::CreateTournament {
+                name: "Eligibility Test".to_string(),
+                abbrv: "ET".to_string(),
+                slug: "eligibility_test".to_string(),
+            },
+            Action::CreateTeam {
+                tournament_idx: 0,
+                name: "Team A".to_string(),
+                institution_idx: None,
+            },
+            Action::CreateSpeakerCategory {
+                tournament_idx: 0,
+                name: "EFL".to_string(),
+                slug: "efl".to_string(),
+                seq: 1,
+            },
+            Action::CreateSpeakerCategory {
+                tournament_idx: 0,
+                name: "ESL".to_string(),
+                slug: "esl".to_string(),
+                seq: 2,
+            },
+            Action::CreateBreakCategory {
+                tournament_idx: 0,
+                name: "ESL".to_string(),
+                slug: "esl".to_string(),
+                seq: 1,
+                priority: 0,
+                break_size: 2,
+            },
+            Action::CreateSpeakerWithCategories {
+                tournament_idx: 0,
+                team_idx: 0,
+                name: "Efl Speaker".to_string(),
+                email: "efl@example.com".to_string(),
+                category_indices: vec![0],
+            },
+            Action::CreateSpeakerWithCategories {
+                tournament_idx: 0,
+                team_idx: 0,
+                name: "Esl Speaker".to_string(),
+                email: "esl@example.com".to_string(),
+                category_indices: vec![1],
+            },
+            Action::SetBreakEligibilityRule {
+                tournament_idx: 0,
+                break_category_idx: 0,
+                speaker_category_idx: 1,
+                threshold_type: "all".to_string(),
+            },
+            Action::AddSpeakerCategoryImplication {
+                tournament_idx: 0,
+                child_category_idx: 0,
+                parent_category_idx: 1,
+            },
+        ],
+    });
+}
+
 #[cfg(test)]
 fn run_regression_fixture(name: &str, json: &str) {
     let input =

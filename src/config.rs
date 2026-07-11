@@ -244,6 +244,14 @@ pub fn create_app(pool: DbPool) -> Router {
         .route("/tournaments/:id/participants", get(crate::tournaments::participants::manage::manage_tournament_participants))
         .route("/tournaments/:id/participants/ws", get(crate::tournaments::participants::manage::tournament_participant_updates))
         .route("/tournaments/:id/participants/privateurls", get(crate::tournaments::participants::manage::manage_private_urls::view_private_urls))
+        .route("/tournaments/:id/categories", get(crate::tournaments::categories::manage::manage_categories_page))
+        .route("/tournaments/:id/categories/speaker/create", post(crate::tournaments::categories::manage::create_speaker_category))
+        .route("/tournaments/:id/categories/speaker/:category_id/delete", post(crate::tournaments::categories::manage::delete_speaker_category))
+        .route("/tournaments/:id/categories/implications/add", post(crate::tournaments::categories::manage::add_implication))
+        .route("/tournaments/:id/categories/implications/:implication_id/delete", post(crate::tournaments::categories::manage::delete_implication))
+        .route("/tournaments/:id/categories/break/create", post(crate::tournaments::categories::manage::create_break_category))
+        .route("/tournaments/:id/categories/break/:category_id/delete", post(crate::tournaments::categories::manage::delete_break_category))
+        .route("/tournaments/:id/categories/break/:category_id/rule", post(crate::tournaments::categories::manage::update_break_rule))
 
         // Teams
         .route("/tournaments/:id/teams/create", get(crate::tournaments::participants::manage::create_team::create_teams_page).post(crate::tournaments::participants::manage::create_team::do_create_team))

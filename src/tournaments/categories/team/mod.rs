@@ -6,4 +6,11 @@ pub struct BreakCategory {
     pub tournament_id: String,
     pub name: String,
     pub priority: i64,
+    pub slug: String,
+    pub seq: i64,
+    pub break_size: i64,
+    pub reserve_size: i64,
+    pub public: bool,
+    pub limit_: i64,
+    pub eligibility_rule_json: String,
 }

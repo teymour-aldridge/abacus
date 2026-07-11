@@ -266,7 +266,15 @@ fn main() {
                 break_categories::id.eq(&open),
                 break_categories::tournament_id.eq(&tournament_id),
                 break_categories::name.eq("Open"),
+                break_categories::slug.eq("open"),
+                break_categories::seq.eq(1),
                 break_categories::priority.eq(0),
+                break_categories::break_size.eq(2),
+                break_categories::reserve_size.eq(0),
+                break_categories::public.eq(true),
+                break_categories::limit_.eq(0),
+                break_categories::eligibility_rule_json
+                    .eq(r#"{"type":"everyone"}"#),
             ))
             .execute(&mut conn)
             .unwrap();

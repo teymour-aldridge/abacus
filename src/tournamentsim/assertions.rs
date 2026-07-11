@@ -7,9 +7,11 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::OnceLock;
 
 use crate::schema::{
-    ballots, debates, judges_of_debate, rounds, team_ranks_of_ballot,
+    ballots, break_categories, debates, judges_of_debate, rounds,
+    speakers_of_team, team_break_eligibility, team_ranks_of_ballot,
     teams_of_debate, tournaments,
 };
+use crate::tournaments::categories::{EligibilityRule, speaker::CategoryIndex};
 use crate::tournaments::config::RankableTeamMetric;
 use crate::tournaments::standings::compute::TeamStandings;
 
@@ -24,6 +26,7 @@ pub fn assert_tournament_properties(
     assert_draw_judge_allocation_invariants(&mut conn);
     assert_confirmed_ballots_are_complete(&mut conn);
     assert_saved_standings_match_recomputed_standings(&mut conn);
+    assert_derived_break_eligibility_matches_rules(&mut conn);
 }
 
 #[derive(QueryableByName)]
@@ -666,6 +669,80 @@ fn assert_saved_standings_match_recomputed_standings(
         assert_eq!(
             saved, recomputed,
             "saved team standings for tournament {tournament_id} do not match recomputed standings",
+        );
+    }
+}
+
+fn assert_derived_break_eligibility_matches_rules(
+    conn: &mut diesel::SqliteConnection,
+) {
+    let eligibility_rows = team_break_eligibility::table
+        .filter(team_break_eligibility::source.eq("derived"))
+        .select((
+            team_break_eligibility::tournament_id,
+            team_break_eligibility::team_id,
+            team_break_eligibility::break_category_id,
+            team_break_eligibility::eligible,
+        ))
+        .load::<(String, String, String, bool)>(conn)
+        .unwrap();
+    if eligibility_rows.is_empty() {
+        return;
+    }
+
+    let break_rules = break_categories::table
+        .select((
+            break_categories::id,
+            break_categories::eligibility_rule_json,
+        ))
+        .load::<(String, String)>(conn)
+        .unwrap()
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+
+    let speaker_rows = speakers_of_team::table
+        .select((speakers_of_team::team_id, speakers_of_team::speaker_id))
+        .load::<(String, String)>(conn)
+        .unwrap();
+    let mut speakers_by_team: HashMap<String, Vec<String>> = HashMap::new();
+    for (team_id, speaker_id) in speaker_rows {
+        speakers_by_team
+            .entry(team_id)
+            .or_default()
+            .push(speaker_id);
+    }
+
+    let tournament_ids = eligibility_rows
+        .iter()
+        .map(|(tournament_id, _, _, _)| tournament_id.clone())
+        .collect::<HashSet<_>>();
+    let mut category_indices = HashMap::new();
+    for tournament_id in tournament_ids {
+        category_indices.insert(
+            tournament_id.clone(),
+            CategoryIndex::load(&tournament_id, conn),
+        );
+    }
+
+    for (tournament_id, team_id, break_category_id, stored_eligible) in
+        eligibility_rows
+    {
+        let rule_json =
+            break_rules.get(&break_category_id).unwrap_or_else(|| {
+                panic!("missing break category {break_category_id}")
+            });
+        let rule = EligibilityRule::from_json_or_default(rule_json);
+        let speaker_ids = speakers_by_team
+            .get(&team_id)
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
+        let category_index = category_indices
+            .get(&tournament_id)
+            .expect("missing category index for tournament");
+        let evaluated = rule.evaluate(speaker_ids, category_index);
+        assert_eq!(
+            stored_eligible, evaluated.eligible,
+            "derived break eligibility for team {team_id} and break category {break_category_id} does not match rule evaluation",
         );
     }
 }

@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use axum::{Form, extract::Path, response::Redirect};
-use diesel::prelude::*;
+use diesel::{prelude::*, result::DatabaseErrorKind};
 use hypertext::prelude::*;
 use serde::Deserialize;
 
@@ -363,7 +363,7 @@ pub async fn create_speaker_category(
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
     let slug = clean_slug(form.slug.as_deref().unwrap_or(&form.name));
-    diesel::insert_into(speaker_categories::table)
+    let res = diesel::insert_into(speaker_categories::table)
         .values((
             speaker_categories::id.eq(uuid::Uuid::now_v7().to_string()),
             speaker_categories::tournament_id.eq(&tid),
@@ -373,7 +373,25 @@ pub async fn create_speaker_category(
             speaker_categories::public.eq(form.public.is_some()),
             speaker_categories::limit_.eq(form.limit_),
         ))
-        .execute(&mut *conn)?;
+        .execute(&mut *conn);
+    match res {
+        Ok(n) => assert_eq!(n, 1),
+        Err(diesel::result::Error::DatabaseError(
+            DatabaseErrorKind::UniqueViolation,
+            _,
+        )) => {
+            return bad_request(
+                Page::new()
+                    .user(user)
+                    .tournament(tournament)
+                    .body(maud! {
+                        "Error: a speaker category with that slug or sequence already exists."
+                    })
+                    .render(),
+            );
+        }
+        Err(e) => return Err(e.into()),
+    }
     recompute_break_eligibility(&tid, &mut *conn);
     see_other_ok(Redirect::to(&format!("/tournaments/{tid}/categories")))
 }

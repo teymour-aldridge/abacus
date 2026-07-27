@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::panic::{UnwindSafe, catch_unwind};
 
 use chrono::{NaiveDateTime, Utc};
@@ -8,7 +8,8 @@ use rand::SeedableRng;
 use serde::{Deserialize, Serialize};
 
 use crate::schema::{
-    debates, judges_of_debate, rounds, team_availability, teams_of_debate,
+    agg_team_results_of_debate, break_categories, debates, judges_of_debate,
+    rounds, team_availability, team_break_eligibility, teams_of_debate,
     tickets_of_round,
 };
 use crate::tournaments::rounds::draws::manage::drawalgs::general::TeamsOfRoom;
@@ -18,7 +19,8 @@ use crate::tournaments::standings::compute::history::TeamHistory;
 use crate::{
     schema::teams,
     tournaments::{
-        Tournament, config::RankableTeamMetric, rounds::Round, teams::Team,
+        Tournament, categories::team::BreakCategory,
+        config::RankableTeamMetric, rounds::Round, teams::Team,
     },
 };
 
@@ -120,6 +122,9 @@ pub fn do_draw(
 
     tracing::info!("Obtained ticket {} for draw", ticket_id);
 
+    let standings = TeamStandings::fetch(&tournament.id, conn);
+    let history = TeamHistory::fetch(&tournament.id, conn);
+
     let available_teams = teams::table
         .filter(teams::tournament_id.eq(&tournament.id))
         .inner_join(team_availability::table)
@@ -134,15 +139,20 @@ pub fn do_draw(
 
     tracing::info!("Found {} available teams", available_teams.len());
 
-    let standings = TeamStandings::fetch(&tournament.id, conn);
-    let history = TeamHistory::fetch(&tournament.id, conn);
+    let eligible_team_ids = teams_eligible_for_round(round, &standings, conn)?;
+    let teams = available_teams
+        .into_iter()
+        .filter(|team| eligible_team_ids.contains(&team.id))
+        .collect::<Vec<_>>();
+
+    tracing::info!("Found {} available and eligible teams", teams.len());
 
     let input = DrawInput {
         tournament: tournament.clone(),
         round: round.clone(),
         // todo: compute the metrics
         metrics: HashMap::new(),
-        teams: available_teams,
+        teams,
         rng: rand_chacha::ChaCha20Rng::from_os_rng(),
         standings,
         history,
@@ -356,4 +366,99 @@ pub fn do_draw(
         },
     )
     .unwrap()
+}
+
+fn teams_eligible_for_round(
+    round: &Round,
+    standings: &TeamStandings,
+    conn: &mut impl LoadConnection<Backend = Sqlite>,
+) -> Result<HashSet<String>, MakeDrawError> {
+    if round.is_prelim() {
+        return Ok(teams::table
+            .filter(teams::tournament_id.eq(&round.tournament_id))
+            .select(teams::id)
+            .load::<String>(conn)
+            .unwrap()
+            .into_iter()
+            .collect());
+    }
+
+    let break_category_id = round.break_category().ok_or_else(|| {
+        MakeDrawError::InvalidConfiguration(
+            "elimination rounds must have a break category".to_string(),
+        )
+    })?;
+
+    if let Some(previous_round) =
+        previous_elimination_round_in_break_category(round, conn)
+    {
+        return Ok(advancing_team_ids_from_round(&previous_round, conn));
+    }
+
+    let break_category = break_categories::table
+        .filter(break_categories::tournament_id.eq(&round.tournament_id))
+        .filter(break_categories::id.eq(break_category_id))
+        .first::<BreakCategory>(conn)
+        .optional()
+        .unwrap()
+        .ok_or_else(|| {
+            MakeDrawError::InvalidConfiguration(format!(
+                "break category {break_category_id} does not exist"
+            ))
+        })?;
+
+    let category_eligible = team_break_eligibility::table
+        .filter(team_break_eligibility::tournament_id.eq(&round.tournament_id))
+        .filter(team_break_eligibility::break_category_id.eq(break_category_id))
+        .filter(team_break_eligibility::eligible.eq(true))
+        .select(team_break_eligibility::team_id)
+        .load::<String>(conn)
+        .unwrap()
+        .into_iter()
+        .collect::<HashSet<_>>();
+
+    let mut broke = HashSet::new();
+    for team in standings.teams_in_rank_order.iter().flatten() {
+        if broke.len() >= break_category.break_size as usize {
+            break;
+        }
+        if category_eligible.contains(&team.id) {
+            broke.insert(team.id.clone());
+        }
+    }
+
+    Ok(broke)
+}
+
+fn previous_elimination_round_in_break_category(
+    round: &Round,
+    conn: &mut impl LoadConnection<Backend = Sqlite>,
+) -> Option<Round> {
+    rounds::table
+        .filter(rounds::tournament_id.eq(&round.tournament_id))
+        .filter(rounds::kind.eq("E"))
+        .filter(rounds::seq.lt(round.seq))
+        .filter(rounds::break_category.eq(round.break_category()))
+        .order_by(rounds::seq.desc())
+        .first::<Round>(conn)
+        .optional()
+        .unwrap()
+}
+
+fn advancing_team_ids_from_round(
+    round: &Round,
+    conn: &mut impl LoadConnection<Backend = Sqlite>,
+) -> HashSet<String> {
+    agg_team_results_of_debate::table
+        .inner_join(
+            debates::table
+                .on(agg_team_results_of_debate::debate_id.eq(debates::id)),
+        )
+        .filter(debates::round_id.eq(&round.id))
+        .filter(agg_team_results_of_debate::points.eq(1))
+        .select(agg_team_results_of_debate::team_id)
+        .load::<String>(conn)
+        .unwrap()
+        .into_iter()
+        .collect()
 }

@@ -1,0 +1,34 @@
+{
+  "actions": [
+    {
+      "RegisterUser": {
+        "username": "Sin",
+        "email": "q@n.com",
+        "password": "badger"
+      }
+    },
+    {
+      "CreateTournament": {
+        "name": "lynx",
+        "abbrv": "&W",
+        "slug": ""
+      }
+    },
+    {
+      "CreateSpeakerCategory": {
+        "tournament_idx": 47,
+        "name": "total_speaker_score",
+        "slug": "wombat",
+        "seq": -1241517136437789090
+      }
+    },
+    {
+      "CreateSpeakerCategory": {
+        "tournament_idx": 47,
+        "name": "total_speaker_score",
+        "slug": "wombat",
+        "seq": -1241517136437789090
+      }
+    }
+  ]
+}

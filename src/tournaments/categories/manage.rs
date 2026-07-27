@@ -438,7 +438,7 @@ pub async fn create_break_category(
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
     let slug = clean_slug(form.slug.as_deref().unwrap_or(&form.name));
-    diesel::insert_into(break_categories::table)
+    let res = diesel::insert_into(break_categories::table)
         .values((
             break_categories::id.eq(uuid::Uuid::now_v7().to_string()),
             break_categories::tournament_id.eq(&tid),
@@ -453,7 +453,25 @@ pub async fn create_break_category(
             break_categories::eligibility_rule_json
                 .eq(serde_json::to_string(&EligibilityRule::AllowAll).unwrap()),
         ))
-        .execute(&mut *conn)?;
+        .execute(&mut *conn);
+    match res {
+        Ok(n) => assert_eq!(n, 1),
+        Err(diesel::result::Error::DatabaseError(
+            DatabaseErrorKind::UniqueViolation,
+            _,
+        )) => {
+            return bad_request(
+                Page::new()
+                    .user(user)
+                    .tournament(tournament)
+                    .body(maud! {
+                        "Error: a break category with that slug or sequence already exists."
+                    })
+                    .render(),
+            );
+        }
+        Err(e) => return Err(e.into()),
+    }
     recompute_break_eligibility(&tid, &mut *conn);
     see_other_ok(Redirect::to(&format!("/tournaments/{tid}/categories")))
 }

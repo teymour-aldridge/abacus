@@ -507,10 +507,46 @@ pub async fn add_implication(
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+    let selected_category_ids = speaker_categories::table
+        .select(speaker_categories::id)
+        .filter(speaker_categories::tournament_id.eq(&tid))
+        .filter(
+            speaker_categories::id
+                .eq(&form.child_category_id)
+                .or(speaker_categories::id.eq(&form.parent_category_id)),
+        )
+        .load::<String>(&mut *conn)?;
+    if !selected_category_ids.contains(&form.child_category_id)
+        || !selected_category_ids.contains(&form.parent_category_id)
+    {
+        return bad_request(
+            Page::new()
+                .user(user)
+                .tournament(tournament)
+                .body(maud! {
+                    "Error: both speaker categories must belong to this tournament."
+                })
+                .render(),
+        );
+    }
     let existing = speaker_category_implications::table
         .filter(speaker_category_implications::tournament_id.eq(&tid))
         .load::<SpeakerCategoryImplication>(&mut *conn)
         .unwrap();
+    if existing.iter().any(|implication| {
+        implication.child_category_id == form.child_category_id
+            && implication.parent_category_id == form.parent_category_id
+    }) {
+        return bad_request(
+            Page::new()
+                .user(user)
+                .tournament(tournament)
+                .body(maud! {
+                    "Error: that counts-as rule already exists."
+                })
+                .render(),
+        );
+    }
     if form.child_category_id == form.parent_category_id
         || implication_would_create_cycle(
             &form.child_category_id,
@@ -526,7 +562,7 @@ pub async fn add_implication(
                 .render(),
         );
     }
-    diesel::insert_into(speaker_category_implications::table)
+    let inserted = diesel::insert_into(speaker_category_implications::table)
         .values((
             speaker_category_implications::id
                 .eq(uuid::Uuid::now_v7().to_string()),
@@ -536,7 +572,9 @@ pub async fn add_implication(
             speaker_category_implications::parent_category_id
                 .eq(&form.parent_category_id),
         ))
-        .execute(&mut *conn)?;
+        .execute(&mut *conn)
+        .unwrap();
+    assert_eq!(inserted, 1);
     recompute_break_eligibility(&tid, &mut *conn);
     see_other_ok(Redirect::to(&format!("/tournaments/{tid}/categories")))
 }

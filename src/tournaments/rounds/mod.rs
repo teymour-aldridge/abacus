@@ -227,19 +227,19 @@ impl TournamentRounds {
 
         rounds.iter().fold(State::P, |state, next| {
             match (state, next.kind.as_str()) {
-                (State::P, "P") => {
-                    State::P
-                }
-                (State::P, "E") => {
-                    State::E
-                }
-                (State::E, "E") => {
-                    State::E
-                },
+                (State::P, "P") => State::P,
+                (State::P, "E") => State::E,
+                (State::E, "E") => State::E,
                 (State::E, "P") => {
-                    panic!("preliminary rounds must come before elimination rounds {next:?}");
+                    panic!(
+                        "preliminary rounds must come before elimination rounds
+
+                        NEXT: {next:#?}
+
+                        ROUNDS: {rounds:#?}"
+                    );
                 }
-                _ => unreachable!()
+                _ => unreachable!(),
             }
         });
 

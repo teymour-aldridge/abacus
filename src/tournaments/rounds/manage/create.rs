@@ -20,7 +20,9 @@ use crate::{
         Tournament, categories::BreakCategory, manage::sidebar::SidebarWrapper,
         rounds::TournamentRounds,
     },
-    util_resp::{StandardResponse, err_not_found, see_other_ok, success},
+    util_resp::{
+        StandardResponse, bad_request, err_not_found, see_other_ok, success,
+    },
 };
 
 pub async fn create_new_round(
@@ -163,6 +165,7 @@ pub struct CreateNewRoundForm {
     seq: u32,
 }
 
+#[tracing::instrument(skip(conn, form))]
 pub async fn do_create_new_round_of_specific_category(
     Path((tid, category_id)): Path<(String, String)>,
     user: User<true>,
@@ -171,6 +174,8 @@ pub async fn do_create_new_round_of_specific_category(
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+
+    tracing::info!("Found tournament (id={})", tournament.id);
 
     if form.name.len() < 4 || form.name.len() > 32 {
         return crate::util_resp::bad_request(
@@ -198,6 +203,48 @@ pub async fn do_create_new_round_of_specific_category(
         };
         Some(cat)
     };
+
+    // we require for p,e (p=preliminary round, e=elimination round)
+    // p.seq < e.seq
+    //
+    // elimination rounds can overlap (in the case of concurrent break
+    // categories), but ids must be unique within a break category
+    //
+    // todo: this feels quite messy, we can probably try a more 'parse don't
+    // validate' approach
+    let rounds = TournamentRounds::fetch(&tournament.id, &mut *conn)?;
+
+    if category_id == "in_round" {
+        let premlim_before_all_elim = form.seq
+            < rounds
+                .elim
+                .iter()
+                .min_by_key(|round| round.seq)
+                .map(|round| round.seq)
+                .unwrap_or(u32::MAX as i64) as u32;
+
+        if !premlim_before_all_elim {
+            // todo: useful error message
+            return bad_request(maud! {
+                "In-rounds must have a sequence less than all elimination rounds."
+            }.render());
+        }
+    } else {
+        let elim_after_all_prelim = (rounds
+            .prelim
+            .iter()
+            .max_by_key(|round| round.seq)
+            .map(|round| round.seq)
+            .unwrap_or(0) as u32)
+            < form.seq;
+
+        if !elim_after_all_prelim {
+            // todo: useful error message
+            return bad_request(maud! {
+                "Elimination rounds must have a sequence greater than preliminary rounds"
+            }.render());
+        }
+    }
 
     let res = diesel::insert_into(rounds::table)
         .values((

@@ -1,0 +1,54 @@
+{
+  "actions": [
+    {
+      "RegisterUser": {
+        "username": "Sin",
+        "email": "q@n.com",
+        "password": "badger"
+      }
+    },
+    { "CreateTournament": { "name": "lynx", "abbrv": "&W", "slug": "" } },
+    {
+      "CreateBreakCategory": {
+        "tournament_idx": 212,
+        "name": "O",
+        "slug": "",
+        "seq": 1254969864299864599,
+        "priority": 2928230527957809677,
+        "break_size": 5479409995184440338
+      }
+    },
+    {
+      "CreateRound": {
+        "tournament_idx": 61,
+        "name": "random",
+        "category_idx": null,
+        "seq": 4153283418
+      }
+    },
+    {
+      "CreateRound": {
+        "tournament_idx": 61,
+        "name": "otter",
+        "category_idx": 870970621257461904,
+        "seq": 4153283418
+      }
+    },
+    {
+      "UpdateTournamentConfiguration": {
+        "tournament_idx": 4,
+        "show_draws": false,
+        "show_round_results": true,
+        "team_tab_public": true,
+        "speaker_tab_public": false,
+        "standings_public": false,
+        "require_prelim_substantive_speaks": true,
+        "require_prelim_speaker_order": true,
+        "require_elim_substantive_speaks": false,
+        "require_elim_speaker_order": true,
+        "reply_speakers": false,
+        "reply_must_speak": true
+      }
+    }
+  ]
+}

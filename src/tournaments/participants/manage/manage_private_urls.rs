@@ -28,7 +28,14 @@ pub async fn view_private_urls(
             .user(user)
             .body(maud! {
                 SidebarWrapper tournament=(&tournament) rounds=(&rounds) active_page=(None) selected_seq=(None) {
-                    table class="table" {
+                    div class="table-responsive private-urls-table-wrap" {
+                    table class="table private-urls-table" {
+                        colgroup {
+                            col class="private-urls-name";
+                            col class="private-urls-email";
+                            col class="private-urls-role";
+                            col class="private-urls-url";
+                        }
                         thead {
                             tr {
                                 th scope="col" {
@@ -85,6 +92,7 @@ pub async fn view_private_urls(
                                 }
                             }
                         }
+                    }
                     }
                 }
             })

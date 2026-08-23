@@ -423,6 +423,11 @@ input::placeholder {
     max-width: none;
 }
 
+.abacus-content:has(.round-setup-page) {
+    max-width: none;
+    width: 100%;
+}
+
 .draw-allocator {
     max-width: none;
     width: 100%;

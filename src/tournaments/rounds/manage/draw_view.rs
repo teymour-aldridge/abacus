@@ -58,16 +58,18 @@ pub async fn view_draws_page(
             .current_rounds(current_rounds)
             .body(maud! {
                 SidebarWrapper  tournament=(&tournament) rounds=(&all_rounds) selected_seq=(Some(round_seq)) active_page=(Some(crate::tournaments::manage::sidebar::SidebarPage::Draw)) {
-                    div class="d-flex justify-content-between" {
-                        h1 {
+                    div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-4" {
+                        h1 class="mb-0" {
                             "Draws for rounds with sequence "
                             (round_seq)
                         }
-                        a href=(format!("/tournaments/{}/rounds/{}/briefing", &tournament.id, round_seq)) class="btn btn-primary" {
-                            "Briefing Room"
-                        }
-                        a href=(format!("/tournaments/{}/rounds/draws/edit?{}", &tournament.id, rounds_in_seq.iter().map(|r| format!("rounds={}", r.id)).join("&"))) class="btn btn-primary" {
-                            "Edit Draw"
+                        div class="d-flex align-items-center flex-wrap gap-2" {
+                            a href=(format!("/tournaments/{}/rounds/{}/briefing", &tournament.id, round_seq)) class="btn btn-primary" {
+                                "Briefing Room"
+                            }
+                            a href=(format!("/tournaments/{}/rounds/draws/edit?{}", &tournament.id, rounds_in_seq.iter().map(|r| format!("rounds={}", r.id)).join("&"))) class="btn btn-primary" {
+                                "Edit Draw"
+                            }
                         }
                     }
 

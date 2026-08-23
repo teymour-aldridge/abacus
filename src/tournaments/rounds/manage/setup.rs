@@ -124,18 +124,19 @@ pub async fn setup_round_page(
         .current_rounds(current_rounds)
         .body(maud! {
             SidebarWrapper tournament=(&tournament) rounds=(&all_rounds) active_page=(Some(crate::tournaments::manage::sidebar::SidebarPage::Setup)) selected_seq=(Some(round_seq)) {
-                div class="d-flex justify-content-between" {
-                    h1 {
-                        "Setup for rounds with sequence "
-                        (round_seq)
+                div class="round-setup-page" {
+                    div class="d-flex justify-content-between align-items-start flex-wrap gap-3" {
+                        h1 class="mb-0" {
+                            "Setup for rounds with sequence "
+                            (round_seq)
+                        }
+                        a href=(format!("/tournaments/{}/rounds/{}/draw/manage", &tournament.id, round_seq)) class="btn btn-primary flex-shrink-0" {
+                            "Manage Draw →"
+                        }
                     }
-                    a href=(format!("/tournaments/{}/rounds/{}/draw/manage", &tournament.id, round_seq)) class="btn btn-primary" {
-                        "Manage Draw →"
-                    }
-                }
 
-                div class="d-flex flex-column flex-lg-row gap-4 mt-3" {
-                    div class="flex-fill" {
+                    div class="row g-4 mt-3" {
+                        div class="col-12 col-lg-6" {
                         div class="d-flex justify-content-between align-items-end mb-4 pb-2 border-bottom border-2 border-dark" {
                             h5 class="mb-0 text-uppercase fw-bold" style="letter-spacing: 2px;" { "1. Teams" }
                             a href=(format!("/tournaments/{}/rounds/{}/availability/teams", &tournament.id, round_seq))
@@ -182,7 +183,7 @@ pub async fn setup_round_page(
                         }
                     }
 
-                    div class="flex-fill" {
+                        div class="col-12 col-lg-6" {
                         div class="d-flex justify-content-between align-items-end mb-4 pb-2 border-bottom border-2 border-dark" {
                             h5 class="mb-0 text-uppercase fw-bold" style="letter-spacing: 2px;" { "2. Judges" }
                             a href=(format!("/tournaments/{}/rounds/{}/availability/judges", &tournament.id, round_seq))
@@ -226,6 +227,7 @@ pub async fn setup_round_page(
                                     }
                                 }
                             }
+                        }
                         }
                     }
                 }

@@ -199,7 +199,7 @@ impl Round {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TournamentRounds {
     pub prelim: Vec<Round>,
     pub elim: Vec<Round>,

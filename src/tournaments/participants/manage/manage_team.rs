@@ -30,7 +30,6 @@ use crate::{
     util_resp::{
         StandardResponse, bad_request, err_not_found, see_other_ok, success,
     },
-    widgets::actions::Actions,
 };
 
 /// This has rank = 2 so that it does not collide with
@@ -73,24 +72,18 @@ pub async fn manage_team_page(
                         "Team " (team.name)
                     }
 
-                    Actions options=(&[
-                        (format!("/tournaments/{}/teams/{}/speakers/create", tournament.id, team.id).as_str(), "Add speaker")
-                    ]);
-
-                    ul class="list-group list-group-horizontal" {
-                        li class="list-group-item" {
-                            a href=(format!("/tournaments/{}/teams/{}/edit",
-                                    tournament.id,
-                                    team.id))
-                            {
-                                "Edit team details"
-                            }
+                    div class="d-flex flex-wrap gap-2 mt-3" {
+                        a class="btn btn-outline-dark"
+                            href=(format!("/tournaments/{}/teams/{}/edit",
+                                tournament.id,
+                                team.id)) {
+                            "Edit team details"
                         }
-
-                        li class="list-group-item" {
-                            a href="" {
-                                "Add speaker"
-                            }
+                        a class="btn btn-primary"
+                            href=(format!("/tournaments/{}/teams/{}/speakers/create",
+                                tournament.id,
+                                team.id)) {
+                            "Add speaker"
                         }
                     }
 

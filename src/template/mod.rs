@@ -18,6 +18,7 @@ pub enum ActiveNav {
     Results,
     Draw,
     Participants,
+    Break,
     Standings,
     Motions,
     Rooms,
@@ -304,6 +305,13 @@ impl<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool> Renderable
                                      a class=(format!("nav-tab-link text-decoration-none {}", if self.active_nav == Some(ActiveNav::Participants) { "nav-tab-active" } else { "" }))
                                          href=(format!("/tournaments/{}/participants", tournament.id)) {
                                          "Participants"
+                                     }
+
+                                     @if self.user.is_some() {
+                                         a class=(format!("nav-tab-link text-decoration-none {}", if self.active_nav == Some(ActiveNav::Break) { "nav-tab-active" } else { "" }))
+                                             href=(format!("/tournaments/{}/break", tournament.id)) {
+                                             "Break"
+                                         }
                                      }
 
                                      @if tournament.standings_public || tournament.team_tab_public {

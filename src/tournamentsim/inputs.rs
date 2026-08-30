@@ -643,6 +643,21 @@ pub enum Action {
         #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
         threshold_type: String,
     },
+    SaveBreakRemark {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        team_idx: usize,
+        #[field_mutator(TabdaDictionaryStringMutator = { TabdaDictionaryStringMutator::new() })]
+        remark: String,
+        allowed_break_category_indices: Vec<usize>,
+    },
+    DeleteBreakRemark {
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        tournament_idx: usize,
+        #[field_mutator(UsizeMutator = { make_usize_mutator() })]
+        team_idx: usize,
+    },
     CreateJudge {
         #[field_mutator(UsizeMutator = { make_usize_mutator() })]
         tournament_idx: usize,
@@ -2130,6 +2145,102 @@ impl Action {
                                 tid, break_category_id
                             ),
                             &form,
+                        )
+                        .await;
+                    }
+                }
+            }
+            Action::SaveBreakRemark {
+                tournament_idx,
+                team_idx,
+                remark,
+                allowed_break_category_indices,
+            } => {
+                let mut conn = pool.get().unwrap();
+                if let Some(tid) = get_id_by_idx!(
+                    &mut *conn,
+                    tournaments::table
+                        .select(tournaments::id)
+                        .order_by(tournaments::id),
+                    tournament_idx,
+                ) {
+                    let team_id = get_id_by_idx!(
+                        &mut *conn,
+                        teams::table
+                            .filter(teams::tournament_id.eq(&tid))
+                            .select(teams::id)
+                            .order_by(teams::id),
+                        team_idx,
+                    );
+                    let category_ids = allowed_break_category_indices
+                        .into_iter()
+                        .filter_map(|idx| {
+                            get_id_by_idx!(
+                                &mut *conn,
+                                break_categories::table
+                                    .filter(
+                                        break_categories::tournament_id
+                                            .eq(&tid),
+                                    )
+                                    .select(break_categories::id)
+                                    .order_by(break_categories::id),
+                                idx,
+                            )
+                        })
+                        .collect::<Vec<_>>();
+                    drop(conn);
+                    if let Some(team_id) = team_id {
+                        let mut form = vec![
+                            ("team_id".to_string(), team_id),
+                            ("remark".to_string(), remark),
+                        ];
+                        for category_id in category_ids {
+                            form.push((
+                                "allowed_category_ids".to_string(),
+                                category_id,
+                            ));
+                        }
+                        ctx.post_urlencoded(
+                            "SaveBreakRemark",
+                            format!(
+                                "/tournaments/{}/categories/break-remarks/save",
+                                tid
+                            ),
+                            &form,
+                        )
+                        .await;
+                    }
+                }
+            }
+            Action::DeleteBreakRemark {
+                tournament_idx,
+                team_idx,
+            } => {
+                let mut conn = pool.get().unwrap();
+                if let Some(tid) = get_id_by_idx!(
+                    &mut *conn,
+                    tournaments::table
+                        .select(tournaments::id)
+                        .order_by(tournaments::id),
+                    tournament_idx,
+                ) {
+                    let team_id = get_id_by_idx!(
+                        &mut *conn,
+                        teams::table
+                            .filter(teams::tournament_id.eq(&tid))
+                            .select(teams::id)
+                            .order_by(teams::id),
+                        team_idx,
+                    );
+                    drop(conn);
+                    if let Some(team_id) = team_id {
+                        ctx.post_form(
+                            "DeleteBreakRemark",
+                            format!(
+                                "/tournaments/{}/categories/break-remarks/{}/delete",
+                                tid, team_id
+                            ),
+                            &[] as &[(String, String)],
                         )
                         .await;
                     }

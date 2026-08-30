@@ -27,6 +27,7 @@ pub fn assert_tournament_properties(
     assert_confirmed_ballots_are_complete(&mut conn);
     assert_saved_standings_match_recomputed_standings(&mut conn);
     assert_derived_break_eligibility_matches_rules(&mut conn);
+    assert_manual_break_eligibility_is_complete(&mut conn);
 }
 
 #[derive(QueryableByName)]
@@ -744,5 +745,76 @@ fn assert_derived_break_eligibility_matches_rules(
             stored_eligible, evaluated.eligible,
             "derived break eligibility for team {team_id} and break category {break_category_id} does not match rule evaluation",
         );
+    }
+}
+
+fn assert_manual_break_eligibility_is_complete(
+    conn: &mut diesel::SqliteConnection,
+) {
+    let rows = team_break_eligibility::table
+        .filter(team_break_eligibility::source.ne("derived"))
+        .select((
+            team_break_eligibility::tournament_id,
+            team_break_eligibility::team_id,
+            team_break_eligibility::break_category_id,
+            team_break_eligibility::eligible,
+            team_break_eligibility::source,
+            team_break_eligibility::explanation,
+        ))
+        .load::<(String, String, String, bool, String, String)>(conn)
+        .unwrap();
+
+    let mut rows_by_team: HashMap<(String, String), Vec<_>> = HashMap::new();
+    for row in rows {
+        rows_by_team
+            .entry((row.0.clone(), row.1.clone()))
+            .or_default()
+            .push(row);
+    }
+
+    for ((tournament_id, team_id), rows) in rows_by_team {
+        let category_ids = break_categories::table
+            .filter(break_categories::tournament_id.eq(&tournament_id))
+            .select(break_categories::id)
+            .load::<String>(conn)
+            .unwrap()
+            .into_iter()
+            .collect::<HashSet<_>>();
+        let stored_category_ids =
+            rows.iter().map(|row| row.2.clone()).collect::<HashSet<_>>();
+        assert_eq!(
+            stored_category_ids, category_ids,
+            "manual break status for team {team_id} must cover every break category",
+        );
+
+        let explanations = rows
+            .iter()
+            .map(|row| row.5.as_str())
+            .collect::<HashSet<_>>();
+        assert_eq!(
+            explanations.len(),
+            1,
+            "manual break status for team {team_id} must use one remark",
+        );
+        assert!(
+            explanations.iter().all(|remark| !remark.trim().is_empty()),
+            "manual break status for team {team_id} must have a remark",
+        );
+
+        for row in rows {
+            match row.4.as_str() {
+                "manual_include" => assert!(
+                    row.3,
+                    "manual include for team {team_id} must be eligible",
+                ),
+                "manual_exclude" => assert!(
+                    !row.3,
+                    "manual exclude for team {team_id} must be ineligible",
+                ),
+                source => {
+                    panic!("unexpected manual eligibility source {source}")
+                }
+            }
+        }
     }
 }

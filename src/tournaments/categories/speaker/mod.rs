@@ -380,7 +380,7 @@ pub fn recompute_break_eligibility<
                 .get(&team.id)
                 .map(Vec::as_slice)
                 .unwrap_or(&[]);
-            let result = rule.evaluate(speaker_ids, &category_index);
+            let derived = rule.evaluate(speaker_ids, &category_index);
             diesel::insert_into(team_break_eligibility::table)
                 .values((
                     team_break_eligibility::id
@@ -389,9 +389,9 @@ pub fn recompute_break_eligibility<
                     team_break_eligibility::team_id.eq(&team.id),
                     team_break_eligibility::break_category_id
                         .eq(&break_category.id),
-                    team_break_eligibility::eligible.eq(result.eligible),
+                    team_break_eligibility::eligible.eq(derived.eligible),
                     team_break_eligibility::source.eq("derived"),
-                    team_break_eligibility::explanation.eq(result.explanation),
+                    team_break_eligibility::explanation.eq(derived.explanation),
                 ))
                 .execute(conn)
                 .unwrap();

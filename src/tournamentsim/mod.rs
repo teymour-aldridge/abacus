@@ -328,6 +328,55 @@ fn speaker_category_implications_drive_break_eligibility() {
     });
 }
 
+#[test]
+fn team_break_remarks_control_category_overrides() {
+    harness::run_workload(&WorkloadInput {
+        actions: vec![
+            Action::RegisterUser {
+                username: "breakadmin".to_string(),
+                email: "break@example.com".to_string(),
+                password: "Igecko".to_string(),
+            },
+            Action::CreateTournament {
+                name: "Break Override Test".to_string(),
+                abbrv: "BOT".to_string(),
+                slug: "break_override_test".to_string(),
+            },
+            Action::CreateTeam {
+                tournament_idx: 0,
+                name: "Team A".to_string(),
+                institution_idx: None,
+            },
+            Action::CreateBreakCategory {
+                tournament_idx: 0,
+                name: "ESL".to_string(),
+                slug: "esl".to_string(),
+                seq: 1,
+                priority: 0,
+                break_size: 2,
+            },
+            Action::SaveBreakRemark {
+                tournament_idx: 0,
+                team_idx: 0,
+                remark: "Withdrawn from open".to_string(),
+                allowed_break_category_indices: vec![0],
+            },
+            Action::CreateBreakCategory {
+                tournament_idx: 0,
+                name: "Open".to_string(),
+                slug: "open".to_string(),
+                seq: 2,
+                priority: 1,
+                break_size: 2,
+            },
+            Action::DeleteBreakRemark {
+                tournament_idx: 0,
+                team_idx: 0,
+            },
+        ],
+    });
+}
+
 #[cfg(test)]
 fn run_regression_fixture(name: &str, json: &str) {
     let input =

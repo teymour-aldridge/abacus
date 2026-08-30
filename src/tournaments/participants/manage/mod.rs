@@ -208,8 +208,11 @@ pub async fn manage_tournament_participants_impl(
                 .current_rounds(current_rounds.clone())
                 .body(maud! {
                     SidebarWrapper tournament=(&tournament) rounds=(&rounds) selected_seq=(current_rounds.first().map(|r| r.seq)) active_page=(None) {
-                        h1 {
-                            "Participants"
+                        div class="d-flex justify-content-between align-items-center" {
+                            h1 { "Participants" }
+                            a class="btn btn-outline-primary" href=(format!("/tournaments/{}/break", tournament.id)) {
+                                "Manage break"
+                            }
                         }
 
                         (table)

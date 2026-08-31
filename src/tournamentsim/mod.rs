@@ -2,7 +2,7 @@
 
 #![allow(dead_code)]
 
-use fuzzcheck::DefaultMutator;
+use fuzzcheck::{DefaultMutator, Mutator};
 use serde::{Deserialize, Serialize};
 
 use crate::tournamentsim::inputs::Action;
@@ -10,10 +10,24 @@ use crate::tournamentsim::inputs::Action;
 mod assertions;
 mod harness;
 mod inputs;
+mod mutators;
+
+use mutators::ComplexityScaledMutator;
+
+pub type WorkloadActionsMutator = impl Mutator<Vec<Action>>;
+
+#[define_opaque(WorkloadActionsMutator)]
+pub fn workload_actions_mutator() -> WorkloadActionsMutator {
+    // Action variants are relatively expensive, but useful simulator states
+    // require a sequence of dependent operations. Discount the whole vector so
+    // fuzzcheck can explore substantially longer workloads at the same budget.
+    ComplexityScaledMutator::new(Vec::<Action>::default_mutator(), 8.0)
+}
 
 #[allow(dead_code)]
 #[derive(DefaultMutator, Clone, Debug, Hash, Serialize, Deserialize)]
 pub struct WorkloadInput {
+    #[field_mutator(WorkloadActionsMutator = { workload_actions_mutator() })]
     actions: Vec<Action>,
 }
 

@@ -48,3 +48,4 @@ hegeltest = "0.14.0"
 axum-test = "15.7.0"
 scheduled-thread-pool = "0.2.7"
 turmoil = "0.7"
+libsqlite3-sys = { version = "0.35.0", features = ["bundled"] }

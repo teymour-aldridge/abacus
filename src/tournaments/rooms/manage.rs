@@ -47,6 +47,7 @@ pub async fn manage_rooms_page(
     mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
+    tournament.check_user_is_superuser(&user.id, &mut *conn)?;
     let rounds = TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
     let current_rounds =
         crate::tournaments::rounds::Round::current_rounds(&tid, &mut *conn);

@@ -10,6 +10,8 @@ use crate::tournamentsim::inputs::Action;
 mod assertions;
 mod harness;
 mod inputs;
+mod mutator;
+mod stencil;
 
 #[allow(dead_code)]
 #[derive(DefaultMutator, Clone, Debug, Hash, Serialize, Deserialize)]
@@ -23,10 +25,11 @@ pub fn fuzz() {
     let result = fuzzcheck::fuzz_test(|input: &WorkloadInput| {
         harness::run_workload(input);
     })
-    .default_mutator()
+    .mutator(mutator::SequenceAwareMutator::new())
     .serde_serializer()
     .default_sensor_and_pool()
     .arguments_from_cargo_fuzzcheck()
+    .maximum_complexity(8000.0)
     .launch();
 
     assert!(!result.found_test_failure);

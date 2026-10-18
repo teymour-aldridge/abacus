@@ -467,13 +467,19 @@ impl_ascii_string_mutator!(NameStringMutator);
 impl_ascii_string_mutator!(MotionStringMutator);
 impl_ascii_string_mutator!(TabdaDictionaryStringMutator);
 
+pub(super) const LATEST_OBJECT_INDEX: usize = 251;
+
 macro_rules! get_id_by_idx {
     ($conn:expr, $query:expr, $idx:expr $(,)?) => {{
         let count = $query.count().get_result::<i64>($conn).unwrap_or(0);
         if count == 0 {
             None
         } else {
-            let offset = ($idx as i64) % count;
+            let offset = if $idx == LATEST_OBJECT_INDEX {
+                count - 1
+            } else {
+                ($idx as i64) % count
+            };
             $query
                 .offset(offset)
                 .limit(1)
@@ -488,7 +494,7 @@ pub type UsizeMutator = impl Mutator<usize>;
 #[define_opaque(UsizeMutator)]
 pub fn make_usize_mutator() -> UsizeMutator {
     MapMutator::<u64, usize, _, _, _, _>::new(
-        U64WithinRangeMutator::new(0..=250),
+        U64WithinRangeMutator::new(0..=LATEST_OBJECT_INDEX as u64),
         |output: &usize| Some(*output as u64),
         |x: &u64| *x as usize,
         |_: &usize, cplx| cplx,

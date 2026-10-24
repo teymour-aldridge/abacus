@@ -48,8 +48,7 @@ pub async fn submit_feedback_page(
                 .and(judges::tournament_id.eq(&tournament_id)),
         )
         .first::<Judge>(&mut *conn)
-        .optional()
-        .unwrap();
+        .optional()?;
 
     let speaker = if judge.is_none() {
         speakers::table
@@ -59,8 +58,7 @@ pub async fn submit_feedback_page(
                     .and(speakers::tournament_id.eq(&tournament_id)),
             )
             .first::<Speaker>(&mut *conn)
-            .optional()
-            .unwrap()
+            .optional()?
     } else {
         None
     };
@@ -70,7 +68,10 @@ pub async fn submit_feedback_page(
     }
 
     if round.draw_status != "released_full" {
-        let current_rounds = Round::current_rounds(&tournament_id, &mut *conn);
+        let current_rounds = Round::current_rounds(&tournament_id, &mut *conn)
+            .into_iter()
+            .filter(|r| r.draw_status == "released_full")
+            .collect();
         return crate::util_resp::bad_request(
             Page::new()
                 .tournament(tournament.clone())
@@ -87,13 +88,13 @@ pub async fn submit_feedback_page(
         let debate =
             debate_of_judge_in_round(&judge.id, &round.id, &mut *conn)?;
         let targets =
-            get_feedback_targets_for_judge(&judge.id, &debate.id, &mut *conn);
+            get_feedback_targets_for_judge(&judge.id, &debate.id, &mut *conn)?;
         targets
     } else {
         let speaker = speaker.as_ref().unwrap();
         let debate =
             debate_of_speaker_in_round(&speaker.id, &round.id, &mut *conn)?;
-        let targets = get_feedback_targets_for_speaker(&debate.id, &mut *conn);
+        let targets = get_feedback_targets_for_speaker(&debate.id, &mut *conn)?;
         targets
     };
 
@@ -103,7 +104,10 @@ pub async fn submit_feedback_page(
         .load::<FeedbackQuestion>(&mut *conn)
         .unwrap();
 
-    let current_rounds = Round::current_rounds(&tournament_id, &mut *conn);
+    let current_rounds = Round::current_rounds(&tournament_id, &mut *conn)
+        .into_iter()
+        .filter(|r| r.draw_status == "released_full")
+        .collect();
 
     success(
         Page::new()
@@ -119,18 +123,25 @@ pub async fn submit_feedback_page(
                 } else {
                     ParticipantKind::Speaker
                 },
-                // tournament,
+                submitted: None,
+                error: None,
             })
             .render(),
     )
 }
 
+struct FeedbackTarget {
+    id: String,
+    name: String,
+}
+
 struct FeedbackFormRenderer {
     round: Round,
-    targets: Vec<Judge>,
+    targets: Vec<FeedbackTarget>,
     questions: Vec<FeedbackQuestion>,
     submitter_kind: ParticipantKind,
-    // tournament: Tournament,
+    submitted: Option<FeedbackSubmissionForm>,
+    error: Option<String>,
 }
 
 impl Renderable for FeedbackFormRenderer {
@@ -141,6 +152,8 @@ impl Renderable for FeedbackFormRenderer {
         maud! {
             div class="container py-5 px-4" {
                 h1 { "Submit feedback" }
+                span class="badge bg-secondary" { "Restricted: Participant and tournament organisers" }
+                @if let Some(error) = &self.error { div class="alert alert-danger" { (error) } }
                 h2 { (self.round.name) }
 
                 form method="post" {
@@ -149,7 +162,7 @@ impl Renderable for FeedbackFormRenderer {
                         select class="form-select" name="target_judge_id" id="target_judge_id" required {
                             option value="" disabled selected { "Select a judge" }
                             @for target in &self.targets {
-                                option value=(target.id) { (target.name) }
+                                option value=(target.id) selected[self.submitted.as_ref().is_some_and(|f| f.target_judge_id == target.id)] { (target.name) }
                             }
                         }
                     }
@@ -161,14 +174,14 @@ impl Renderable for FeedbackFormRenderer {
                                 div class="mb-3" {
                                     label for=(question.id) class="form-label" { (question.question) }
                                     @match kind {
-                                        FeedbackQuestionKind::IntegerScale { .. } => {
-                                            input type="number" class="form-control" name=(question.id) min="1" max="10" required;
+                                        FeedbackQuestionKind::IntegerScale { min, max } => {
+                                            input type="number" class="form-control" name=(question.id) min=(min) max=(max) value=(self.submitted.as_ref().and_then(|f| f.answers.get(&question.id))) required;
                                         }
                                         FeedbackQuestionKind::Text { .. } => {
-                                            textarea class="form-control" name=(question.id) rows="3" required {}
+                                            textarea class="form-control" name=(question.id) rows="3" required { (self.submitted.as_ref().and_then(|f| f.answers.get(&question.id))) }
                                         }
                                         FeedbackQuestionKind::Boolean { .. } => {
-                                            input type="checkbox" class="form-check-input" name=(question.id) required;
+                                            input type="checkbox" class="form-check-input" name=(question.id) checked[self.submitted.as_ref().is_some_and(|f| f.answers.contains_key(&question.id))];
                                         }
                                     }
                                 }
@@ -211,8 +224,7 @@ pub async fn do_submit_feedback(
                 .and(judges::tournament_id.eq(&tournament_id)),
         )
         .first::<Judge>(&mut *conn)
-        .optional()
-        .unwrap();
+        .optional()?;
 
     let speaker = if judge.is_none() {
         speakers::table
@@ -222,8 +234,7 @@ pub async fn do_submit_feedback(
                     .and(speakers::tournament_id.eq(&tournament_id)),
             )
             .first::<Speaker>(&mut *conn)
-            .optional()
-            .unwrap()
+            .optional()?
     } else {
         None
     };
@@ -233,7 +244,10 @@ pub async fn do_submit_feedback(
     }
 
     if round.draw_status != "released_full" {
-        let current_rounds = Round::current_rounds(&tournament_id, &mut *conn);
+        let current_rounds = Round::current_rounds(&tournament_id, &mut *conn)
+            .into_iter()
+            .filter(|r| r.draw_status == "released_full")
+            .collect();
         return crate::util_resp::bad_request(
             Page::new()
                 .tournament(tournament.clone())
@@ -246,19 +260,47 @@ pub async fn do_submit_feedback(
         );
     }
 
-    let (debate, _targets) = if let Some(judge) = &judge {
+    let (debate, targets) = if let Some(judge) = &judge {
         let debate =
             debate_of_judge_in_round(&judge.id, &round.id, &mut *conn)?;
         let targets =
-            get_feedback_targets_for_judge(&judge.id, &debate.id, &mut *conn);
+            get_feedback_targets_for_judge(&judge.id, &debate.id, &mut *conn)?;
         (debate, targets)
     } else {
         let speaker = speaker.as_ref().unwrap();
         let debate =
             debate_of_speaker_in_round(&speaker.id, &round.id, &mut *conn)?;
-        let targets = get_feedback_targets_for_speaker(&debate.id, &mut *conn);
+        let targets = get_feedback_targets_for_speaker(&debate.id, &mut *conn)?;
         (debate, targets)
     };
+
+    let questions = feedback_questions::table
+        .filter(feedback_questions::tournament_id.eq(&tournament_id))
+        .order_by(feedback_questions::seq.asc())
+        .load::<FeedbackQuestion>(&mut *conn)?;
+    let submitter_kind = if judge.is_some() {
+        ParticipantKind::Judge
+    } else {
+        ParticipantKind::Speaker
+    };
+    if let Err(error) =
+        validate_submission(&form, &targets, &questions, &submitter_kind)
+    {
+        return crate::util_resp::bad_request(
+            Page::new()
+                .user_opt(user)
+                .tournament(tournament)
+                .body(FeedbackFormRenderer {
+                    round,
+                    targets,
+                    questions,
+                    submitter_kind,
+                    submitted: Some(form),
+                    error: Some(error),
+                })
+                .render(),
+        );
+    }
 
     conn.transaction::<_, diesel::result::Error, _>(|conn| {
         let feedback_id = Uuid::now_v7().to_string();
@@ -288,6 +330,16 @@ pub async fn do_submit_feedback(
         } else if let Some(speaker) = &speaker {
             let team_id = speakers_of_team::table
                 .filter(speakers_of_team::speaker_id.eq(&speaker.id))
+                .filter(
+                    speakers_of_team::team_id.eq_any(
+                        crate::schema::teams_of_debate::table
+                            .filter(
+                                crate::schema::teams_of_debate::debate_id
+                                    .eq(&debate.id),
+                            )
+                            .select(crate::schema::teams_of_debate::team_id),
+                    ),
+                )
                 .select(speakers_of_team::team_id)
                 .first::<String>(conn)?;
 
@@ -315,10 +367,12 @@ pub async fn do_submit_feedback(
         }
 
         Ok(())
-    })
-    .unwrap();
+    })?;
 
-    let current_rounds = Round::current_rounds(&tournament_id, &mut *conn);
+    let current_rounds = Round::current_rounds(&tournament_id, &mut *conn)
+        .into_iter()
+        .filter(|r| r.draw_status == "released_full")
+        .collect();
 
     success(
         Page::new()
@@ -349,8 +403,7 @@ fn debate_of_judge_in_round(
         ))
         .select(debates::all_columns)
         .first::<Debate>(conn)
-        .optional()
-        .unwrap()
+        .optional()?
     {
         Some(debate) => Ok(debate),
         None => err_not_found().map(|_| unreachable!()),
@@ -362,53 +415,33 @@ fn debate_of_speaker_in_round(
     round_id: &str,
     conn: &mut impl LoadConnection<Backend = diesel::sqlite::Sqlite>,
 ) -> Result<Debate, FailureResponse> {
-    let team_id = speakers_of_team::table
-        .filter(speakers_of_team::speaker_id.eq(speaker_id))
-        .select(speakers_of_team::team_id)
-        .first::<String>(conn)
-        .optional()
-        .unwrap();
-
-    if let Some(tid) = team_id {
-        match debates::table
-            .inner_join(rounds::table.on(rounds::id.eq(debates::round_id)))
-            .filter(rounds::id.eq(round_id))
-            .filter(rounds::draw_status.eq("released_full"))
-            .filter(diesel::dsl::exists(
-                crate::schema::teams_of_debate::table
-                    .filter(crate::schema::teams_of_debate::team_id.eq(tid))
-                    .filter(
-                        crate::schema::teams_of_debate::debate_id
-                            .eq(debates::id),
+    debates::table
+        .inner_join(rounds::table.on(rounds::id.eq(debates::round_id)))
+        .filter(rounds::id.eq(round_id))
+        .filter(rounds::draw_status.eq("released_full"))
+        .filter(diesel::dsl::exists(
+            crate::schema::teams_of_debate::table
+                .filter(
+                    crate::schema::teams_of_debate::team_id.eq_any(
+                        speakers_of_team::table
+                            .filter(speakers_of_team::speaker_id.eq(speaker_id))
+                            .select(speakers_of_team::team_id),
                     ),
-            ))
-            .select(debates::all_columns)
-            .first::<Debate>(conn)
-            .optional()
-            .unwrap()
-        {
-            Some(debate) => Ok(debate),
-            None => err_not_found().map(|_| unreachable!()),
-        }
-    } else {
-        err_not_found().map(|_| unreachable!())
-    }
+                )
+                .filter(
+                    crate::schema::teams_of_debate::debate_id.eq(debates::id),
+                ),
+        ))
+        .select(debates::all_columns)
+        .first::<Debate>(conn)
+        .map_err(Into::into)
 }
 
 fn get_feedback_targets_for_judge(
     judge_id: &str,
     debate_id: &str,
     conn: &mut impl LoadConnection<Backend = diesel::sqlite::Sqlite>,
-) -> Vec<Judge> {
-    let status = judges_of_debate::table
-        .filter(judges_of_debate::debate_id.eq(debate_id))
-        .filter(judges_of_debate::judge_id.eq(judge_id))
-        .select(judges_of_debate::status)
-        .first::<String>(conn)
-        .unwrap_or_default();
-
-    let _target_status = if status == "c" { "w" } else { "c" };
-
+) -> Result<Vec<FeedbackTarget>, FailureResponse> {
     judges::table
         .inner_join(
             judges_of_debate::table
@@ -416,23 +449,82 @@ fn get_feedback_targets_for_judge(
         )
         .filter(judges_of_debate::debate_id.eq(debate_id))
         .filter(judges::id.ne(judge_id))
-        .select(judges::all_columns)
-        .load::<Judge>(conn)
-        .unwrap_or_default()
+        .select((judges::id, judges::name))
+        .load::<(String, String)>(conn)
+        .map(|rows| {
+            rows.into_iter()
+                .map(|(id, name)| FeedbackTarget { id, name })
+                .collect()
+        })
+        .map_err(Into::into)
 }
 
 fn get_feedback_targets_for_speaker(
     debate_id: &str,
     conn: &mut impl LoadConnection<Backend = diesel::sqlite::Sqlite>,
-) -> Vec<Judge> {
+) -> Result<Vec<FeedbackTarget>, FailureResponse> {
     judges::table
         .inner_join(
             judges_of_debate::table
                 .on(judges_of_debate::judge_id.eq(judges::id)),
         )
         .filter(judges_of_debate::debate_id.eq(debate_id))
-        .filter(judges_of_debate::status.eq("c"))
-        .select(judges::all_columns)
-        .load::<Judge>(conn)
-        .unwrap_or_default()
+        .filter(judges_of_debate::status.eq("C"))
+        .select((judges::id, judges::name))
+        .load::<(String, String)>(conn)
+        .map(|rows| {
+            rows.into_iter()
+                .map(|(id, name)| FeedbackTarget { id, name })
+                .collect()
+        })
+        .map_err(Into::into)
+}
+
+fn validate_submission(
+    form: &FeedbackSubmissionForm,
+    targets: &[FeedbackTarget],
+    questions: &[FeedbackQuestion],
+    kind: &ParticipantKind,
+) -> Result<(), String> {
+    if !targets
+        .iter()
+        .any(|target| target.id == form.target_judge_id)
+    {
+        return Err("Choose a judge from your debate.".into());
+    }
+    let applies = |q: &&FeedbackQuestion| match kind {
+        ParticipantKind::Judge => q.for_judges,
+        ParticipantKind::Speaker => q.for_teams,
+    };
+    let allowed: Vec<_> = questions.iter().filter(applies).collect();
+    if form
+        .answers
+        .keys()
+        .any(|id| !allowed.iter().any(|q| &q.id == id))
+    {
+        return Err("An answer refers to an unavailable question.".into());
+    }
+    for question in allowed {
+        let answer = form
+            .answers
+            .get(&question.id)
+            .map(String::as_str)
+            .unwrap_or("");
+        let valid = match serde_json::from_str::<FeedbackQuestionKind>(
+            &question.kind,
+        ) {
+            Ok(FeedbackQuestionKind::IntegerScale { min, max }) => answer
+                .parse::<i64>()
+                .is_ok_and(|value| (min..=max).contains(&value)),
+            Ok(FeedbackQuestionKind::Text {}) => !answer.trim().is_empty(),
+            Ok(FeedbackQuestionKind::Boolean {}) => {
+                answer.is_empty() || matches!(answer, "on" | "true" | "false")
+            }
+            Err(_) => false,
+        };
+        if !valid {
+            return Err(format!("Check the answer to: {}", question.question));
+        }
+    }
+    Ok(())
 }

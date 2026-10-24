@@ -1,4 +1,8 @@
-use axum::{Form, extract::Path, response::Redirect};
+use axum::{
+    Form,
+    extract::{Path, Query},
+    response::Redirect,
+};
 use chrono::Utc;
 use diesel::{prelude::*, sqlite::Sqlite};
 use hypertext::prelude::*;
@@ -15,10 +19,7 @@ use crate::{
         manage::sidebar::SidebarWrapper,
         rounds::{Round, TournamentRounds},
     },
-    util_resp::{
-        StandardResponse, bad_request, err_not_found, see_other_ok, success,
-    },
-    widgets::alert::ErrorAlert,
+    util_resp::{StandardResponse, bad_request, see_other_ok, success},
 };
 
 const VALID_DRAW_STATUSES: &[&str] = &[
@@ -35,6 +36,7 @@ struct BriefingRoomView {
     rounds: Vec<Round>,
     can_publish_motions: HashMap<String, bool>,
     can_publish_full_draw: HashMap<String, bool>,
+    error: Option<String>,
 }
 
 impl Renderable for BriefingRoomView {
@@ -54,6 +56,8 @@ impl Renderable for BriefingRoomView {
                     (round_name)
                 }
 
+                @if let Some(error) = &self.error { div class="alert alert-danger" role="alert" { (error) } }
+
                 p class="lead" {
                     "This is the briefing room for "
                     (round_name)
@@ -70,21 +74,26 @@ impl Renderable for BriefingRoomView {
                                     h5 class="card-title" { (round.name) }
 
                                     p class="card-text" {
-                                        @if round.draw_status == "released_full" {
+                                        @if !self.tournament.show_draws {
+                                            span class="badge bg-danger" { "Unpublished" }
+                                            " Public draw viewing is disabled for this tournament."
+                                        } @else if round.draw_status == "released_full" {
                                             span class="badge bg-success" {"Public (Teams & Judges)"}
                                             " The full draw is currently public."
                                         } @else if round.draw_status == "released_teams" {
                                             span class="badge bg-info" {"Public (Teams Only)"}
                                             " Only the team list is currently public."
                                         } @else {
-                                            span class="badge bg-secondary" {"Private"}
+                                            span class="badge bg-danger" {"Unpublished"}
                                             " The draw is not currently public."
                                         }
                                     }
 
                                     h6 class="card-subtitle mb-2 text-muted" { "Draw Release" }
                                     div class="mt-auto" {
-                                        form action=(format!("/tournaments/{}/rounds/{}/draws/setreleased", self.tournament.id, round.id)) method="post" {
+                                        form action=(format!("/tournaments/{}/rounds/{}/draws/setreleased", self.tournament.id, round.id)) method="post"
+                                            hx-post=(format!("/tournaments/{}/rounds/{}/draws/setreleased?modal=true", self.tournament.id, round.id))
+                                            hx-target="#ui-modal" hx-swap="innerHTML" {
                                             @let can_publish_full_draw =
                                                 *self.can_publish_full_draw.get(&round.id).unwrap_or(&false);
                                             div class="d-grid gap-2" {
@@ -130,7 +139,7 @@ impl Renderable for BriefingRoomView {
                                         hr class="my-3";
                                         h6 class="card-subtitle mb-2 text-muted" { "Motions Release" }
                                         p class="card-text" { "The motions for this round are not yet public." }
-                                        form action=(format!("/tournaments/{}/rounds/{}/motions/publish", self.tournament.id, round.id)) method="post" {
+                                        form action=(format!("/tournaments/{}/rounds/{}/motions/publish", self.tournament.id, round.id)) method="post" hx-post=(format!("/tournaments/{}/rounds/{}/motions/publish?modal=true", self.tournament.id, round.id)) hx-target="#ui-modal" {
                                             div class="d-grid gap-2" {
                                                 button class="btn btn-warning" type="submit" { "Publish Motions" }
                                             }
@@ -147,53 +156,64 @@ impl Renderable for BriefingRoomView {
     }
 }
 
+#[derive(Deserialize, Default, Debug)]
+pub struct BriefingQuery {
+    #[serde(default)]
+    modal: bool,
+    error: Option<String>,
+}
+
 pub async fn get_briefing_room(
     Path((tournament_id, round_seq)): Path<(String, i64)>,
+    Query(query): Query<BriefingQuery>,
     user: User<true>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
     let all_rounds = TournamentRounds::fetch(&tournament_id, &mut *conn)?;
-    let rounds = Round::of_seq(round_seq, &tournament_id, &mut *conn);
+    let rounds = rounds::table
+        .filter(rounds::tournament_id.eq(&tournament_id))
+        .filter(rounds::seq.eq(round_seq))
+        .load::<Round>(&mut *conn)?;
 
-    let can_publish_motions: HashMap<String, bool> = rounds
-        .iter()
-        .map(|round| {
-            let motions_count = motions_of_round::table
-                .filter(motions_of_round::round_id.eq(&round.id))
-                .count()
-                .get_result::<i64>(&mut *conn)
-                .unwrap_or(0);
-
-            let has_unpublished_motions = motions_of_round::table
-                .filter(motions_of_round::round_id.eq(&round.id))
-                .filter(motions_of_round::published_at.is_null())
-                .count()
-                .get_result::<i64>(&mut *conn)
-                .unwrap_or(0)
-                > 0;
-
-            (
-                round.id.clone(),
-                motions_count > 0 && has_unpublished_motions,
-            )
-        })
-        .collect();
-
-    let can_publish_full_draw: HashMap<String, bool> = rounds
-        .iter()
-        .map(|round| {
-            (round.id.clone(), round_has_motion(&round.id, &mut *conn))
-        })
-        .collect();
+    if rounds.is_empty() {
+        return crate::util_resp::err_not_found();
+    }
+    let mut can_publish_motions = HashMap::new();
+    let mut can_publish_full_draw = HashMap::new();
+    for round in &rounds {
+        let has_motion = round_has_motion(&round.id, &mut *conn)?;
+        let unpublished = motions_of_round::table
+            .filter(motions_of_round::tournament_id.eq(&tournament_id))
+            .filter(motions_of_round::round_id.eq(&round.id))
+            .filter(motions_of_round::published_at.is_null())
+            .count()
+            .get_result::<i64>(&mut *conn)?
+            > 0;
+        can_publish_motions.insert(round.id.clone(), unpublished);
+        can_publish_full_draw.insert(round.id.clone(), has_motion);
+    }
 
     let view = BriefingRoomView {
         tournament: tournament.clone(),
         rounds,
         can_publish_motions,
         can_publish_full_draw,
+        error: query.error,
     };
+    if query.modal {
+        let return_url =
+            format!("/tournaments/{tournament_id}/rounds/{round_seq}/draw");
+        return success(
+            crate::ui::presentation::modal(
+                "Publication and briefing",
+                &return_url,
+                view,
+            )
+            .render(),
+        );
+    }
 
     success(
         Page::new()
@@ -216,6 +236,7 @@ pub struct SetDrawPublished {
 #[tracing::instrument(skip(conn))]
 pub async fn set_draw_published(
     Path((tournament_id, round_id)): Path<(String, String)>,
+    Query(query): Query<BriefingQuery>,
     user: User<true>,
     mut conn: Conn<true>,
     Form(form): axum::Form<SetDrawPublished>,
@@ -224,34 +245,38 @@ pub async fn set_draw_published(
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
-    // Note: "none" is not a valid status for an extant draw (i.e. must delete
-    // the draw to have status "none")
-    if !VALID_DRAW_STATUSES.contains(&form.status.as_str())
-        || form.status.as_str() == "none"
+    let round = rounds::table
+        .filter(rounds::id.eq(&round_id))
+        .filter(rounds::tournament_id.eq(&tournament_id))
+        .first::<Round>(&mut *conn)?;
+    let error = if !VALID_DRAW_STATUSES.contains(&form.status.as_str())
+        || form.status == "none"
     {
-        return bad_request(maud! { p { "Invalid draw status" } }.render());
-    }
-
-    let round = match rounds::table
-        .filter(rounds::id.eq(round_id))
-        .first::<Round>(&mut *conn)
-        .optional()
-        .unwrap()
+        Some("Invalid draw status.")
+    } else if round.draw_status == "none" {
+        Some("Generate a draw before publishing it.")
+    } else if form.status == "released_full"
+        && !round_has_motion(&round.id, &mut *conn)?
     {
-        Some(round) => round,
-        None => return err_not_found(),
+        Some("Add a motion before publishing the full draw.")
+    } else {
+        None
     };
-
-    if form.status == "released_full"
-        && !round_has_motion(&round.id, &mut *conn)
-    {
+    if let Some(error) = error {
+        if query.modal {
+            return get_briefing_room(
+                Path((tournament_id, round.seq)),
+                Query(BriefingQuery {
+                    modal: true,
+                    error: Some(error.into()),
+                }),
+                user,
+                conn,
+            )
+            .await;
+        }
         return bad_request(
-            Page::new()
-                .user(user)
-                .body(maud! {
-                    ErrorAlert msg = "Add a motion before publishing the full draw.";
-                })
-                .render(),
+            maud! { div class="alert alert-danger" { (error) } }.render(),
         );
     }
 
@@ -268,23 +293,24 @@ pub async fn set_draw_published(
                 },
             ),
         ))
-        .execute(&mut *conn)
-        .unwrap();
+        .execute(&mut *conn)?;
 
-    see_other_ok(Redirect::to(&format!(
-        "/tournaments/{}/rounds/{}/briefing",
-        tournament_id, round.seq
-    )))
+    let path =
+        format!("/tournaments/{tournament_id}/rounds/{}/draw", round.seq);
+    if query.modal {
+        crate::util_resp::hx_redirect(path)
+    } else {
+        see_other_ok(Redirect::to(&path))
+    }
 }
 
 fn round_has_motion(
     round_id: &str,
     conn: &mut impl diesel::connection::LoadConnection<Backend = Sqlite>,
-) -> bool {
-    motions_of_round::table
+) -> Result<bool, diesel::result::Error> {
+    Ok(motions_of_round::table
         .filter(motions_of_round::round_id.eq(round_id))
         .count()
-        .get_result::<i64>(conn)
-        .unwrap_or(0)
-        > 0
+        .get_result::<i64>(conn)?
+        > 0)
 }

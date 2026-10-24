@@ -14,7 +14,6 @@ use crate::{
 };
 
 pub mod manage;
-pub mod public;
 
 pub enum Participant {
     Speaker(Speaker),
@@ -164,10 +163,10 @@ impl TournamentParticipants {
 
         let team_speakers = {
             let list = speakers_of_team::table
-                // .inner_join(teams::table)
-                .filter(diesel::dsl::exists(
-                    speakers::table.filter(speakers::tournament_id.eq(&tid)),
-                ))
+                .inner_join(speakers::table)
+                .inner_join(teams::table)
+                .filter(speakers::tournament_id.eq(tid))
+                .filter(teams::tournament_id.eq(tid))
                 .select((
                     speakers_of_team::team_id,
                     speakers_of_team::speaker_id,

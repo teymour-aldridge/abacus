@@ -230,6 +230,10 @@ impl<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool> Renderable
 
                     script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.7/dist/htmx.min.js" integrity="sha384-ZBXiYtYQ6hJ2Y0ZNoYuI+Nq5MqWBr+chMrS/RkXpNzQCApHEhOt2aY8EJgqwHLkJ" crossorigin="anonymous" {
                     }
+                    script src="https://cdn.jsdelivr.net/npm/htmx-ext-ws@2.0.2" crossorigin="anonymous" {}
+                    script {
+                        (Raw::dangerously_create("document.addEventListener('htmx:afterSwap', function(e) { if (e.detail.target.id === 'ui-modal') { const dialog = e.detail.target.querySelector('dialog'); if (dialog && !dialog.open) dialog.showModal(); } });"))
+                    }
                     script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous" {}
                     link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet";
                     link rel="stylesheet" href="/style.css";
@@ -245,6 +249,7 @@ impl<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool> Renderable
                 body class=(format!("abacus-shell d-flex flex-column vh-100 overflow-hidden {}", if self.tournament.is_some() { "abacus-has-tournament" } else { "" }))
                     style=(tournament_theme(self.tournament.as_ref())) {
 
+                    div id="ui-modal" {}
                     div class=(format!("abacus-topbar flex-shrink-0 {}", if self.user.is_some() { "abacus-signed-in-interface" } else { "abacus-public-interface" })) {
                         div class="container-fluid px-4" {
                             div class="abacus-masthead d-flex align-items-center justify-content-between pt-3 pb-2" {
@@ -282,10 +287,10 @@ impl<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool> Renderable
 
                             @if let Some(tournament) = &self.tournament {
                                 nav class="abacus-primary-nav d-flex gap-2 pb-3" aria-label="Tournament navigation" {
+                                    a class="nav-tab-link text-decoration-none" href=(format!("/tournaments/{}/rounds",tournament.id)) { "Rounds" }
                                     @if let Some(rounds) = &self.current_rounds {
                                         @if !rounds.is_empty() {
                                             @let seq = rounds[0].seq;
-                                            @let is_draw_pub = tournament.show_draws && rounds.iter().any(|r| r.is_draw_public());
                                             @let is_results_pub = rounds.iter().all(|r| r.is_results_public());
 
                                             @if is_results_pub {
@@ -293,7 +298,7 @@ impl<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool> Renderable
                                                      href=(format!("/tournaments/{}/rounds/{}/results", tournament.id, seq)) {
                                                      "Results"
                                                  }
-                                             } @else if is_draw_pub {
+                                             } @else {
                                                  a class=(format!("nav-tab-link text-decoration-none {}", if self.active_nav == Some(ActiveNav::Draw) { "nav-tab-active" } else { "" }))
                                                      href=(format!("/tournaments/{}/rounds/{}/draw", tournament.id, seq)) {
                                                      "Draw"
@@ -307,19 +312,11 @@ impl<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool> Renderable
                                          "Participants"
                                      }
 
-                                     @if self.user.is_some() {
-                                         a class=(format!("nav-tab-link text-decoration-none {}", if self.active_nav == Some(ActiveNav::Break) { "nav-tab-active" } else { "" }))
-                                             href=(format!("/tournaments/{}/break", tournament.id)) {
-                                             "Break"
-                                         }
-                                     }
+                                     a class=(format!("nav-tab-link text-decoration-none {}", if self.active_nav == Some(ActiveNav::Break) { "nav-tab-active" } else { "" }))
+                                         href=(format!("/tournaments/{}/categories", tournament.id)) { "Categories" }
 
-                                     @if tournament.standings_public || tournament.team_tab_public {
-                                         a class=(format!("nav-tab-link text-decoration-none {}", if self.active_nav == Some(ActiveNav::Standings) { "nav-tab-active" } else { "" }))
-                                             href=(format!("/tournaments/{}/tab/team", tournament.id)) {
-                                             "Standings"
-                                         }
-                                     }
+                                     a class=(format!("nav-tab-link text-decoration-none {}", if self.active_nav == Some(ActiveNav::Standings) { "nav-tab-active" } else { "" }))
+                                         href=(format!("/tournaments/{}/tab/team", tournament.id)) { "Standings" }
 
                                      a class=(format!("nav-tab-link text-decoration-none {}", if self.active_nav == Some(ActiveNav::Motions) { "nav-tab-active" } else { "" }))
                                          href=(format!("/tournaments/{}/motions", tournament.id)) {

@@ -1,5 +1,6 @@
 use crate::tournaments::rounds::ballots::form::QsForm;
-use axum::extract::Path;
+use crate::ui::response::{ModalQuery, after_edit, form_page};
+use axum::extract::{Path, Query};
 use axum::response::Redirect;
 use chrono::Utc;
 use diesel::{connection::LoadConnection, sqlite::Sqlite};
@@ -10,12 +11,10 @@ use uuid::Uuid;
 use crate::{
     auth::User,
     state::Conn,
-    template::Page,
     tournaments::{
         Tournament,
-        manage::sidebar::{SidebarPage, SidebarWrapper},
         rounds::{
-            Round, TournamentRounds,
+            Round,
             ballots::{
                 BallotMetadata, BallotRepr, form::fields_of_single_ballot_form,
                 update_debate_status,
@@ -23,20 +22,24 @@ use crate::{
             draws::DebateRepr,
         },
     },
-    util_resp::{StandardResponse, err_not_found, see_other_ok, success},
+    util_resp::{StandardResponse, err_not_found},
 };
 
 fn redirect_to_ballot_set(
+    query: ModalQuery,
     tournament_id: &str,
     debate_id: &str,
 ) -> StandardResponse {
-    see_other_ok(Redirect::to(&format!(
-        "/tournaments/{}/debates/{}/ballots",
-        tournament_id, debate_id
-    )))
+    crate::tournaments::manage::workspace::after_redirect(
+        query,
+        Redirect::to(&format!(
+            "/tournaments/{}/debates/{}/ballots",
+            tournament_id, debate_id
+        )),
+    )
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 /// Ballot form used for judges to submit ballots, and for tab directors to
 /// edit them behind the scenes.
 ///
@@ -57,7 +60,7 @@ pub struct BallotFormSingleSpeakerEntry {
     pub score: Option<f32>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BallotFormSingleTeamEntry {
     pub speakers: Vec<BallotFormSingleSpeakerEntry>,
     pub points: Option<usize>,
@@ -158,8 +161,6 @@ fn build_edit_ballot(
     has_prior_ballot: bool,
     conn: &mut impl LoadConnection<Backend = Sqlite>,
 ) -> Result<BallotRepr, crate::util_resp::FailureResponse> {
-    tracing::trace!("form = {form:?}");
-
     use crate::util_resp::bad_request_from_string;
 
     let mut builder = crate::tournaments::rounds::ballots::BallotBuilder::new(
@@ -200,24 +201,23 @@ pub async fn edit_ballot_page(
     Path((tournament_id, debate_id, judge_id)): Path<(String, String, String)>,
     user: User<true>,
     mut conn: Conn<true>,
+    Query(query): Query<ModalQuery>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
-    let all_rounds =
-        TournamentRounds::fetch(&tournament_id, &mut *conn).unwrap();
-    let debate_repr = DebateRepr::fetch(&debate_id, &mut *conn);
+    super::scope_debate(&tournament_id, &debate_id, &mut *conn)?;
+    let debate_repr = DebateRepr::try_fetch(&debate_id, &mut *conn)?;
     let round =
         Round::fetch(&tournament_id, &debate_repr.debate.round_id, &mut *conn)?;
 
-    assert!(
-        !debate_repr.motions.is_empty(),
-        "ballot edit requires at least one motion"
-    );
+    if debate_repr.motions.is_empty() {
+        return crate::util_resp::bad_request(maud! { div class="alert alert-warning" { "Ballot entry is unavailable until a motion is available for this debate." } }.render());
+    }
 
     // todo: set flash message explaining why the redirect happened
     if round.draw_status != "released_full" {
-        return redirect_to_ballot_set(&tournament_id, &debate_id);
+        return redirect_to_ballot_set(query, &tournament_id, &debate_id);
     }
 
     let latest_ballots = debate_repr.latest_ballots(&mut *conn);
@@ -234,45 +234,56 @@ pub async fn edit_ballot_page(
     let ballot_form_data = judge_ballot
         .map(|b| BallotForm::from_repr(&b, &debate_repr, &tournament));
 
-    let cloned_tournament = tournament.clone();
-    let ballot_form_fields = fields_of_single_ballot_form(
-        &cloned_tournament,
+    render_edit(
+        query,
+        tournament,
+        user,
         &round,
         &debate_repr,
+        &judge.name,
+        &judge.id,
         ballot_form_data.as_ref(),
+        None,
+    )
+}
+
+fn render_edit(
+    query: ModalQuery,
+    tournament: Tournament,
+    user: User<true>,
+    round: &Round,
+    debate: &DebateRepr,
+    judge_name: &str,
+    judge_id: &str,
+    form: Option<&BallotForm>,
+    error: Option<&str>,
+) -> StandardResponse {
+    let url = format!(
+        "/tournaments/{}/debates/{}/ballots",
+        tournament.id, debate.debate.id
     );
-
-    success(
-        Page::new()
-            .user(user)
-            .tournament(tournament.clone())
-            .body(maud! {
-                SidebarWrapper
-                    rounds=(&all_rounds)
-                    tournament=(&tournament)
-                    active_page=(Some(SidebarPage::Ballots))
-                    selected_seq=(Some(round.seq))
-                {
-                    div class="container py-5" style="max-width: 800px;" {
-                        header class="mb-5" {
-                            h1 class="display-4 fw-bold mb-3" { "Edit Ballot" }
-                            h2 class="h4 text-muted mb-3" { "Debate " (debate_repr.debate.number) " — Judge " (judge.name) }
-                        }
-
-                        form method="post" {
-                            (ballot_form_fields)
-
-                            button type="submit" class="btn btn-dark btn-lg mt-4" {
-                                "Save Ballot Overrides"
-                            }
-                            a href=(format!("/tournaments/{}/debates/{}/ballots", tournament_id, debate_id)) class="btn btn-outline-secondary btn-lg mt-4 ms-2" {
-                                "Cancel"
-                            }
-                        }
-                    }
-                }
-            })
-            .render(),
+    let action = format!(
+        "/tournaments/{}/debates/{}/judges/{}/edit",
+        tournament.id, debate.debate.id, judge_id
+    );
+    let modal_action = format!("{action}?modal=true");
+    let fields = fields_of_single_ballot_form(&tournament, round, debate, form);
+    form_page(
+        query,
+        "Edit ballot",
+        &url,
+        &tournament,
+        user,
+        maud! {
+            span class="badge bg-secondary" { "Restricted: Tournament organisers" }
+            h2 { "Debate " (debate.debate.number) " — " (judge_name) }
+            @if let Some(error) = error { div class="alert alert-danger" { (error) } }
+            form method="post" action=(action) hx-post=(modal_action) hx-target="#ui-modal" {
+                (fields)
+                button type="submit" class="btn btn-dark" { "Save ballot overrides" }
+            }
+        },
+        error.is_some(),
     )
 }
 
@@ -280,21 +291,22 @@ pub async fn do_edit_ballot(
     Path((tournament_id, debate_id, judge_id)): Path<(String, String, String)>,
     user: User<true>,
     mut conn: Conn<true>,
+    Query(query): Query<ModalQuery>,
     QsForm(form): QsForm<BallotForm>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
-    let debate_repr = DebateRepr::fetch(&debate_id, &mut *conn);
+    super::scope_debate(&tournament_id, &debate_id, &mut *conn)?;
+    let debate_repr = DebateRepr::try_fetch(&debate_id, &mut *conn)?;
     let round =
         Round::fetch(&tournament_id, &debate_repr.debate.round_id, &mut *conn)?;
 
-    assert!(
-        !debate_repr.motions.is_empty(),
-        "ballot edit requires at least one motion"
-    );
+    if debate_repr.motions.is_empty() {
+        return crate::util_resp::bad_request(maud! { div class="alert alert-warning" { "Ballot entry is unavailable until a motion is available for this debate." } }.render());
+    }
     if round.draw_status != "released_full" {
-        return redirect_to_ballot_set(&tournament_id, &debate_id);
+        return redirect_to_ballot_set(query, &tournament_id, &debate_id);
     }
 
     let judge = debate_repr.judges.get(&judge_id);
@@ -330,7 +342,7 @@ pub async fn do_edit_ballot(
     };
 
     let repr = build_edit_ballot(
-        form,
+        form.clone(),
         &tournament,
         &round,
         &debate_repr,
@@ -340,16 +352,39 @@ pub async fn do_edit_ballot(
         prior_version,
         has_prior_ballot,
         &mut *conn,
-    )?;
+    );
+    let repr = match repr {
+        Ok(repr) => repr,
+        Err(crate::util_resp::FailureResponse::BadRequest(_)) => {
+            return render_edit(
+                query,
+                tournament.clone(),
+                user,
+                &round,
+                &debate_repr,
+                &judge.unwrap().name,
+                &judge_id,
+                Some(&form),
+                Some(
+                    "The ballot is invalid or was updated since this form opened. Check the scores, speakers, points, and version, then retry.",
+                ),
+            );
+        }
+        Err(error) => return Err(error),
+    };
 
     repr.insert(&mut *conn);
 
     // Refresh debate repr and update status
-    let debate_repr = DebateRepr::fetch(&debate_id, &mut *conn);
+    super::scope_debate(&tournament_id, &debate_id, &mut *conn)?;
+    let debate_repr = DebateRepr::try_fetch(&debate_id, &mut *conn)?;
     update_debate_status(&debate_repr, &tournament, &mut *conn);
 
-    see_other_ok(Redirect::to(&format!(
-        "/tournaments/{}/debates/{}/ballots",
-        tournament_id, debate_id
-    )))
+    after_edit(
+        query,
+        format!(
+            "/tournaments/{}/debates/{}/ballots",
+            tournament_id, debate_id
+        ),
+    )
 }

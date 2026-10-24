@@ -1554,7 +1554,7 @@ impl Action {
                     };
                     let path = match page_idx % 38 {
                         0 => Some(format!("/tournaments/{}", tid)),
-                        1 => Some(format!("/tournaments/{}/manage", tid)),
+                        1 => Some(format!("/tournaments/{}", tid)),
                         2 => Some(format!("/tournaments/{}/participants", tid)),
                         3 => Some(format!(
                             "/tournaments/{}/participants/privateurls",
@@ -1580,14 +1580,14 @@ impl Action {
                             Some(format!("/tournaments/{}/rounds/create", tid))
                         }
                         11 => Some(format!(
-                            "/tournaments/{}/standings/teams",
+                            "/tournaments/{}/tab/team",
                             tid
                         )),
                         12 => Some(format!("/tournaments/{}/tab/team", tid)),
                         13 => Some(format!("/tournaments/{}/motions", tid)),
                         14 => round_path(""),
-                        15 => round_path("/setup"),
-                        16 => round_path("/draw/manage"),
+                        15 => round_path(""),
+                        16 => round_path("/draw"),
                         17 => round_path("/briefing"),
                         18 => round_path("/results/manage"),
                         19 => round_path("/availability/judges"),

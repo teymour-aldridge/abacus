@@ -7,10 +7,7 @@
 //        tournament
 //      - if not, reports what needs to be changed to make this possible
 
-use axum::{
-    extract::{Form, Path},
-    response::Redirect,
-};
+use axum::extract::{Form, Path};
 use diesel::{SqliteConnection, prelude::*, result::DatabaseErrorKind};
 use hypertext::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -25,7 +22,6 @@ use crate::{
     template::Page,
     tournaments::{
         Tournament,
-        manage::sidebar::SidebarWrapper,
         participants::TournamentParticipants,
         rounds::{
             TournamentRounds,
@@ -34,9 +30,7 @@ use crate::{
         },
         standings::compute::refresh_saved_team_standings,
     },
-    util_resp::{
-        FailureResponse, StandardResponse, bad_request, see_other_ok, success,
-    },
+    util_resp::{FailureResponse, StandardResponse, bad_request},
 };
 
 fn default_true() -> bool {
@@ -540,30 +534,6 @@ fn validate_tournament_config_update(
     }
 }
 
-fn config_validation_error_response(
-    user: &User<true>,
-    tournament: &Tournament,
-    problems: Vec<String>,
-) -> FailureResponse {
-    FailureResponse::BadRequest(
-        Page::new()
-            .user(user.clone())
-            .tournament(tournament.clone())
-            .body(maud! {
-                h1 { "Configuration cannot be applied" }
-                p {
-                    "The new configuration is incompatible with the current tournament data."
-                }
-                ul {
-                    @for problem in &problems {
-                        li { (problem) }
-                    }
-                }
-            })
-            .render(),
-    )
-}
-
 fn config_update_error_response(
     user: &User<true>,
     tournament: &Tournament,
@@ -648,119 +618,88 @@ fn apply_tournament_config(
 
 pub async fn view_tournament_configuration(
     Path(tournament_id): Path<String>,
-    user: User<true>,
+    axum::extract::Query(query): axum::extract::Query<
+        super::workspace::WorkspaceQuery,
+    >,
+    user: Option<User<true>>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
-    tournament.check_user_is_superuser(&user.id, &mut *conn)?;
-
+    let access = crate::permission::TournamentAccess::resolve(
+        &tournament_id,
+        user.as_ref().map(|u| u.id.as_str()),
+        &mut *conn,
+    )?;
+    if !access.is_superuser() {
+        if query.editing() {
+            return Err(FailureResponse::Unauthorized(()));
+        }
+        return super::workspace::unavailable(
+            &tournament,
+            user,
+            "Configuration",
+        );
+    }
+    let user = user.expect("superuser is authenticated");
+    let config = toml::to_string(&config_of_tournament(&tournament)).unwrap();
+    let url = format!("/tournaments/{tournament_id}/configuration");
+    if !query.editing() {
+        return super::workspace::read_page(
+            &tournament,
+            user,
+            "Configuration",
+            &url,
+            &access,
+            maud! { pre { (config) } },
+        );
+    }
     let presets = tournament_presets::table
         .order(tournament_presets::name.asc())
-        .load::<TournamentPreset>(&mut *conn)
-        .unwrap();
-
-    let rounds = TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
-    let current_rounds = crate::tournaments::rounds::Round::current_rounds(
-        &tournament.id,
-        &mut *conn,
-    );
-
-    success(
-        Page::new()
-            .user(user)
-            .tournament(tournament.clone())
-            .current_rounds(current_rounds)
-            .body(maud! {
-                SidebarWrapper tournament=(&tournament) rounds=(&rounds) active_page=(None) selected_seq=(None) {
-                    h1 {
-                        "Edit configuration for " (tournament.name)
-                    }
-
-                    p class="text-secondary" {
-                        "Start from a global preset, or provide a custom TOML configuration."
-                    }
-
-                    h2 class="h4 mt-4" { "Global presets" }
-                    table class="table align-middle" {
-                        thead {
-                            tr {
-                                th scope="col" { "Preset" }
-                                th scope="col" { "Description" }
-                                th scope="col" { "" }
-                            }
-                        }
-                        tbody {
-                            @for preset in &presets {
-                                tr {
-                                    td class="fw-semibold" { (preset.name) }
-                                    td { (preset.description) }
-                                    td class="text-end" {
-                                        form method="post" action=(format!("/tournaments/{}/configuration/preset", tournament.id)) {
-                                            input type="hidden" name="preset_id" value=(preset.id);
-                                            button type="submit" class="btn btn-outline-primary btn-sm" {
-                                                "Use preset"
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    h2 class="h4 mt-5" { "Custom TOML" }
-                    p class="text-secondary" {
-                        "Edit the current tournament configuration directly in TOML."
-                    }
-                    a href=(format!("/tournaments/{}/configuration/custom", tournament.id)) class="btn btn-outline-secondary" {
-                        "Edit TOML"
-                    }
+        .load::<TournamentPreset>(&mut *conn)?;
+    crate::tournaments::manage::workspace::editor_page(
+        query.form(),
+        "Configuration",
+        &url.clone(),
+        &tournament.clone(),
+        user,
+        maud! {
+            (config_form(&tournament_id, &config, None))
+            h3 { "Global presets" }
+            @for preset in &presets {
+                form method="post" action=(format!("{url}/preset")) hx-post=(format!("{url}/preset?modal=true")) hx-target="#ui-modal" {
+                    input type="hidden" name="preset_id" value=(preset.id);
+                    button class="btn btn-outline-primary" type="submit" { "Use " (preset.name) }
+                    p { (preset.description) }
                 }
-            })
-            .render(),
+            }
+        },
+        false,
     )
 }
-
+fn config_form<'a>(
+    tid: &'a str,
+    config: &'a str,
+    error: Option<&'a str>,
+) -> impl Renderable + 'a {
+    maud! {
+        @if let Some(error) = error { div class="alert alert-danger" role="alert" { (error) } }
+        form method="post" action=(format!("/tournaments/{tid}/configuration")) hx-post=(format!("/tournaments/{tid}/configuration?modal=true")) hx-target="#ui-modal" {
+            label for="tournament-config" { "TOML configuration" }
+            textarea id="tournament-config" class="form-control" name="config" rows="25" { (config) }
+            button class="btn btn-primary" type="submit" { "Save configuration" }
+        }
+    }
+}
 pub async fn view_custom_tournament_configuration(
-    Path(tournament_id): Path<String>,
-    user: User<true>,
-    mut conn: Conn<true>,
+    path: Path<String>,
+    query: axum::extract::Query<super::workspace::WorkspaceQuery>,
+    user: Option<User<true>>,
+    conn: Conn<true>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
-    tournament.check_user_is_superuser(&user.id, &mut *conn)?;
-
-    let config = toml::to_string(&config_of_tournament(&tournament)).unwrap();
-
-    let rounds = TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
-    let current_rounds = crate::tournaments::rounds::Round::current_rounds(
-        &tournament.id,
-        &mut *conn,
-    );
-
-    success(
-        Page::new()
-            .user(user)
-            .tournament(tournament.clone())
-            .current_rounds(current_rounds)
-            .body(maud! {
-                SidebarWrapper tournament=(&tournament) rounds=(&rounds) active_page=(None) selected_seq=(None) {
-                    h1 {
-                        "Edit configuration for " (tournament.name)
-                    }
-
-                    form method="post" action=(format!("/tournaments/{}/configuration", tournament.id)) {
-                        div class="mb-3" {
-                            textarea name="config" style="resize: both;" rows="25" cols="80" {
-                                (config)
-                            }
-                        }
-                        button type="submit" class="btn btn-primary" {
-                            "Submit"
-                        }
-                    }
-                }
-            })
-            .render(),
-    )
+    let mut query = query.0;
+    query.edit = true;
+    view_tournament_configuration(path, axum::extract::Query(query), user, conn)
+        .await
 }
 
 #[derive(Deserialize)]
@@ -775,6 +714,9 @@ pub struct ApplyPresetConfigForm {
 
 pub async fn update_tournament_configuration(
     Path(tournament_id): Path<String>,
+    axum::extract::Query(query): axum::extract::Query<
+        crate::ui::response::ModalQuery,
+    >,
     user: User<true>,
     mut conn: Conn<true>,
     Form(form): Form<UpdateConfigForm>,
@@ -782,22 +724,60 @@ pub async fn update_tournament_configuration(
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
-    let new_config = parse_tournament_config(&form.config, &user, &tournament)?;
-
-    validate_tournament_config_update(&tournament, &new_config, &mut *conn)
-        .map_err(|problems| {
-            config_validation_error_response(&user, &tournament, problems)
-        })?;
+    let new_config = match parse_tournament_config(
+        &form.config,
+        &user,
+        &tournament,
+    ) {
+        Ok(config) => config,
+        Err(_) => {
+            return crate::tournaments::manage::workspace::editor_page(
+                query,
+                "Configuration",
+                &format!("/tournaments/{tournament_id}/configuration"),
+                &tournament,
+                user,
+                config_form(
+                    &tournament_id,
+                    &form.config,
+                    Some(
+                        "Invalid TOML or ballot format. Check the configuration and try again.",
+                    ),
+                ),
+                true,
+            );
+        }
+    };
+    if let Err(problems) =
+        validate_tournament_config_update(&tournament, &new_config, &mut *conn)
+    {
+        let error = problems.join("\n");
+        return crate::tournaments::manage::workspace::editor_page(
+            query,
+            "Configuration",
+            &format!("/tournaments/{tournament_id}/configuration"),
+            &tournament,
+            user,
+            config_form(&tournament_id, &form.config, Some(&error)),
+            true,
+        );
+    }
 
     apply_tournament_config(&tournament, new_config, &mut *conn)
         .map_err(|err| config_update_error_response(&user, &tournament, err))?;
     refresh_saved_team_standings(&tournament.id, &mut *conn)?;
 
-    see_other_ok(Redirect::to(&format!("/tournaments/{}", &tournament.id)))
+    crate::ui::response::after_edit(
+        query,
+        format!("/tournaments/{}/configuration", &tournament.id),
+    )
 }
 
 pub async fn apply_tournament_preset(
     Path(tournament_id): Path<String>,
+    axum::extract::Query(query): axum::extract::Query<
+        crate::ui::response::ModalQuery,
+    >,
     user: User<true>,
     mut conn: Conn<true>,
     Form(form): Form<ApplyPresetConfigForm>,
@@ -810,13 +790,26 @@ pub async fn apply_tournament_preset(
         .first::<TournamentPreset>(&mut *conn)?;
     let new_config =
         parse_tournament_config(&preset.config, &user, &tournament)?;
-    validate_tournament_config_update(&tournament, &new_config, &mut *conn)
-        .map_err(|problems| {
-            config_validation_error_response(&user, &tournament, problems)
-        })?;
+    if let Err(problems) =
+        validate_tournament_config_update(&tournament, &new_config, &mut *conn)
+    {
+        let error = problems.join("\n");
+        return crate::tournaments::manage::workspace::editor_page(
+            query,
+            "Configuration",
+            &format!("/tournaments/{tournament_id}/configuration"),
+            &tournament,
+            user,
+            config_form(&tournament_id, &preset.config, Some(&error)),
+            true,
+        );
+    }
     apply_tournament_config(&tournament, new_config, &mut *conn)
         .map_err(|err| config_update_error_response(&user, &tournament, err))?;
     refresh_saved_team_standings(&tournament.id, &mut *conn)?;
 
-    see_other_ok(Redirect::to(&format!("/tournaments/{}", &tournament.id)))
+    crate::ui::response::after_edit(
+        query,
+        format!("/tournaments/{}/configuration", &tournament.id),
+    )
 }

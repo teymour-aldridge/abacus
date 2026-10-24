@@ -16,14 +16,19 @@ impl<T: Renderable> Renderable for NonPublic<T> {
                     h5 class="card-title" {
                        (self.title)
                     }
-                    p class="card-subtitle text-muted" {
-                        "This is not yet public. It is only visible to you as a superuser."
-                    }
+                    span class="badge text-bg-danger" { "Unpublished" }
                 }
                 div class="card-body" {
                     (self.child)
                 }
             }
-        }.render_to(buffer)
+        }
+        .render_to(buffer)
+    }
+}
+
+impl<C: ?Sized, T: Renderable> super::View<C> for NonPublic<T> {
+    fn render_to(&self, _: &C, output: &mut super::HtmlBuffer) {
+        Renderable::render_to(self, output);
     }
 }

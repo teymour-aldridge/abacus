@@ -16,73 +16,99 @@ use crate::{
     template::Page,
     tournaments::{
         Tournament,
-        manage::sidebar::SidebarWrapper,
         rounds::{
-            Round, TournamentRounds,
+            Round,
             draws::manage::drawalgs::{self, MakeDrawError, do_draw},
         },
     },
     util_resp::{
         StandardResponse, bad_request, err_not_found, see_other_ok, success,
     },
-    widgets::alert::ErrorAlert,
 };
 
 #[derive(Deserialize)]
 pub struct DrawCreateQuery {
     force: Option<bool>,
+    #[serde(default)]
+    modal: bool,
+}
+
+fn generation_form<'a>(
+    tournament_id: &'a str,
+    round: &'a Round,
+    modal: bool,
+    error: Option<&'a str>,
+) -> impl Renderable + 'a {
+    let action = format!(
+        "/tournaments/{tournament_id}/rounds/{}/draws/create?force={}&modal={modal}",
+        round.id,
+        round.draw_status != "none"
+    );
+    maud! {
+        @if let Some(error) = error { div class="alert alert-danger" role="alert" { (error) } }
+        @if round.draw_status != "none" {
+            div class="alert alert-warning" role="alert" {
+                "A draw already exists. Generating a new draw will delete the existing draw."
+            }
+        }
+        @if modal {
+            form method="post" action=(&action) hx-post=(&action) hx-target="#ui-modal" hx-swap="innerHTML" {
+                button type="submit" class="btn btn-primary" { "Generate draw" }
+            }
+        } @else {
+            form method="post" action=(&action) {
+                button type="submit" class="btn btn-primary" { "Generate draw" }
+            }
+        }
+    }
 }
 
 pub async fn generate_draw_page(
     Path((tournament_id, round_id)): Path<(String, String)>,
+    Query(query): Query<DrawCreateQuery>,
     user: User<true>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
-
-    let round = match rounds::table
+    let round = rounds::table
         .filter(rounds::id.eq(&round_id))
         .filter(rounds::tournament_id.eq(&tournament.id))
-        .first::<Round>(&mut *conn)
-        .optional()
-        .unwrap()
-    {
-        Some(r) => r,
-        None => return err_not_found(),
-    };
+        .first::<Round>(&mut *conn)?;
+    generation_response(&tournament, &round, query.modal, None, user)
+}
 
-    let debates_exist = round.draw_status != "none";
-
-    let rounds = TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
-
-    success(
-        Page::new()
+fn generation_response<const TX: bool>(
+    tournament: &Tournament,
+    round: &Round,
+    modal: bool,
+    error: Option<&str>,
+    user: User<TX>,
+) -> StandardResponse {
+    let form = generation_form(&tournament.id, round, modal, error);
+    let return_url =
+        format!("/tournaments/{}/rounds/{}/draw", tournament.id, round.seq);
+    if modal {
+        success(
+            crate::ui::presentation::modal("Generate draw", &return_url, form)
+                .render(),
+        )
+    } else {
+        let page = Page::new()
             .tournament(tournament.clone())
             .user(user)
-            .body(maud! {
-                SidebarWrapper tournament=(&tournament) rounds=(&rounds) active_page=(Some(crate::tournaments::manage::sidebar::SidebarPage::Draw)) selected_seq=(Some(round.seq)) {
-                    @if debates_exist {
-                        ErrorAlert
-                            msg = "Warning: a draw already exists for this round. Creating
-                             a new draw will delete the old draw!";
-
-                        form method="post" action=(format!("/tournaments/{}/rounds/{}/draws/create?force=true", tournament_id, round_id)) {
-                            button type="submit" class="btn btn-danger" {
-                                "Delete existing draw and generate a new one"
-                            }
-                        }
-                    } @else {
-                        form method="post" {
-                            button type="submit" class="btn btn-primary" {
-                                "Generate draw"
-                            }
-                        }
-                    }
-                }
-            })
-            .render(),
-    )
+            .body(maud! { div class="container py-4" {
+                h1 { "Generate draw: " (round.name) }
+                (form)
+                a href=(&return_url) { "Return to draw" }
+            } })
+            .render();
+        if error.is_some() {
+            bad_request(page)
+        } else {
+            success(page)
+        }
+    }
 }
 
 pub async fn do_generate_draw(
@@ -106,8 +132,16 @@ pub async fn do_generate_draw(
 
     let user_id = user.id.clone();
 
+    let generation_pool = pool.clone();
     let result = spawn_blocking(move || {
-        let mut conn = pool.get().unwrap();
+        let mut conn = match generation_pool.get() {
+            Ok(conn) => conn,
+            Err(_) => {
+                return DrawResult::AuthError(Err(
+                    crate::util_resp::FailureResponse::ServerError(()),
+                ));
+            }
+        };
 
         let tournament =
             match Tournament::fetch(&tournament_id_clone, &mut conn) {
@@ -124,10 +158,10 @@ pub async fn do_generate_draw(
             .filter(rounds::tournament_id.eq(&tournament.id))
             .first::<Round>(&mut conn)
             .optional()
-            .unwrap()
         {
-            Some(t) => t,
-            None => {
+            Ok(Some(t)) => t,
+            Err(error) => return DrawResult::AuthError(Err(error.into())),
+            Ok(None) => {
                 return DrawResult::AuthError(err_not_found());
             }
         };
@@ -173,78 +207,60 @@ pub async fn do_generate_draw(
         }
     })
     .await
-    .unwrap();
+    .map_err(|_| crate::util_resp::FailureResponse::ServerError(()))?;
 
     match result {
         DrawResult::Success(tournament, round) => {
-            // Broadcast draw update to all connected clients
             let _ = tx.send(Msg {
                 tournament: tournament.clone(),
                 inner: MsgContents::DrawUpdated(round.id.clone()),
             });
-            see_other_ok(Redirect::to(&format!(
-                "/tournaments/{tournament_id}/rounds/{}",
+            let path = format!(
+                "/tournaments/{tournament_id}/rounds/{}/draw",
                 round.seq
-            )))
+            );
+            if query.modal {
+                crate::util_resp::hx_redirect(path)
+            } else {
+                see_other_ok(Redirect::to(&path))
+            }
         }
         DrawResult::AuthError(response) => response,
-        DrawResult::DrawError(e, tournament, _round) => {
-            let msg = match e {
-                MakeDrawError::InvalidConfiguration(str) => {
-                    format!("Invalid configuration: {str}")
-                }
-                MakeDrawError::InvalidTeamCount(str) => {
-                    format!("Wrong number of teams: {str}")
-                }
-                MakeDrawError::AlreadyInProgress => {
-                    return bad_request(
-                        Page::new()
-                            .user(user)
-                            .tournament(tournament)
-                            .body(maud! {
-                                p {
-                                    "Draw generation already in progress."
-                                }
-                                form method="post" action=(format!("/tournaments/{}/rounds/{}/draws/create?force=true", tournament_id, round_id)) {
-                                    button type="submit" class="btn btn-danger" {
-                                        "Override and generate new draw"
-                                    }
-                                }
-                            })
-                            .render(),
-                    );
-                }
-                MakeDrawError::TicketExpired => {
-                    "Draw generation was cancelled.".to_string()
-                }
-                MakeDrawError::Panic => {
-                    "Internal application error.".to_string()
-                }
+        DrawResult::DrawError(error, tournament, round) => {
+            let message = match error {
+                MakeDrawError::InvalidConfiguration(message) => format!("Invalid configuration: {message}"),
+                MakeDrawError::InvalidTeamCount(message) => format!("Wrong number of teams: {message}"),
+                MakeDrawError::AlreadyInProgress => "Draw generation is already in progress. Please wait before retrying.".into(),
+                MakeDrawError::TicketExpired => "Draw generation was cancelled.".into(),
+                MakeDrawError::Panic => "Internal application error.".into(),
             };
-
-            bad_request(
-                Page::new()
-                    .user(user)
-                    .tournament(tournament)
-                    .body(maud! {
-                        p {
-                            "We encountered the following error: " (msg)
-                        }
-                    })
-                    .render(),
+            generation_response(
+                &tournament,
+                &round,
+                query.modal,
+                Some(&message),
+                user,
             )
         }
-        DrawResult::PriorIncompleteRoundError(round, tournament) => bad_request(
-            Page::new()
-                .user(user)
-                .tournament(tournament)
-                .body(maud! {
-                    p {
-                        "Error: previous round " (round.name) " must be marked"
-                        " as completed first!"
-                    }
-                })
-                .render(),
-        ),
+        DrawResult::PriorIncompleteRoundError(previous, tournament) => {
+            let mut conn = pool.get().map_err(|_| {
+                crate::util_resp::FailureResponse::ServerError(())
+            })?;
+            let round = rounds::table
+                .filter(rounds::id.eq(&round_id))
+                .filter(rounds::tournament_id.eq(&tournament_id))
+                .first::<Round>(&mut conn)?;
+            let message = format!(
+                "Previous round {} must be marked as completed first.",
+                previous.name
+            );
+            generation_response(
+                &tournament,
+                &round,
+                query.modal,
+                Some(&message),
+                user,
+            )
+        }
     }
 }

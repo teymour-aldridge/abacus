@@ -62,7 +62,7 @@ pub async fn feedback_table_page(
 
     let page = query.page.unwrap_or(1).max(1);
     let per_page = 128;
-    let offset = (page - 1) * per_page;
+    let offset = (page - 1).saturating_mul(per_page);
 
     let latest_feedback_sql = format!(
         r#"
@@ -251,6 +251,7 @@ impl Renderable for FeedbackTableRenderer {
             SidebarWrapper tournament=(&self.tournament) rounds=(&self.rounds) active_page=(None) selected_seq=(None) {
                 div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom" {
                     h1 class="h2" { "Feedback Submissions" }
+                    span class="badge bg-secondary" { "Restricted: Tournament organisers" }
                 }
 
             div class="table-responsive" {

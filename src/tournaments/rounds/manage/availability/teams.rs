@@ -22,7 +22,6 @@ use crate::{
     msg::{Msg, MsgContents},
     schema::{rounds, team_availability, teams},
     state::{Conn, DbPool},
-    template::Page,
     tournaments::{
         Tournament,
         manage::sidebar::SidebarWrapper,
@@ -30,9 +29,7 @@ use crate::{
         rounds::{Round, TournamentRounds},
         teams::Team,
     },
-    util_resp::{
-        StandardResponse, bad_request, err_not_found, see_other_ok, success,
-    },
+    util_resp::{StandardResponse, err_not_found},
 };
 
 pub struct ManageAvailabilityTable<'r> {
@@ -40,6 +37,8 @@ pub struct ManageAvailabilityTable<'r> {
     rounds: &'r [Round],
     teams: &'r [Team],
     teams_and_availability: &'r HashMap<(String, String), bool>,
+    editing: bool,
+    oob: bool,
 }
 
 impl<'r> Renderable for ManageAvailabilityTable<'r> {
@@ -48,9 +47,9 @@ impl<'r> Renderable for ManageAvailabilityTable<'r> {
         buffer: &mut hypertext::Buffer<hypertext::context::Node>,
     ) {
         maud! {
-            table class="table table-striped table-bordered" id="participantsTable"
-                  hx-ext="ws" hx-swap-oob="morphdom"
-                  "ws-connect"=(format!("/tournaments/{}/rounds/{}/availability/teams/ws", self.tournament_id, self.rounds[0].seq)) {
+            table class="table table-striped table-bordered" id=(if self.editing { "availability-teams-editor-table" } else { "availability-teams-read" })
+                  hx-ext="ws" hx-swap-oob=[self.oob.then_some("outerHTML")]
+                  "ws-connect"=(format!("/tournaments/{}/rounds/{}/availability/teams/ws?edit={}", self.tournament_id, self.rounds[0].seq, self.editing)) {
                 thead {
                     tr {
                         th scope="col" {
@@ -79,8 +78,9 @@ impl<'r> Renderable for ManageAvailabilityTable<'r> {
                             @for round in self.rounds {
                                 @let available = self.teams_and_availability.get(&(team.id.clone(), round.id.clone())).unwrap_or(&false);
                                 td {
+                                    @if self.editing {
                                     form method="post"
-                                         action=(format!("/tournaments/{}/rounds/{}/update_team_eligibility", self.tournament_id, round.id)) {
+                                         action=(format!("/tournaments/{}/rounds/{}/update_team_eligibility", self.tournament_id, round.id)) hx-post=(format!("{}{}modal=true", format!("/tournaments/{}/rounds/{}/update_team_eligibility", self.tournament_id, round.id), if format!("/tournaments/{}/rounds/{}/update_team_eligibility", self.tournament_id, round.id).contains('?') { "&" } else { "?" })) hx-target="#ui-modal" hx-swap="innerHTML" {
                                         input type="text" hidden value=(team.id) name="team";
                                         @if *available {
                                         } @else {
@@ -96,6 +96,7 @@ impl<'r> Renderable for ManageAvailabilityTable<'r> {
                                                 style="left: 0; height: 100%; opacity: 0; position: absolute; top: 0; width: 100%";
                                         }
                                     }
+                                    } @else { input type="checkbox" disabled checked[*available]; }
                                 }
                             }
                         }
@@ -110,13 +111,23 @@ fn get_teams_and_availability(
     tournament_id: &str,
     round_seq: usize,
     conn: &mut impl LoadConnection<Backend = Sqlite>,
-) -> HashMap<(std::string::String, std::string::String), bool> {
-    teams::table
+) -> Result<
+    HashMap<(std::string::String, std::string::String), bool>,
+    crate::util_resp::FailureResponse,
+> {
+    Ok(teams::table
         .filter(teams::tournament_id.eq(tournament_id))
         .order_by(teams::id.asc())
-        .inner_join(rounds::table.on(rounds::seq.eq(round_seq as i64)))
-        .left_outer_join(team_availability::table)
-        .filter(team_availability::round_id.eq(rounds::id))
+        .inner_join(
+            rounds::table.on(rounds::seq
+                .eq(round_seq as i64)
+                .and(rounds::tournament_id.eq(tournament_id.to_owned()))),
+        )
+        .left_outer_join(
+            team_availability::table.on(team_availability::team_id
+                .eq(teams::id)
+                .and(team_availability::round_id.eq(rounds::id))),
+        )
         .select((
             teams::id,
             rounds::id,
@@ -126,20 +137,37 @@ fn get_teams_and_availability(
             )
             .otherwise(false),
         ))
-        .load::<(String, String, bool)>(&mut *conn)
-        .unwrap()
+        .load::<(String, String, bool)>(&mut *conn)?
         .into_iter()
         .map(|(team, round, bool)| ((team, round), bool))
-        .collect::<HashMap<_, _>>()
+        .collect::<HashMap<_, _>>())
 }
 
 pub async fn view_team_availability(
     Path((tournament_id, round_seq)): Path<(String, usize)>,
-    user: User<true>,
+    axum::extract::Query(query): axum::extract::Query<
+        crate::tournaments::manage::workspace::WorkspaceQuery,
+    >,
+    user: Option<User<true>>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
-    tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+    let access = crate::permission::TournamentAccess::resolve(
+        &tournament_id,
+        user.as_ref().map(|u| u.id.as_str()),
+        &mut *conn,
+    )?;
+    if !access.is_superuser() {
+        if query.editing() {
+            return Err(crate::util_resp::FailureResponse::Unauthorized(()));
+        }
+        return crate::tournaments::manage::workspace::unavailable(
+            &tournament,
+            user,
+            "Availability",
+        );
+    }
+    let user = user.expect("superuser is authenticated");
 
     let rounds = TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
     let selected_rounds =
@@ -156,56 +184,74 @@ pub async fn view_team_availability(
         .unwrap();
 
     let teams_and_availability =
-        get_teams_and_availability(&tournament_id, round_seq, &mut *conn);
+        get_teams_and_availability(&tournament_id, round_seq, &mut *conn)?;
 
-    success(
-        Page::new()
-            .extra_head(
-                maud! {
-                    script src="https://cdn.jsdelivr.net/npm/htmx-ext-ws@2.0.2" crossorigin="anonymous" {
+    let canonical = format!(
+        "/tournaments/{tournament_id}/rounds/{round_seq}/availability/teams"
+    );
+    if !query.editing() {
+        let table = ManageAvailabilityTable {
+            tournament_id: &tournament_id,
+            rounds: &selected_rounds,
+            teams: &teams,
+            teams_and_availability: &teams_and_availability,
+            editing: false,
+            oob: false,
+        };
+        return crate::tournaments::manage::workspace::read_page(
+            &tournament,
+            user,
+            "Availability",
+            &canonical,
+            &access,
+            table,
+        );
+    }
+    crate::tournaments::manage::workspace::editor_page(
+        query.form(),
+        "Availability",
+        &canonical,
+        &tournament.clone(),
+        user,
+        maud! {
+            div id="availability-teams-editor" {
+            SidebarWrapper rounds=(&rounds) tournament=(&tournament) active_page=(Some(crate::tournaments::manage::sidebar::SidebarPage::Setup)) selected_seq=(Some(round_seq as i64)) {
+                h1 {
+                    "Manage availabilities for rounds "
+                    @for (i, round) in selected_rounds.iter().enumerate() {
+                        @if i > 0 {
+                            ", "
+                        }
+                        (round.name)
                     }
                 }
-            )
-            .user(user)
-            .tournament(tournament.clone())
-            .current_rounds(Round::current_rounds(&tournament.id, &mut *conn))
-            .body(maud! {
-                SidebarWrapper rounds=(&rounds) tournament=(&tournament) active_page=(Some(crate::tournaments::manage::sidebar::SidebarPage::Setup)) selected_seq=(Some(round_seq as i64)) {
-                    h1 {
-                        "Manage availabilities for rounds "
-                        @for (i, round) in selected_rounds.iter().enumerate() {
-                            @if i > 0 {
-                                ", "
-                            }
-                            (round.name)
-                        }
-                    }
-                    div class = "row mt-3 mb-3" {
-                        @for round in &selected_rounds {
-                            div class="col-md-auto" {
-                                form method="post" action=(format!("/tournaments/{tournament_id}/rounds/{}/availability/teams/all?check=in", round.id)) {
-                                    button type="submit" class="btn btn-primary" {
-                                        "Check in all for " (round.name)
-                                    }
+                div class = "row mt-3 mb-3" {
+                    @for round in &selected_rounds {
+                        div class="col-md-auto" {
+                            form method="post" action=(format!("/tournaments/{tournament_id}/rounds/{}/availability/teams/all?check=in", round.id)) hx-post=(format!("{}{}modal=true", format!("/tournaments/{tournament_id}/rounds/{}/availability/teams/all?check=in", round.id), if format!("/tournaments/{tournament_id}/rounds/{}/availability/teams/all?check=in", round.id).contains('?') { "&" } else { "?" })) hx-target="#ui-modal" hx-swap="innerHTML" {
+                                button type="submit" class="btn btn-primary" {
+                                    "Check in all for " (round.name)
                                 }
                             }
-                            div class="col-md-auto" {
-                                form method="post" action=(format!("/tournaments/{tournament_id}/rounds/{}/availability/teams/all?check=out", round.id)) {
-                                    button type="submit" class="btn btn-primary" {
-                                        "Check out all for " (round.name)
-                                    }
+                        }
+                        div class="col-md-auto" {
+                            form method="post" action=(format!("/tournaments/{tournament_id}/rounds/{}/availability/teams/all?check=out", round.id)) hx-post=(format!("{}{}modal=true", format!("/tournaments/{tournament_id}/rounds/{}/availability/teams/all?check=out", round.id), if format!("/tournaments/{tournament_id}/rounds/{}/availability/teams/all?check=out", round.id).contains('?') { "&" } else { "?" })) hx-target="#ui-modal" hx-swap="innerHTML" {
+                                button type="submit" class="btn btn-primary" {
+                                    "Check out all for " (round.name)
                                 }
                             }
                         }
                     }
-                    ManageAvailabilityTable
-                        tournament_id=(&tournament_id)
-                        rounds=(&selected_rounds)
-                        teams=(&teams)
-                        teams_and_availability=(&teams_and_availability);
                 }
-            })
-            .render(),
+                ManageAvailabilityTable
+                    tournament_id=(&tournament_id)
+                    rounds=(&selected_rounds)
+                    teams=(&teams)
+                    teams_and_availability=(&teams_and_availability) editing=(true) oob=(false);
+            }
+            }
+        },
+        false,
     )
 }
 
@@ -214,18 +260,22 @@ pub async fn team_availability_updates(
     Path((tournament_id, round_seq)): Path<(String, i64)>,
     Extension(pool): Extension<DbPool>,
     Extension(tx): Extension<Sender<Msg>>,
+    axum::extract::Query(query): axum::extract::Query<
+        crate::tournaments::manage::workspace::WorkspaceQuery,
+    >,
     user: User<false>,
 ) -> impl IntoResponse {
     let pool: DbPool = pool.clone();
 
+    let viewer_id = user.id.clone();
     let pool1 = pool.clone();
     let has_rounds_result = spawn_blocking(move || {
-        let mut conn = pool1.get().unwrap();
+        let mut conn = pool1
+            .get()
+            .map_err(|_| crate::util_resp::FailureResponse::ServerError(()))?;
 
-        let tournament = Tournament::fetch(&tournament_id, &mut conn).ok()?;
-        tournament
-            .check_user_is_superuser(&user.id, &mut conn)
-            .ok()?;
+        let tournament = Tournament::fetch(&tournament_id, &mut conn)?;
+        tournament.check_user_is_superuser(&user.id, &mut conn)?;
 
         let rounds = diesel::dsl::select(diesel::dsl::exists(
             rounds::table.filter(
@@ -234,18 +284,17 @@ pub async fn team_availability_updates(
                     .and(rounds::seq.eq(round_seq)),
             ),
         ))
-        .get_result::<bool>(&mut conn)
-        .unwrap();
+        .get_result::<bool>(&mut conn)?;
 
-        Some((tournament, rounds))
+        Ok::<_, crate::util_resp::FailureResponse>((tournament, rounds))
     })
-    .await
-    .unwrap();
+    .await;
 
     let (tournament, rounds_exist) = match has_rounds_result {
-        Some(res) => res,
-        None => {
-            return (axum::http::StatusCode::FORBIDDEN, "Access denied")
+        Ok(Ok(result)) => result,
+        Ok(Err(error)) => return error.into_response(),
+        Err(_) => {
+            return axum::http::StatusCode::INTERNAL_SERVER_ERROR
                 .into_response();
         }
     };
@@ -259,7 +308,15 @@ pub async fn team_availability_updates(
     let tournament_id = tournament.id.clone();
 
     ws.on_upgrade(move |socket| {
-        handle_socket(socket, rx, pool, tournament_id, round_seq)
+        handle_socket(
+            socket,
+            rx,
+            pool,
+            tournament_id,
+            round_seq,
+            viewer_id,
+            query.editing(),
+        )
     })
 }
 
@@ -269,19 +326,35 @@ async fn handle_socket(
     pool: DbPool,
     tournament_id: String,
     round_seq: i64,
+    viewer_id: String,
+    editing: bool,
 ) {
     let (mut sender, mut receiver) = socket.split();
 
     let mut send_task = tokio::spawn(async move {
-        while let Ok(msg) = rx.recv().await {
+        let mut recheck =
+            tokio::time::interval(std::time::Duration::from_secs(15));
+        loop {
+            let event = tokio::select! {
+                event = rx.recv() => match event { Ok(event) => Some(event), Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => None, Err(_) => break },
+                _ = recheck.tick() => None,
+            };
+            if let Some(removal) = super::stream_removal(
+                super::stream_access(&pool, &tournament_id, &viewer_id).await,
+            ) {
+                let _ = sender.send(ws::Message::Text(removal.into())).await;
+                break;
+            }
+            let Some(msg) = event else { continue };
             if msg.tournament.id == tournament_id
                 && matches!(msg.inner, MsgContents::TeamAvailabilityUpdate)
             {
                 let pool1 = pool.clone();
                 let tournament_id = tournament_id.clone();
 
-                let table_html = spawn_blocking(move || {
-                    let mut conn = pool1.get().unwrap();
+                let recheck_tid = tournament_id.clone();
+                let loaded = spawn_blocking(move || -> Result<String, crate::util_resp::FailureResponse> {
+                    let mut conn = pool1.get().map_err(|_|crate::util_resp::FailureResponse::ServerError(()))?;
 
                     let rounds = rounds::table
                         .filter(
@@ -291,31 +364,46 @@ async fn handle_socket(
                         )
                         .order_by(rounds::id.asc())
                         .load::<Round>(&mut *conn)
-                        .unwrap();
+                        ?;
 
+                    if rounds.is_empty(){return Err(crate::util_resp::FailureResponse::NotFound(()));}
                     let teams = teams::table
                         .filter(teams::tournament_id.eq(&tournament_id))
                         .order_by(teams::id.asc())
                         .load::<Team>(&mut *conn)
-                        .unwrap();
+                        ?;
 
                     let teams_and_availability = get_teams_and_availability(
                         &tournament_id,
                         round_seq as usize,
                         &mut *conn,
-                    );
+                    )?;
 
                     let table = ManageAvailabilityTable {
                         tournament_id: &tournament_id,
                         rounds: &rounds,
                         teams: &teams,
                         teams_and_availability: &teams_and_availability,
+                        editing,
+                        oob: true,
                     };
 
-                    table.render().into_inner()
+                    Ok(table.render().into_inner())
                 })
-                .await
-                .unwrap();
+                .await;
+                let table_html = match loaded {
+                    Ok(Ok(html)) => html,
+                    _ => {
+                        let _=sender.send(ws::Message::Text(super::removal("Availability is temporarily unavailable. Refresh this page."))).await;
+                        break;
+                    }
+                };
+                if let Some(removal) = super::stream_removal(
+                    super::stream_access(&pool, &recheck_tid, &viewer_id).await,
+                ) {
+                    let _ = sender.send(ws::Message::Text(removal)).await;
+                    break;
+                }
 
                 if sender
                     .send(ws::Message::Text(table_html.into()))
@@ -340,13 +428,13 @@ async fn handle_socket(
     };
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, serde::Serialize)]
 pub struct UpdateTeamAvailabilityForm {
     available: Option<bool>,
     team: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, serde::Serialize)]
 pub struct CheckQuery {
     check: String,
 }
@@ -354,6 +442,9 @@ pub struct CheckQuery {
 pub async fn update_eligibility_for_all(
     Path((tournament_id, round_id)): Path<(String, String)>,
     Query(query): Query<CheckQuery>,
+    axum::extract::Query(modal_query): axum::extract::Query<
+        crate::ui::response::ModalQuery,
+    >,
     user: User<true>,
     mut conn: Conn<true>,
     Extension(tx): Extension<Sender<Msg>>,
@@ -364,21 +455,36 @@ pub async fn update_eligibility_for_all(
     let round = Round::fetch(&tournament_id, &round_id, &mut *conn)?;
 
     if round.completed {
-        return bad_request(maud! {
-            "Note: the current round has been completed, so judge availability"
-            " can no longer be updated!"
-        }.render());
+        return super::availability_error(
+            modal_query,
+            &tournament,
+            user,
+            round.seq,
+            "teams",
+            &format!(
+                "/tournaments/{tournament_id}/rounds/{round_id}/availability/teams/all?check={}",
+                query.check
+            ),
+            &query,
+            "This round is complete; its availability can no longer be changed.",
+        );
     }
 
-    if let Some(prev) =
+    if let Some(_prev) =
         round.preceeding_incomplete_round_of_lowest_seq(&mut *conn)
     {
-        return bad_request(
-            maud! {
-                "Note: " (prev.name) " should be marked as complete first (it "
-                "precedes the current round)"
-            }
-            .render(),
+        return super::availability_error(
+            modal_query,
+            &tournament,
+            user,
+            round.seq,
+            "teams",
+            &format!(
+                "/tournaments/{tournament_id}/rounds/{round_id}/availability/teams/all?check={}",
+                query.check
+            ),
+            &query,
+            "Complete preceding rounds before changing this round’s availability.",
         );
     }
 
@@ -440,11 +546,18 @@ pub async fn update_eligibility_for_all(
         }
         _ => {
             // todo: proper page (but should not be encountered in standard use)
-            return bad_request(
-                maud! {
-                    "Invalid check-in option."
-                }
-                .render(),
+            return super::availability_error(
+                modal_query,
+                &tournament,
+                user,
+                round.seq,
+                "teams",
+                &format!(
+                    "/tournaments/{tournament_id}/rounds/{round_id}/availability/teams/all?check={}",
+                    query.check
+                ),
+                &query,
+                "Choose check in or check out.",
             );
         }
     }
@@ -454,14 +567,20 @@ pub async fn update_eligibility_for_all(
         inner: MsgContents::TeamAvailabilityUpdate,
     });
 
-    see_other_ok(Redirect::to(&format!(
-        "/tournaments/{}/rounds/{}/availability/teams",
-        tournament_id, round.seq
-    )))
+    crate::tournaments::manage::workspace::after_redirect(
+        modal_query,
+        Redirect::to(&format!(
+            "/tournaments/{}/rounds/{}/availability/teams",
+            tournament_id, round.seq
+        )),
+    )
 }
 
 pub async fn update_team_availability_for_round(
     Path((tournament_id, round_id)): Path<(String, String)>,
+    axum::extract::Query(modal_query): axum::extract::Query<
+        crate::ui::response::ModalQuery,
+    >,
     user: User<true>,
     mut conn: Conn<true>,
     Extension(tx): Extension<Sender<Msg>>,
@@ -501,21 +620,34 @@ pub async fn update_team_availability_for_round(
     };
 
     if round.completed {
-        return bad_request(maud! {
-            "Note: the current round has been completed, so judge availability"
-            " can no longer be updated!"
-        }.render());
+        return super::availability_error(
+            modal_query,
+            &tournament,
+            user,
+            round.seq,
+            "teams",
+            &format!(
+                "/tournaments/{tournament_id}/rounds/{round_id}/update_team_eligibility"
+            ),
+            &form,
+            "This round is complete; its availability can no longer be changed.",
+        );
     }
 
-    if let Some(prev) =
+    if let Some(_prev) =
         round.preceeding_incomplete_round_of_lowest_seq(&mut *conn)
     {
-        return bad_request(
-            maud! {
-                "Note: " (prev.name) " should be marked as complete first (it "
-                "precedes the current round)"
-            }
-            .render(),
+        return super::availability_error(
+            modal_query,
+            &tournament,
+            user,
+            round.seq,
+            "teams",
+            &format!(
+                "/tournaments/{tournament_id}/rounds/{round_id}/update_team_eligibility"
+            ),
+            &form,
+            "Complete preceding rounds before changing this round’s availability.",
         );
     }
 
@@ -536,44 +668,47 @@ pub async fn update_team_availability_for_round(
         .unwrap();
     assert_eq!(n, 1);
 
-    diesel::update(
-        team_availability::table.filter(
-            team_availability::team_id
-                .eq(&team.id)
-                .and(diesel::dsl::exists(
-                    rounds::table.filter(
-                        rounds::tournament_id
-                            .eq(&tournament.id)
-                            .and(
-                                rounds::seq
-                                    .eq(round.seq)
-                                    .and(rounds::id.ne(&round.id)),
-                            )
-                            .and(team_availability::round_id.eq(rounds::id)),
+    if available_bool {
+        diesel::update(
+            team_availability::table.filter(
+                team_availability::team_id.eq(&team.id).and(
+                    diesel::dsl::exists(
+                        rounds::table.filter(
+                            rounds::tournament_id
+                                .eq(&tournament.id)
+                                .and(
+                                    rounds::seq
+                                        .eq(round.seq)
+                                        .and(rounds::id.ne(&round.id)),
+                                )
+                                .and(
+                                    team_availability::round_id.eq(rounds::id),
+                                ),
+                        ),
                     ),
-                )),
-        ),
-    )
-    .set(team_availability::available.eq(false))
-    .execute(&mut *conn)
-    .unwrap();
+                ),
+            ),
+        )
+        .set(team_availability::available.eq(false))
+        .execute(&mut *conn)
+        .unwrap();
+    }
 
     debug_assert!(
-        // check that a team is only ever assigned to one round (where there
-        // are multiple concurrent rounds)
         team_availability::table
+            .filter(team_availability::tournament_id.eq(&tournament.id))
+            .filter(team_availability::team_id.eq(&team.id))
+            .filter(team_availability::available.eq(true))
             .filter(
-                team_availability::team_id.eq(&team.id).and(
-                    team_availability::round_id.eq_any(
-                        rounds::table
-                            .filter(rounds::seq.eq(round.seq))
-                            .select(rounds::id)
-                    )
+                team_availability::round_id.eq_any(
+                    rounds::table
+                        .filter(rounds::tournament_id.eq(&tournament.id))
+                        .filter(rounds::seq.eq(round.seq))
+                        .select(rounds::id),
                 )
             )
             .count()
-            .get_result::<i64>(&mut *conn)
-            .unwrap()
+            .get_result::<i64>(&mut *conn)?
             <= 1
     );
 
@@ -582,8 +717,11 @@ pub async fn update_team_availability_for_round(
         inner: MsgContents::TeamAvailabilityUpdate,
     });
 
-    return see_other_ok(Redirect::to(&format!(
-        "/tournaments/{tournament_id}/rounds/{}/availability/teams",
-        round.seq
-    )));
+    return crate::tournaments::manage::workspace::after_redirect(
+        modal_query,
+        Redirect::to(&format!(
+            "/tournaments/{tournament_id}/rounds/{}/availability/teams",
+            round.seq
+        )),
+    );
 }

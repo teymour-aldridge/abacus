@@ -1,368 +1,288 @@
-use std::collections::HashSet;
-
 use crate::{
-    state::Conn,
-    tournaments::rounds::TournamentRounds,
-    util_resp::{StandardResponse, success},
+    auth::User,
+    msg::{Msg, MsgContents},
+    permission::{Permission, TournamentAccess},
+    schema::{institutions, judges, speakers, speakers_of_team, teams},
+    state::{Conn, DbPool},
+    template::Page,
+    tournaments::Tournament,
+    ui::{self, View},
+    util_resp::{FailureResponse, StandardResponse, success},
 };
 use axum::{
     extract::{
         Extension, Path, Query,
-        ws::{Message, WebSocket, WebSocketUpgrade},
+        ws::{Message, WebSocketUpgrade},
     },
     response::IntoResponse,
 };
 use diesel::prelude::*;
-
 use hypertext::prelude::*;
-use itertools::{Either, Itertools};
 use serde::Deserialize;
 use tokio::{sync::broadcast::Sender, task::spawn_blocking};
-
-use crate::{
-    auth::User,
-    msg::{Msg, MsgContents},
-    schema::tournaments,
-    state::DbPool,
-    template::Page,
-    tournaments::{
-        Tournament, manage::sidebar::SidebarWrapper,
-        participants::TournamentParticipants,
-    },
-};
-
 pub mod constraints;
 pub mod create_judge;
 pub mod create_speaker;
 pub mod create_team;
+pub mod edit_speaker;
+pub mod forms;
 pub mod gen_private_url;
-pub mod institution_selector;
 pub mod manage_judge;
 pub mod manage_private_urls;
 pub mod manage_team;
-pub mod team_form;
 
-pub struct ParticipantsTable(Tournament, TournamentParticipants);
-
-impl Renderable for ParticipantsTable {
-    fn render_to(
-        &self,
-        buffer: &mut hypertext::Buffer<hypertext::context::Node>,
-    ) {
-        maud! {
-            div class="d-flex flex-column flex-lg-row gap-4 mt-3" hx-ext="ws" hx-swap-oob="morphdom"
-            "ws-connect"=(format!("/tournaments/{}/participants/ws", self.0.id)) {
-                // Teams Column
-                div class="flex-fill" {
-                    div class="d-flex justify-content-between align-items-end mb-4 pb-2 border-bottom" {
-                        h5 class="mb-0 text-uppercase fw-bold" style="letter-spacing: 2px;" { "1. Teams" }
-                        a href=(format!("/tournaments/{}/teams/create", self.0.id)) class="btn btn-primary btn-sm" { "+ Team" }
-                    }
-
-                    div class="table-responsive" {
-                        table class="table table-hover align-middle" id="teamsTable" {
-                            thead class="border-bottom" {
-                                tr {
-                                    th scope="col" class="text-uppercase small fw-bold text-muted py-3" style="width: 60px;" { "#" }
-                                    th scope="col" class="text-uppercase small fw-bold text-muted py-3 pe-1 d-none d-lg-table-cell" { "Institution" }
-                                    th scope="col" class="text-uppercase small fw-bold text-muted py-3 ps-1" { "Name" }
-                                    th scope="col" class="text-end text-uppercase small fw-bold text-muted py-3" { "Actions" }
-                                }
-                            }
-                            tbody {
-                                @for team in self.1.teams.values() {
-                                    // Main team row with name, institution, and actions
-                                    tr {
-                                        th scope="row" class="text-center py-3 fw-normal text-muted" { (team.number) }
-                                        td class="d-none d-lg-table-cell py-3 pe-1" {
-                                            @if let Some(inst) = &team.institution_id {
-                                                span class="fw-bold fs-5" { (self.1.institutions[inst.as_str()].name) }
-                                            } @else {
-                                                span class="text-muted fw-light" { "—" }
-                                            }
-                                        }
-                                        td class="py-3 ps-1" {
-                                            span class="fw-bold fs-5" { (team.name) }
-                                        }
-                                        td class="text-end py-3" {
-                                            div class="d-flex justify-content-end gap-2" {
-                                                a href=(format!("/tournaments/{}/teams/{}/edit", self.0.id, team.id)) class="btn btn-sm btn-outline-dark" { "Edit" }
-                                                a href=(format!("/tournaments/{}/teams/{}/speakers/create", self.0.id, team.id)) class="btn btn-sm btn-outline-dark" { "+ Speaker" }
-                                            }
-                                        }
-                                    }
-                                    // Speakers row - displayed below team
-                                    tr {
-                                        td class="p-0" { }
-                                        td colspan="3" class="pb-4 pt-2" {
-                                            div class="ps-3 border-start" {
-                                                @if self.1.team_speakers.get(&team.id).unwrap_or(&HashSet::default()).is_empty() {
-                                                    p class="text-muted mb-0 small fst-italic py-1" { "No speakers" }
-                                                } @else {
-                                                    @for (i, speaker) in self.1.team_speakers.get(&team.id).unwrap_or(&HashSet::default()).iter().sorted_by_key(|speaker| {
-                                                        self.1.speakers.get(speaker.as_str()).unwrap().name.clone()
-                                                    }).enumerate() {
-                                                        @let speaker = self.1.speakers.get(speaker.as_str()).unwrap();
-                                                        div class="d-flex justify-content-between align-items-start py-1" {
-                                                            div {
-                                                                span class="text-muted small me-2" { (i + 1) "." }
-                                                                span class="small" { (speaker.name) }
-                                                                span class="text-muted small ms-2 d-none d-md-inline font-monospace" { (speaker.email) }
-                                                            }
-                                                            div class="d-flex gap-2" {
-                                                                a href=(format!("/tournaments/{}/participants/speaker/{}/constraints", self.0.id, speaker.id)) class="text-decoration-none text-muted small" { "Constraints" }
-                                                                a href=(format!("/tournaments/{}/teams/{}/speakers/{}/edit", self.0.id, team.id, speaker.id)) class="text-decoration-none text-muted small" { "Edit" }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Judges Column
-                div class="flex-fill" {
-                    div class="d-flex justify-content-between align-items-end mb-4 pb-2 border-bottom" {
-                        h5 class="mb-0 text-uppercase fw-bold" style="letter-spacing: 2px;" { "2. Judges" }
-                        a href=(format!("/tournaments/{}/judges/create", self.0.id)) class="btn btn-primary btn-sm" { "+ Judge" }
-                    }
-
-                    div class="table-responsive" {
-                        table class="table table-hover align-middle" id="judgesTable" {
-                            thead class="border-bottom" {
-                                tr {
-                                    th scope="col" class="text-uppercase small fw-bold text-muted py-3" { "Name" }
-                                    th scope="col" class="text-uppercase small fw-bold text-muted py-3 d-none d-md-table-cell" { "Institution" }
-                                    th scope="col" class="text-end text-uppercase small fw-bold text-muted py-3" { "Actions" }
-                                }
-                            }
-                            tbody {
-                                @for judge in self.1.judges.values() {
-                                    tr {
-                                        td class="py-4" {
-                                            div class="fw-bold fs-5" { (judge.name) }
-                                            div class="text-muted small font-monospace mt-1" { (judge.email) }
-                                        }
-                                        td class="d-none d-md-table-cell py-4" {
-                                            @if let Some(inst) = &judge.institution_id {
-                                                (self.1.institutions.get(inst.as_str()).unwrap().name)
-                                            } @else {
-                                                span class="text-muted fw-light" { "—" }
-                                            }
-                                        }
-                                        td class="text-end py-4" {
-                                            div class="d-flex justify-content-end gap-2" {
-                                                a href=(format!("/tournaments/{}/participants/judge/{}/constraints", self.0.id, judge.id)) class="btn btn-sm btn-outline-dark" { "Constraints" }
-                                                a href=(format!("/tournaments/{}/judges/{}/edit", self.0.id, judge.id)) class="btn btn-sm btn-outline-dark" { "Edit" }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }.render_to(buffer);
-    }
+#[derive(Default)]
+struct ParticipantDisplay {
+    teams: Vec<TeamDisplay>,
+    judges: Vec<JudgeDisplay>,
+}
+struct TeamDisplay {
+    id: String,
+    name: String,
+    speakers: Vec<SpeakerDisplay>,
+}
+struct SpeakerDisplay {
+    id: String,
+    name: String,
+    email: Option<String>,
+}
+struct JudgeDisplay {
+    id: String,
+    name: String,
+    institution: String,
+    email: Option<String>,
 }
 
+fn load(
+    tid: &str,
+    access: &TournamentAccess,
+    conn: &mut diesel::SqliteConnection,
+) -> Result<ParticipantDisplay, FailureResponse> {
+    let private = access.allows(Permission::ManageParticipants);
+    let teams = teams::table
+        .left_join(
+            institutions::table.on(institutions::id
+                .nullable()
+                .eq(teams::institution_id)
+                .and(institutions::tournament_id.eq(tid))),
+        )
+        .filter(teams::tournament_id.eq(tid))
+        .order(teams::number.asc())
+        .select((teams::id, teams::name, institutions::code.nullable()))
+        .load::<(String, String, Option<String>)>(conn)?;
+    let mut display = ParticipantDisplay::default();
+    for (id, name, code) in teams {
+        let rows = speakers_of_team::table
+            .inner_join(speakers::table)
+            .filter(speakers_of_team::team_id.eq(&id))
+            .filter(speakers::tournament_id.eq(tid))
+            .order(speakers::name.asc());
+        let speaker_rows = if private {
+            rows.select((speakers::id, speakers::name, speakers::email))
+                .load::<(String, String, String)>(conn)?
+                .into_iter()
+                .map(|(id, name, email)| SpeakerDisplay {
+                    id,
+                    name,
+                    email: Some(email),
+                })
+                .collect()
+        } else {
+            rows.select((speakers::id, speakers::name))
+                .load::<(String, String)>(conn)?
+                .into_iter()
+                .map(|(id, name)| SpeakerDisplay {
+                    id,
+                    name,
+                    email: None,
+                })
+                .collect()
+        };
+        display.teams.push(TeamDisplay {
+            id,
+            name: code.map(|c| format!("{c} {name}")).unwrap_or(name),
+            speakers: speaker_rows,
+        });
+    }
+    let rows = judges::table
+        .left_join(
+            institutions::table.on(institutions::id
+                .nullable()
+                .eq(judges::institution_id)
+                .and(institutions::tournament_id.eq(tid))),
+        )
+        .filter(judges::tournament_id.eq(tid))
+        .order(judges::name.asc());
+    display.judges = if private {
+        rows.select((
+            judges::id,
+            judges::name,
+            institutions::code.nullable(),
+            judges::email,
+        ))
+        .load::<(String, String, Option<String>, String)>(conn)?
+        .into_iter()
+        .map(|(id, name, institution, email)| JudgeDisplay {
+            id,
+            name,
+            institution: institution.unwrap_or_default(),
+            email: Some(email),
+        })
+        .collect()
+    } else {
+        rows.select((judges::id, judges::name, institutions::code.nullable()))
+            .load::<(String, String, Option<String>)>(conn)?
+            .into_iter()
+            .map(|(id, name, institution)| JudgeDisplay {
+                id,
+                name,
+                institution: institution.unwrap_or_default(),
+                email: None,
+            })
+            .collect()
+    };
+    Ok(display)
+}
+fn table<'a>(
+    tid: &'a str,
+    data: &'a ParticipantDisplay,
+    access: &'a TournamentAccess,
+) -> impl Renderable + 'a {
+    maud! { (ui::html(|ctx: &TournamentAccess, out| {
+        maud! {
+            div id="participant-list" hx-swap-oob="outerHTML" {
+                (ui::protected_or_empty(|c: &TournamentAccess| c.allows(Permission::ManageParticipants), || ui::html(|_: &TournamentAccess, out| {
+                    maud! { p {
+                        (ui::presentation::publication::<TournamentAccess>("Names and institutions",ui::presentation::Publication::Public).bind(ctx))
+                        span class="ms-2" { "Email addresses " (ui::presentation::restricted::<TournamentAccess>("Participant managers").bind(ctx)) }
+                    }
+                        (ui::presentation::action(|c: &TournamentAccess| c.allows(Permission::ManageParticipants), &format!("/tournaments/{tid}/teams/create"), "Add team", true).bind(ctx))
+                        (ui::presentation::action(|c: &TournamentAccess| c.allows(Permission::ManageParticipants), &format!("/tournaments/{tid}/judges/create"), "Add judge", true).bind(ctx))
+                    }.render_to(out);
+                })).bind(ctx))
+                h2 { "Teams" }
+                table class="table" { thead { tr { th { "Team" } th { "Speakers" } @if ctx.allows(Permission::ManageParticipants) { th { "Actions" } } } }
+                    tbody { @for team in &data.teams { tr {
+                        td { a href=(format!("/tournaments/{tid}/teams/{}",team.id)) { (team.name) } }
+                        td { @for speaker in &team.speakers { div { (speaker.name)
+                            @if let Some(email) = &speaker.email { span class="text-muted ms-2" { (email) }
+                                (ui::presentation::action(|c: &TournamentAccess| c.allows(Permission::ManageParticipants), &format!("/tournaments/{tid}/teams/{}/speakers/{}/edit",team.id,speaker.id),"Edit speaker",true).bind(ctx))
+                            }
+                            @if ctx.is_superuser() { (ui::presentation::action(|c: &TournamentAccess| c.is_superuser(), &format!("/tournaments/{tid}/participants/speaker/{}/constraints",speaker.id),"Room preferences",true).bind(ctx)) }
+                        } } }
+                        @if ctx.allows(Permission::ManageParticipants) { td {
+                            (ui::presentation::action(|c: &TournamentAccess| c.allows(Permission::ManageParticipants),&format!("/tournaments/{tid}/teams/{}/edit",team.id),"Edit",true).bind(ctx))
+                            (ui::presentation::action(|c: &TournamentAccess| c.allows(Permission::ManageParticipants),&format!("/tournaments/{tid}/teams/{}/speakers/create",team.id),"Add speaker",true).bind(ctx))
+                        } }
+                    } } }
+                }
+                h2 { "Judges" }
+                table class="table" { thead { tr { th { "Name" } th { "Institution" } @if ctx.allows(Permission::ManageParticipants) { th { "Actions" } } } }
+                    tbody { @for judge in &data.judges { tr {
+                        td { (judge.name) @if let Some(email)=&judge.email { div class="text-muted" { (email) } } }
+                        td { (judge.institution) }
+                        @if ctx.allows(Permission::ManageParticipants) { td {
+                            (ui::presentation::action(|c: &TournamentAccess| c.allows(Permission::ManageParticipants),&format!("/tournaments/{tid}/judges/{}/edit",judge.id),"Edit",true).bind(ctx))
+                            @if ctx.is_superuser() { (ui::presentation::action(|c: &TournamentAccess| c.is_superuser(),&format!("/tournaments/{tid}/participants/judge/{}/constraints",judge.id),"Room preferences",true).bind(ctx)) }
+                        } }
+                    } } }
+                }
+            }
+        }.render_to(out);
+    }).bind(access)) }
+}
 #[derive(Deserialize)]
 pub struct ManageParticipantsQuery {
     table_only: Option<bool>,
 }
-
-pub async fn manage_tournament_participants_impl(
-    Path(tid): Path<String>,
-    user: User<true>,
-    mut conn: Conn<true>,
-    Query(query): Query<ManageParticipantsQuery>,
-) -> StandardResponse {
-    let tournament = Tournament::fetch(&tid, &mut *conn)?;
-    tournament.check_user_is_superuser(&user.id, &mut *conn)?;
-
-    let participants = TournamentParticipants::load(&tid, &mut *conn);
-    let rounds = TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
-    let table = ParticipantsTable(tournament.clone(), participants.clone());
-
-    let current_rounds =
-        crate::tournaments::rounds::Round::current_rounds(&tid, &mut *conn);
-
-    if query.table_only.unwrap_or(false) {
-        success(table.render())
-    } else {
-        success(
-            Page::new()
-                .active_nav(crate::template::ActiveNav::Participants)
-                .user(user)
-                .tournament(tournament.clone())
-                .extra_head(maud! {
-                    script src="https://cdn.jsdelivr.net/npm/htmx-ext-ws@2.0.2" crossorigin="anonymous" {
-                    }
-                })
-                .current_rounds(current_rounds.clone())
-                .body(maud! {
-                    SidebarWrapper tournament=(&tournament) rounds=(&rounds) selected_seq=(current_rounds.first().map(|r| r.seq)) active_page=(None) {
-                        div class="d-flex justify-content-between align-items-center" {
-                            h1 { "Participants" }
-                            a class="btn btn-outline-primary" href=(format!("/tournaments/{}/break", tournament.id)) {
-                                "Manage break"
-                            }
-                        }
-
-                        (table)
-                    }
-                })
-                .render(),
-        )
-    }
-}
-
 pub async fn manage_tournament_participants(
     Path(tid): Path<String>,
     user: Option<User<true>>,
     mut conn: Conn<true>,
     Query(query): Query<ManageParticipantsQuery>,
 ) -> StandardResponse {
-    if let Some(user) = user {
-        // Check permissions
-        let tournament = Tournament::fetch(&tid, &mut *conn)?;
-        if tournament
-            .check_user_is_superuser(&user.id, &mut *conn)
-            .is_ok()
-        {
-            return manage_tournament_participants_impl(
-                Path(tid),
-                user,
-                conn,
-                Query(query),
-            )
-            .await;
-        }
-
-        return crate::tournaments::participants::public::public_participants_page(
-            Path(tid),
-            Some(user),
-            conn,
-        )
-        .await;
+    let tournament = Tournament::fetch(&tid, &mut *conn)?;
+    let access = TournamentAccess::resolve(
+        &tid,
+        user.as_ref().map(|u| u.id.as_str()),
+        &mut *conn,
+    )?;
+    let data = load(&tid, &access, &mut *conn)?;
+    let tid = tid.as_str();
+    let table = table(tid, &data, &access);
+    if query.table_only.unwrap_or(false) {
+        return success(table.render());
     }
-
-    crate::tournaments::participants::public::public_participants_page(
-        Path(tid),
-        None,
-        conn,
-    )
-    .await
+    success(Page::new().user_opt(user).tournament(tournament).active_nav(crate::template::ActiveNav::Participants).body(maud! {
+        div class="container py-4" hx-ext="ws" "ws-connect"=(format!("/tournaments/{tid}/participants/ws")) { h1 { "Participants" } (table) }
+    }).render())
 }
-
 pub async fn tournament_participant_updates(
     ws: WebSocketUpgrade,
     Path(tid): Path<String>,
     Extension(pool): Extension<DbPool>,
     Extension(tx): Extension<Sender<Msg>>,
-    user: User<false>,
-) -> impl IntoResponse {
-    let tid1 = tid.clone();
-    let pool1 = pool.clone();
-
-    // Validate permission before upgrading
-    let tournament_validation = spawn_blocking(move || {
-        let mut conn = pool1.get().unwrap();
-        let tournament = tournaments::table
-            .filter(tournaments::id.eq(tid1))
-            .first::<Tournament>(&mut conn)
-            .optional()
-            .unwrap();
-
-        if let Some(tournament) = tournament {
-            if tournament
-                .check_user_has_permission(
-                    &user.id,
-                    crate::permission::Permission::ManageParticipants,
-                    &mut *conn,
-                )
-                .is_err()
-            {
-                None
-            } else {
-                Some(tournament)
-            }
-        } else {
-            None
+    user: Option<User<false>>,
+) -> axum::response::Response {
+    let uid = user.map(|u| u.id);
+    let check_pool = pool.clone();
+    let check_tid = tid.clone();
+    let check_uid = uid.clone();
+    let check = spawn_blocking(move || {
+        let mut conn = check_pool
+            .get()
+            .map_err(|_| FailureResponse::ServerError(()))?;
+        Tournament::fetch(&check_tid, &mut *conn)?;
+        TournamentAccess::resolve(&check_tid, check_uid.as_deref(), &mut *conn)
+    })
+    .await;
+    let access = match check {
+        Ok(Ok(access)) => access,
+        Ok(Err(e)) => return e.into_response(),
+        Err(_) => {
+            return axum::http::StatusCode::INTERNAL_SERVER_ERROR
+                .into_response();
         }
-    })
-    .await
-    .unwrap();
-
-    let tournament = match tournament_validation {
-        Some(t) => t,
-        None => return axum::http::StatusCode::FORBIDDEN.into_response(),
     };
-
-    ws.on_upgrade(move |socket| {
-        handle_socket(socket, pool, tx, tid, tournament)
-    })
+    let mut prior = (
+        access.allows(Permission::ManageParticipants),
+        access.is_superuser(),
+    );
+    ws.on_upgrade(move |mut socket| async move {
+        let mut rx=tx.subscribe(); let mut tick=tokio::time::interval(std::time::Duration::from_secs(15));
+        loop {
+            tokio::select! {
+                msg=socket.recv()=>{if !matches!(msg,Some(Ok(Message::Ping(_)|Message::Pong(_)|Message::Text(_)|Message::Binary(_)))) { break; } continue;},
+                msg=rx.recv()=>match msg { Ok(msg) if msg.tournament.id==tid && matches!(msg.inner, MsgContents::ParticipantsUpdate)=>{}, Err(tokio::sync::broadcast::error::RecvError::Lagged(_))=>{},Err(_)=>break,_=>continue },
+                _=tick.tick()=>{}
+            }
+            let pool=pool.clone(); let tid=tid.clone(); let uid=uid.clone();
+            let update=spawn_blocking(move || -> Result<(String,bool,bool), FailureResponse> { let mut conn=pool.get().map_err(|_|FailureResponse::ServerError(()))?; Tournament::fetch(&tid,&mut *conn)?; let access=TournamentAccess::resolve(&tid,uid.as_deref(),&mut *conn)?; let data=load(&tid,&access,&mut *conn)?; Ok((table(&tid,&data,&access).render().into_inner(),access.allows(Permission::ManageParticipants),access.is_superuser())) }).await;
+            match update { Ok(Ok((mut html,manager,superuser)))=>{
+                if (prior.0 && !manager) || (prior.1 && !superuser) { html.push_str("<div id=\"ui-modal\" hx-swap-oob=\"innerHTML\"></div>"); }
+                prior=(manager,superuser);
+                if socket.send(Message::Text(html)).await.is_err(){break;}
+            }, _=>{let _=socket.send(Message::Text("<div id=\"participant-list\" hx-swap-oob=\"outerHTML\">Participant information is unavailable.</div><div id=\"ui-modal\" hx-swap-oob=\"innerHTML\"></div>".into())).await; break;} }
+        }
+    }).into_response()
 }
 
-async fn handle_socket(
-    mut socket: WebSocket,
-    pool: DbPool,
-    tx: Sender<Msg>,
-    tid: String,
-    tournament: Tournament,
-) {
-    let pool2 = pool.clone();
-    let tid2 = tid.clone();
-    let get_serializable_data = move || {
-        let mut conn = pool2.get().unwrap();
-
-        conn.transaction(|conn| -> Result<_, diesel::result::Error> {
-            Ok(TournamentParticipants::load(&tid2, &mut *conn))
-        })
-        .unwrap()
-    };
-
-    let mut rx = tx.subscribe();
-
-    loop {
-        let msg = tokio::select! {
-            msg = rx.recv() => Either::Left(msg),
-            msg = socket.recv() => Either::Right(msg),
-        };
-
-        match msg {
-            Either::Left(Ok(msg)) => {
-                if msg.tournament.id == tournament.id
-                    && matches!(msg.inner, MsgContents::ParticipantsUpdate)
-                {
-                    let participants =
-                        spawn_blocking(get_serializable_data.clone())
-                            .await
-                            .unwrap();
-                    let html =
-                        ParticipantsTable(tournament.clone(), participants)
-                            .render()
-                            .into_inner();
-
-                    if socket.send(Message::Text(html)).await.is_err() {
-                        break;
-                    }
-                }
-            }
-            Either::Right(Some(Ok(Message::Close(_))))
-            | Either::Right(None) => {
-                break;
-            }
-            Either::Right(Some(Err(_))) => {
-                break;
-            }
-            _ => {}
-        }
+pub async fn team_details(
+    Path((tid, id)): Path<(String, String)>,
+    user: Option<User<true>>,
+    mut conn: Conn<true>,
+) -> StandardResponse {
+    let tournament = Tournament::fetch(&tid, &mut *conn)?;
+    let access = TournamentAccess::resolve(
+        &tid,
+        user.as_ref().map(|u| u.id.as_str()),
+        &mut *conn,
+    )?;
+    let mut data = load(&tid, &access, &mut *conn)?;
+    data.teams.retain(|team| team.id == id);
+    data.judges.clear();
+    if data.teams.is_empty() {
+        return Err(FailureResponse::NotFound(()));
     }
+    success(Page::new().user_opt(user).tournament(tournament).active_nav(crate::template::ActiveNav::Participants).body(maud!{div class="container py-4" {h1 {"Team details"} (table(&tid,&data,&access))}}).render())
 }

@@ -386,7 +386,7 @@ fn run_regression_fixture(name: &str, json: &str) {
         serde_json::from_str::<WorkloadInput>(json).unwrap_or_else(|e| {
             panic!("failed to parse regression fixture {name}: {e}")
         });
-    tracing_subscriber::fmt().init();
+    let _ = tracing_subscriber::fmt().try_init();
     harness::run_workload(&input);
 }
 

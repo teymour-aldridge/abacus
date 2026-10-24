@@ -89,14 +89,7 @@ impl<'r> Renderable for Sidebar<'r> {
                         @for level in &grouped_rounds {
                             @let seq = level[0].seq;
                             @let name = level.iter().map(|r| r.name.as_str()).collect::<Vec<_>>().join("/");
-                            @let draw_status = level.iter().map(|r| r.draw_status.as_str()).next().unwrap_or("none");
-                            @let url = if draw_status == "none" {
-                                format!("/tournaments/{}/rounds/{}/setup", self.tournament.id, seq)
-                            } else if draw_status == "generated" || draw_status == "draft" {
-                                format!("/tournaments/{}/rounds/{}/draw/manage", self.tournament.id, seq)
-                            } else {
-                                format!("/tournaments/{}/rounds/{}/briefing", self.tournament.id, seq)
-                            };
+                            @let url = format!("/tournaments/{}/rounds/{}",self.tournament.id,seq);
                             @let is_selected = self.selected_seq == Some(seq);
                             @let is_active = active_round_seq == Some(seq);
 
@@ -121,12 +114,12 @@ impl<'r> Renderable for Sidebar<'r> {
                 @if let Some(seq) = self.selected_seq {
                     nav class="round-stage-nav d-flex align-items-center gap-2" aria-label="Round stages" {
                         a class=(format!("sidebar-stage-tab text-decoration-none {}", if self.active_page == Some(SidebarPage::Setup) { "sidebar-stage-active" } else { "" }))
-                            href=(format!("/tournaments/{}/rounds/{}/setup", self.tournament.id, seq)) {
+                            href=(format!("/tournaments/{}/rounds/{}", self.tournament.id, seq)) {
                             "Setup"
                         }
 
                         a class=(format!("sidebar-stage-tab text-decoration-none {}", if self.active_page == Some(SidebarPage::Draw) { "sidebar-stage-active" } else { "" }))
-                            href=(format!("/tournaments/{}/rounds/{}/draw/manage", self.tournament.id, seq)) {
+                            href=(format!("/tournaments/{}/rounds/{}/draw", self.tournament.id, seq)) {
                             "Draw"
                         }
 
@@ -141,7 +134,7 @@ impl<'r> Renderable for Sidebar<'r> {
                         }
 
                         a class=(format!("sidebar-stage-tab text-decoration-none {}", if self.active_page == Some(SidebarPage::Results) { "sidebar-stage-active" } else { "" }))
-                            href=(format!("/tournaments/{}/rounds/{}/results/manage", self.tournament.id, seq)) {
+                            href=(format!("/tournaments/{}/rounds/{}/results", self.tournament.id, seq)) {
                             "Results"
                         }
                     }

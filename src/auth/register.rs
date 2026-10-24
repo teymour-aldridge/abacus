@@ -18,44 +18,40 @@ use crate::util_resp::StandardResponse;
 use crate::util_resp::bad_request;
 use crate::util_resp::see_other_ok;
 use crate::validation::*;
-// use crate::widgets::alert::ErrorAlert;
 use crate::{auth::User, schema::users, template::Page};
 
+fn register_form<'a>(
+    username: &'a str,
+    email: &'a str,
+    error: Option<&'a str>,
+) -> impl Renderable + 'a {
+    maud! { div class="container py-4" {
+        h1 { "Register" }
+        @if let Some(error)=error { div class="alert alert-danger" role="alert" { (error) } }
+        form method="post" class="mt-4" {
+            div class="mb-3" { label for="username" class="form-label" { "Username" } input type="text" class="form-control" id="username" name="username" value=(username) autocomplete="username" required; }
+            div class="mb-3" { label for="email" class="form-label" { "Email" } input type="email" class="form-control" id="email" name="email" value=(email) autocomplete="email" required; }
+            div class="mb-3" { label for="password" class="form-label" { "Password" } input type="password" class="form-control" id="password" name="password" autocomplete="new-password" required; }
+            div class="mb-3" { label for="password2" class="form-label" { "Confirm password" } input type="password" class="form-control" id="password2" name="password2" autocomplete="new-password" required; }
+            button type="submit" class="btn btn-primary" { "Register" }
+        }
+    } }
+}
+fn invalid_registration(form: &RegisterForm, error: &str) -> StandardResponse {
+    bad_request(
+        Page::<_, _, _, true>::new()
+            .body(register_form(&form.username, &form.email, Some(error)))
+            .render(),
+    )
+}
 pub async fn register_page(user: Option<User<true>>) -> StandardResponse {
     if user.is_some() {
-        // todo: flash message
-        return bad_request(maud! {p {"You are already logged in!"}}.render());
+        return see_other_ok(Redirect::to("/"));
     }
-
-    bad_request(
+    crate::util_resp::success(
         Page::new()
             .user_opt(user)
-            .body(maud! {
-                div class="container-fluid p-3" {
-                    h1 {"Register"}
-                    form method="post" class="mt-4" {
-                        div class="mb-3" {
-                            label for="username" class="form-label" { "Username" }
-                            input type="text" class="form-control" id="username" name="username" required;
-                        }
-                        div class="mb-3" {
-                            label for="email" class="form-label" { "Email" }
-                            input type="email" class="form-control" id="email" name="email" required;
-                        }
-                        div class="mb-3" {
-                            label for="password" class="form-label" { "Password" }
-                            input type="password" class="form-control" id="password" name="password" required;
-                        }
-                        div class="mb-3" {
-                            label for="password2" class="form-label" { "Confirm Password" }
-                            input type="password" class="form-control" id="password2" name="password2" required;
-                        }
-                        div class="mb-3" {
-                            button type="submit" class="btn btn-primary" { "Register" }
-                        }
-                    }
-                }
-            })
+            .body(register_form("", "", None))
             .render(),
     )
 }
@@ -68,7 +64,7 @@ pub struct RegisterForm {
     pub password2: String,
 }
 
-#[tracing::instrument(skip(conn, jar, form))]
+#[tracing::instrument(skip(user, conn, jar, form))]
 pub async fn do_register(
     user: Option<User<true>>,
     mut conn: Conn<true>,
@@ -85,19 +81,22 @@ pub async fn do_register(
     }
 
     if let Err(e) = is_valid_username(&form.username) {
-        return (jar, bad_request(maud! {p {(e)}}.render()));
+        return (jar, invalid_registration(&form, &e.to_string()));
     }
     if let Err(e) = is_valid_email(&form.email) {
-        return (jar, bad_request(maud! {p {(e)}}.render()));
+        return (jar, invalid_registration(&form, &e.to_string()));
     }
     if form.password.len() < 6 {
-        return (jar, bad_request(maud! {p {"Password too short"}}.render()));
-    }
-    if form.password != form.password2 {
         return (
             jar,
-            bad_request(maud! {p {"Passwords do not match"}}.render()),
+            invalid_registration(
+                &form,
+                "Password must contain at least 6 characters.",
+            ),
         );
+    }
+    if form.password != form.password2 {
+        return (jar, invalid_registration(&form, "Passwords do not match."));
     }
 
     let existing = users::table
@@ -107,26 +106,29 @@ pub async fn do_register(
                 .or(users::email.eq(&form.email)),
         )
         .first::<User<true>>(&mut *conn)
-        .optional()
-        .unwrap();
+        .optional();
+    let existing = match existing {
+        Ok(value) => value,
+        Err(error) => return (jar, Err(error.into())),
+    };
 
     match existing {
         Some(user) => {
             let is_email_problem = user.email == form.email;
 
-            (jar, bad_request(
-                Page::<_, _, _, true>::new()
-                    .body(maud! {
-                        div class="alert alert-danger" {
-                            (match is_email_problem {
-                                true => "That email is already taken",
-                                false => "That username is already taken"
-                            }.to_string() + ". Please return to the previous page and try again.")
-                        }
-                    })
-                    .render(),
-            ))
+            (
+                jar,
+                invalid_registration(
+                    &form,
+                    if is_email_problem {
+                        "That email is already taken."
+                    } else {
+                        "That username is already taken."
+                    },
+                ),
+            )
         }
+
         None => {
             let id = Uuid::now_v7().to_string();
 
@@ -162,7 +164,7 @@ pub async fn do_register(
 
             let jar = set_login_cookie(id.clone(), jar);
 
-            (jar, see_other_ok(Redirect::to("/user")))
+            (jar, see_other_ok(Redirect::to("/")))
         }
     }
 }

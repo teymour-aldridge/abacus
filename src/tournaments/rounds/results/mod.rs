@@ -1,278 +1,185 @@
-use std::collections::HashMap;
-
-use axum::{extract::Path, response::Redirect};
-use diesel::prelude::*;
-use hypertext::{Renderable, prelude::*};
-
 use crate::{
     auth::User,
-    schema::agg_team_results_of_debate,
+    permission::TournamentAccess,
+    schema::{
+        agg_team_results_of_debate, debates, judges, judges_of_debate, rooms,
+        teams, teams_of_debate,
+    },
     state::Conn,
     template::Page,
     tournaments::{
         Tournament,
-        rounds::{Round, draws::RoundDrawRepr, side_names},
+        rounds::{Round, side_names},
     },
-    util_resp::{StandardResponse, err_not_found, see_other_ok, success},
-    widgets::non_public::NonPublic,
+    ui::{
+        self, View,
+        presentation::{Publication, action, publication},
+    },
+    util_resp::{StandardResponse, err_not_found, success},
 };
+use axum::extract::Path;
+use diesel::prelude::*;
+use hypertext::prelude::*;
 
-#[derive(Queryable, Clone, Debug)]
-#[allow(dead_code)]
-struct TeamResult {
-    id: String,
-    tournament_id: String,
-    debate_id: String,
-    team_id: String,
-    points: Option<i64>,
+struct ResultRow {
+    room: Option<String>,
+    teams: Vec<Option<(String, Option<i64>)>>,
+    panel: Vec<String>,
+}
+struct ResultRound {
+    name: String,
+    public: bool,
+    rows: Vec<ResultRow>,
 }
 
 pub async fn view_results_page(
-    Path((tid, round_seq)): Path<(String, i64)>,
+    Path((tid, seq)): Path<(String, i64)>,
     user: Option<User<true>>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
-
-    let rounds_in_seq = Round::of_seq(round_seq, &tid, &mut *conn);
-    if rounds_in_seq.is_empty() {
+    let access = TournamentAccess::resolve(
+        &tid,
+        user.as_ref().map(|u| u.id.as_str()),
+        &mut *conn,
+    )?;
+    let rounds = crate::schema::rounds::table
+        .filter(crate::schema::rounds::tournament_id.eq(&tid))
+        .filter(crate::schema::rounds::seq.eq(seq))
+        .load::<Round>(&mut *conn)?;
+    if rounds.is_empty() {
         return err_not_found();
     }
-
-    let current_rounds = Round::current_rounds(&tid, &mut *conn);
-    let is_superuser = if let Some(ref user) = user {
-        tournament
-            .check_user_is_superuser(&user.id, &mut *conn)
-            .is_ok()
-    } else {
-        false
-    };
-
-    if !tournament.show_round_results && !is_superuser {
-        return success(
-            Page::new()
-                .user_opt(user)
-                .tournament(tournament.clone())
-                .current_rounds(current_rounds)
-                .body(maud! {
-                    div class="container py-5 px-4" {
-                        div class="alert alert-warning" {
-                            "This tournament does not make round results publicly available."
-                        }
-                    }
-                })
-                .render(),
-        );
-    }
-
-    let (viewable_rounds, unviewable_rounds): (Vec<Round>, Vec<Round>) =
-        if is_superuser {
-            (rounds_in_seq.clone(), vec![])
-        } else {
-            rounds_in_seq
-                .iter()
-                .cloned()
-                .partition(|r| r.results_published_at.is_some())
-        };
-
-    if viewable_rounds.is_empty() {
-        if rounds_in_seq.iter().any(|r| r.completed) {
-            return success(
-                Page::new()
-                    .user_opt(user)
-                    .tournament(tournament.clone())
-                    .current_rounds(current_rounds.clone())
-                    .body(maud! {
-                        div class="container py-5 px-4" {
-                            div class="alert alert-info" {
-                                "The results for "
-                                @if rounds_in_seq.len() > 1 {
-                                    "these rounds have "
-                                } @else {
-                                    "this round has "
-                                }
-                                "been completed, but the results "
-                                "have not yet been published. You can still see "
-                                "the "
-                                a href=(format!("/tournaments/{}/rounds/{}/draw", tid, round_seq)) {
-                                    "draw for "
-                                    @if rounds_in_seq.len() > 1 {
-                                        "these rounds"
-                                    } @else {
-                                        "this round"
-                                    }
-                                }
-                            }
-                        }
-                    })
-                    .render(),
-            );
-        } else {
-            return see_other_ok(Redirect::to(&format!(
-                "/tournaments/{}/rounds/{}/draw",
-                tid, round_seq
-            )));
+    let columns = (tournament.teams_per_side * 2).max(0) as usize;
+    let mut display = Vec::new();
+    let mut hidden = false;
+    for round in rounds {
+        let public = tournament.show_round_results && round.is_results_public();
+        if !public && !access.is_superuser() {
+            hidden = true;
+            continue;
         }
-    }
-
-    struct RoundDisplayData {
-        round: Round,
-        draw_repr: RoundDrawRepr,
-        results_map: HashMap<(String, String), i64>,
-    }
-
-    let mut display_data_list = Vec::new();
-
-    for round in viewable_rounds {
-        let draw_repr = RoundDrawRepr::of_round(round.clone(), &mut *conn);
-
-        let debate_ids: Vec<String> = draw_repr
-            .debates
-            .iter()
-            .map(|d| d.debate.id.clone())
-            .collect();
-
-        let team_results = agg_team_results_of_debate::table
-            .filter(agg_team_results_of_debate::debate_id.eq_any(&debate_ids))
-            .load::<TeamResult>(&mut *conn)
-            .unwrap();
-
-        let team_results_map: HashMap<(String, String), i64> = team_results
-            .into_iter()
-            .filter_map(|r| r.points.map(|p| ((r.debate_id, r.team_id), p)))
-            .collect();
-
-        display_data_list.push(RoundDisplayData {
-            round,
-            draw_repr,
-            results_map: team_results_map,
-        });
-    }
-
-    fn render_results_view<'a>(
-        data: &'a RoundDisplayData,
-        tournament: &'a Tournament,
-    ) -> impl Renderable + 'a {
-        maud! {
-            h1 class="mb-4" { (data.round.name) " Results" }
-
-            table class="table table-hover align-middle mb-5" {
-                thead class="border-bottom" {
-                    tr {
-                        th scope="col" class="text-uppercase small fw-bold text-muted py-3" { "Room" }
-                        @if let Some(first_debate) = data.draw_repr.debates.first() {
-                            @for dt in &first_debate.teams_of_debate {
-                                th scope="col" class="text-uppercase small fw-bold text-muted py-3" { (side_names::name_of_side(tournament, dt.side, dt.seq, false)) }
-                            }
-                        }
-                        th scope="col" class="text-uppercase small fw-bold text-muted py-3" { "Adjudicators" }
-                    }
-                }
-                tbody {
-                    @for debate in &data.draw_repr.debates {
-                        tr {
-                            td class="align-middle" {
-                                @if let Some(room) = &debate.room {
-                                    (room.name)
-                                } @else {
-                                    span class="text-muted" { "TBA" }
-                                }
-                            }
-                            @for dt in &debate.teams_of_debate {
-                                @let team = debate.teams.get(&dt.team_id).unwrap();
-                                @let points = data.results_map.get(&(debate.debate.id.clone(), team.id.clone()));
-                                td class="align-middle" {
-                                    span class="fw-bold" { (team.name) }
-                                    @if let Some(pts) = points {
-                                        @let team_count = debate.teams_of_debate.len();
-
-                                        // todo: might want to
-                                        // put this in a
-                                        // function for re-use
-                                        @let icon = match team_count {
-                                            4 => match pts {
-                                                3 => Some("keyboard_double_arrow_up"),
-                                                2 => Some("keyboard_arrow_up"),
-                                                1 => Some("keyboard_arrow_down"),
-                                                0 => Some("keyboard_double_arrow_down"),
-                                                _ => None,
-                                            },
-                                            2 => if *pts > 0 { Some("keyboard_arrow_up") } else { Some("keyboard_arrow_down") },
-                                            _ => None,
-                                        };
-
-                                        @if let Some(i) = icon {
-                                            span class="material-icons ms-2 align-middle text-muted" { (i) }
-                                        } @else {
-                                            @if *pts > 0 {
-                                                span class="badge bg-success ms-2" { (pts) }
-                                            } @else {
-                                                span class="badge bg-danger ms-2" { (pts) }
-                                            }
-                                        }
-                                    } @else {
-                                        span class="text-muted ms-2" { "-" }
-                                    }
-                                }
-                            }
-                            td class="align-middle" {
-                                @for judge in debate.judges_of_debate.iter() {
-                                    span class="badge bg-secondary me-1" {
-                                        (debate.judges.get(&judge.judge_id).unwrap().name)
-                                    }
-                                }
-                            }
-                        }
+        let mut rows = Vec::new();
+        let debate_rooms = debates::table
+            .left_join(
+                rooms::table.on(rooms::id
+                    .nullable()
+                    .eq(debates::room_id)
+                    .and(rooms::tournament_id.eq(&tid))),
+            )
+            .filter(debates::tournament_id.eq(&tid))
+            .filter(debates::round_id.eq(&round.id))
+            .order(debates::id.asc())
+            .select((debates::id, rooms::name.nullable()))
+            .load::<(String, Option<String>)>(&mut *conn)?;
+        for (id, room) in debate_rooms {
+            let assigned = teams_of_debate::table
+                .inner_join(
+                    teams::table.on(teams::id.eq(teams_of_debate::team_id)),
+                )
+                .filter(teams_of_debate::tournament_id.eq(&tid))
+                .filter(teams::tournament_id.eq(&tid))
+                .filter(teams_of_debate::debate_id.eq(&id))
+                .select((
+                    teams::id,
+                    teams::name,
+                    teams_of_debate::seq,
+                    teams_of_debate::side,
+                ))
+                .load::<(String, String, i64, i64)>(&mut *conn)?;
+            let scores = agg_team_results_of_debate::table
+                .filter(agg_team_results_of_debate::tournament_id.eq(&tid))
+                .filter(agg_team_results_of_debate::debate_id.eq(&id))
+                .select((
+                    agg_team_results_of_debate::team_id,
+                    agg_team_results_of_debate::points,
+                ))
+                .load::<(String, Option<i64>)>(&mut *conn)?;
+            let mut team_columns = vec![None; columns];
+            for (team_id, name, slot, side) in assigned {
+                if slot >= 0 && (0..2).contains(&side) {
+                    if let Some(cell) =
+                        team_columns.get_mut((slot * 2 + side) as usize)
+                    {
+                        *cell = Some((
+                            name,
+                            scores
+                                .iter()
+                                .find(|(id, _)| id == &team_id)
+                                .and_then(|(_, points)| *points),
+                        ));
                     }
                 }
             }
+            let panel = judges_of_debate::table
+                .inner_join(
+                    judges::table.on(judges::id.eq(judges_of_debate::judge_id)),
+                )
+                .filter(judges_of_debate::tournament_id.eq(&tid))
+                .filter(judges::tournament_id.eq(&tid))
+                .filter(judges_of_debate::debate_id.eq(&id))
+                .order(judges::name.asc())
+                .select(judges::name)
+                .load::<String>(&mut *conn)?;
+            rows.push(ResultRow {
+                room,
+                teams: team_columns,
+                panel,
+            });
         }
+        display.push(ResultRound {
+            name: round.name,
+            public,
+            rows,
+        });
     }
-
-    success(
-        Page::new()
-            .user_opt(user)
-            .tournament(tournament.clone())
-            .current_rounds(current_rounds)
-            .body(maud! {
-                div class="container py-5 px-4" {
-                    div class="container-fluid" {
-                        @if !unviewable_rounds.is_empty() {
-                            div class="alert alert-info" {
-                                "The results for "
-                                @if unviewable_rounds.len() > 1 {
-                                    "some rounds "
-                                } @else {
-                                    "one of the rounds "
-                                }
-                                "occuring at this time have not yet been published. You can still see the "
-                                a href=(format!("/tournaments/{}/rounds/{}/draw", tid, round_seq)) {
-                                    "draw for "
-                                    @if unviewable_rounds.len() > 1 {
-                                        "these rounds"
-                                    } @else {
-                                        "this round"
-                                    }
-                                }
-                                "."
-                            }
-                        }
-
-                        @for data in &display_data_list {
-                            @let results_view = render_results_view(data, &tournament);
-
-                            @if data.round.results_published_at.is_none() && is_superuser {
-                                (NonPublic {
-                                    title: "Unpublished Results",
-                                    child: results_view
-                                })
-                            } @else {
-                                (results_view)
-                            }
-                        }
+    let display = &display;
+    let tid = tid.as_str();
+    let tournament = &tournament;
+    let view = ui::html(|ctx: &TournamentAccess, out| {
+        let content = ui::protected(
+            |_: &TournamentAccess| !display.is_empty(),
+            || {
+                ui::html(|ctx: &TournamentAccess, out| {
+                    maud! {
+            @for round in display {
+                section class="my-4" {
+                    h2 { (round.name) }
+                    @if ctx.is_superuser() { (publication::<TournamentAccess>("Results",if round.public {Publication::Public}else{Publication::Unpublished}).bind(ctx)) }
+                    table class="table" {
+                        thead { tr { th scope="col" { "Room" } @for index in 0..columns { th scope="col" { (side_names::name_of_side(tournament,(index%2) as i64,(index/2) as i64,false)) } } th scope="col" { "Adjudicators" } } }
+                        tbody { @for row in &round.rows { tr {
+                            td { (row.room.as_deref().unwrap_or("TBA")) }
+                            @for team in &row.teams { td { @if let Some((name,points))=team { (name) " " @if let Some(points)=points { span class="badge text-bg-secondary" { (points) } } } @else { "TBA" } } }
+                            td { @for name in &row.panel { span class="badge text-bg-secondary me-1" { (name) } } }
+                        } } }
                     }
                 }
-            })
+            }
+        }.render_to(out)
+                })
+            },
+            || {
+                ui::html(|_: &TournamentAccess, out| {
+                    maud! { p role="status" { "Round results are not yet public." } }.render_to(out)
+                })
+            },
+        );
+        maud! {
+            div class="container py-4" {
+                h1 { "Results" }
+                (action(TournamentAccess::is_superuser,&format!("/tournaments/{tid}/rounds/{seq}/results/manage"),"Result controls",true).bind(ctx))
+                @if hidden && !display.is_empty() { p role="status" { "Some results are not yet public." } }
+                (content.bind(ctx))
+                a href=(format!("/tournaments/{tid}/rounds/{seq}/draw")) { "Draw" }
+            }
+        }.render_to(out)
+    });
+    success(
+        Page::new()
+            .tournament((*tournament).clone())
+            .user_opt(user)
+            .body(view.bind(&access))
             .render(),
     )
 }

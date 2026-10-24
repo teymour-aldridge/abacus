@@ -19,8 +19,8 @@ pub mod template;
 pub mod tournaments;
 pub mod util_resp;
 // /// Code for validating data input to the tab system.
+pub mod ui;
 pub mod validation;
-pub mod widgets;
 
 #[cfg(test)]
 pub mod tournamentsim;

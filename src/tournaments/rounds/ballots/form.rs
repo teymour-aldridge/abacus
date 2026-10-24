@@ -69,7 +69,7 @@ pub fn fields_of_single_ballot_form(
                                 },
                                 _ => false
                             };
-                            option value=(motion.0) selected=(selected) {
+                            option value=(motion.0) selected[selected] {
                                 (motion.1.motion)
                             }
                         }
@@ -113,7 +113,7 @@ pub fn fields_of_single_ballot_form(
                                                                             .map(|s| s.id == speaker.id)
                                                                             .unwrap_or(false)
                                                                     }).unwrap_or(false);
-                                                                    option value=(speaker.id) selected=(selected) {
+                                                                    option value=(speaker.id) selected[selected] {
                                                                         (speaker.name)
                                                                     }
                                                                 }
@@ -162,7 +162,7 @@ pub fn fields_of_single_ballot_form(
                                                                             .map(|s| s.id == speaker.id)
                                                                             .unwrap_or(false)
                                                                     }).unwrap_or(false);
-                                                                    option value=(speaker.id) selected=(selected) {
+                                                                    option value=(speaker.id) selected[selected] {
                                                                         (speaker.name) " (Reply)"
                                                                     }
                                                                 }

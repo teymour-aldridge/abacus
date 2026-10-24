@@ -14,18 +14,15 @@ pub fn times_team_achieved_p_points(
         .filter(teams::tournament_id.eq(tid))
         .inner_join(
             agg_team_results_of_debate::table
-                .inner_join(
-                    debates::table.inner_join(
-                        rounds::table.on(rounds::id
-                            .eq(debates::round_id)
-                            .and(rounds::kind.eq("P"))
-                            .and(rounds::completed.eq(true))),
-                    ),
-                )
-                .on(agg_team_results_of_debate::team_id.eq(teams::id).and(
-                    agg_team_results_of_debate::debate_id.eq(debates::id),
-                )),
+                .on(agg_team_results_of_debate::team_id.eq(teams::id)),
         )
+        .inner_join(
+            debates::table
+                .on(agg_team_results_of_debate::debate_id.eq(debates::id)),
+        )
+        .inner_join(rounds::table.on(rounds::id.eq(debates::round_id)))
+        .filter(rounds::kind.eq("P"))
+        .filter(rounds::completed.eq(true))
         .filter(agg_team_results_of_debate::points.eq(p as i64))
         .group_by(teams::id)
         .select((

@@ -32,6 +32,7 @@ pub async fn admin_ballot_of_seq_overview(
         TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
 
     let rounds = rounds::table
+        .filter(rounds::tournament_id.eq(&tournament_id))
         .filter(rounds::seq.eq(round_seq))
         .load::<Round>(&mut *conn)
         .unwrap();
@@ -46,6 +47,7 @@ pub async fn admin_ballot_of_seq_overview(
                 .eq(round_seq)
                 .and(debates::round_id.eq(rounds::id))),
         )
+        .filter(rounds::tournament_id.eq(&tournament_id))
         .order_by((rounds::id.asc(), debates::number.asc()))
         .select(debates::all_columns)
         .load::<Debate>(&mut *conn)
@@ -69,6 +71,7 @@ pub async fn admin_ballot_of_seq_overview(
 
                 div class="mb-4 pb-3 border-bottom border-2 border-dark" {
                     h1 class="mb-2" { "Ballot Status" }
+                    span class="badge bg-secondary" { "Restricted: Tournament organisers" }
                     p class="text-muted mb-0" { (rounds[0].name) }
                 }
 

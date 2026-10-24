@@ -1,183 +1,152 @@
-use axum::{Form, extract::Path, response::Redirect};
-use diesel::{prelude::*, result::DatabaseErrorKind};
-use hypertext::prelude::*;
-use serde::Deserialize;
-
 use crate::{
     auth::User,
     schema::rounds,
     state::Conn,
-    template::Page,
-    tournaments::{
-        Tournament,
-        manage::sidebar::SidebarWrapper,
-        rounds::{Round, TournamentRounds},
-        snapshots::take_snapshot,
-    },
-    util_resp::{
-        FailureResponse, StandardResponse, SuccessResponse, err_not_found,
-        see_other_ok,
-    },
+    tournaments::{Tournament, rounds::Round, snapshots::take_snapshot},
+    ui::response::{ModalQuery, after_edit, form_page},
+    util_resp::StandardResponse,
 };
+use axum::{
+    Form,
+    extract::{Path, Query},
+};
+use diesel::{prelude::*, result::DatabaseErrorKind};
+use hypertext::prelude::*;
+use serde::Deserialize;
+
+#[derive(Deserialize, Default)]
+pub struct EditRoundForm {
+    pub(super) name: String,
+    pub(super) seq: String,
+}
+
+pub(super) fn round_form<'a>(
+    action: &'a str,
+    form: &'a EditRoundForm,
+    error: Option<&'a str>,
+) -> impl Renderable + 'a {
+    maud! {
+        @if let Some(error) = error { div class="alert alert-danger" role="alert" { (error) } }
+        form method="post" action=(action) hx-post=(format!("{action}?modal=true")) hx-target="#ui-modal" hx-swap="innerHTML" {
+            div class="mb-3" {
+                label for="round-name" class="form-label" { "Round name" }
+                input id="round-name" class="form-control" name="name" value=(&form.name) required;
+            }
+            div class="mb-3" {
+                label for="round-seq" class="form-label" { "Sequence" }
+                input id="round-seq" class="form-control" type="number" name="seq" value=(&form.seq) min="1" required;
+                p class="form-text" { "Rounds with the same sequence run concurrently." }
+            }
+            button type="submit" class="btn btn-primary" { "Save round" }
+        }
+    }
+}
 
 pub async fn edit_round_page(
     Path((tid, rid)): Path<(String, String)>,
+    Query(query): Query<ModalQuery>,
     user: User<true>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
-
-    let round = match rounds::table
-        .filter(rounds::tournament_id.eq(&tid))
-        .filter(rounds::id.eq(&rid))
-        .first::<Round>(&mut *conn)
-        .optional()
-        .unwrap()
-    {
-        Some(round) => round,
-        None => return Err(FailureResponse::NotFound(())),
+    let round = Round::fetch(&tid, &rid, &mut *conn)?;
+    let form = EditRoundForm {
+        name: round.name,
+        seq: round.seq.to_string(),
     };
-
-    let rounds = TournamentRounds::fetch(&tid, &mut *conn).unwrap();
-
-    let current_rounds = Round::current_rounds(&tid, &mut *conn);
-
-    Ok(SuccessResponse::Success(
-        Page::new()
-            .tournament(tournament.clone())
-            .user(user)
-            .current_rounds(current_rounds)
-            .body(maud! {
-                SidebarWrapper rounds=(&rounds) tournament=(&tournament) active_page=(Some(crate::tournaments::manage::sidebar::SidebarPage::Setup)) selected_seq=(Some(round.seq)) {
-                    form method="post" {
-                        div class="mb-3" {
-                            label for="roundName" class="form-label" {
-                                "Round name"
-                            }
-                            input type="text"
-                                  name="name"
-                                  class="form-control"
-                                  id="roundName"
-                                  aria-describedby="roundNameHelp"
-                                  value=(round.name);
-                            div id="roundHelp" class="form-text" {
-                                "A human-readable description of the round, for"
-                                " example 'Round 1', or 'Grand final'"
-                            }
-                        }
-                        div class="mb-3" {
-                            label for="roundSeq" class="form-label" {
-                                "Round sequence"
-                            }
-                            input type="integer"
-                                  name="seq"
-                                  class="form-control"
-                                  id="roundSeq"
-                                  aria-describedby="roundNameHelp"
-                                  value=(round.seq);
-                            div id="roundSeq" class="form-text" {
-                                "A human-readable description of the round, for"
-                                " example 'Round 1', or 'Grand final'"
-                            }
-                        }
-                        button type="submit" class="btn btn-primary" { "Submit" }
-                        // todo: break categories
-                    }
-                }
-
-            })
-            .render(),
-    ))
-}
-
-#[derive(Deserialize)]
-pub struct EditRoundForm {
-    name: String,
-    seq: u32,
+    let action = format!("/tournaments/{tid}/rounds/{rid}/edit");
+    form_page(
+        query,
+        "Edit round",
+        &format!("/tournaments/{tid}/rounds/{}", round.seq),
+        &tournament,
+        user,
+        round_form(&action, &form, None),
+        false,
+    )
 }
 
 pub async fn do_edit_round(
     Path((tid, rid)): Path<(String, String)>,
+    Query(query): Query<ModalQuery>,
     user: User<true>,
     mut conn: Conn<true>,
     Form(form): Form<EditRoundForm>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
-
-    if form.name.len() < 4 || form.name.len() > 32 {
-        return crate::util_resp::bad_request(
-            maud! { "Round name must be between 4 and 32 characters" }.render(),
-        );
-    }
-    if form.seq < 1 {
-        return crate::util_resp::bad_request(
-            maud! { "Sequence must be at least 1" }.render(),
-        );
-    }
-
-    let round = match rounds::table
-        .filter(rounds::tournament_id.eq(&tid))
-        .filter(rounds::id.eq(&rid))
-        .first::<Round>(&mut *conn)
-        .optional()
-        .unwrap()
-    {
-        Some(round) => round,
-        None => return err_not_found(),
-    };
-
+    let round = Round::fetch(&tid, &rid, &mut *conn)?;
     let max = rounds::table
         .filter(rounds::tournament_id.eq(&tid))
         .select(diesel::dsl::max(rounds::seq))
-        .get_result::<Option<i64>>(&mut *conn)
-        .unwrap()
-        .unwrap_or(1i64);
-
-    let current_rounds = Round::current_rounds(&tid, &mut *conn);
-
-    if max + 1 < (form.seq as i64) {
-        return Err(FailureResponse::BadRequest(
-            Page::new()
-                .user(user)
-                .tournament(tournament)
-                .current_rounds(current_rounds)
-                .body(maud! {
-                    p {
-                        "Error: round index is too large. It must be at most
-                         one more than the current largest index, which is "
-                         (max)
-                        "."
-                    }
-                })
-                .render(),
-        ));
-    }
-
-    let res = diesel::update(rounds::table.filter(rounds::id.eq(round.id)))
-        .set((
-            rounds::name.eq(&form.name),
-            rounds::seq.eq(&(form.seq as i64)),
-        ))
-        .execute(&mut *conn);
-    let n = match res {
-        Ok(n) => n,
-        Err(diesel::result::Error::DatabaseError(kind, _))
-            if kind == DatabaseErrorKind::UniqueViolation =>
-        {
-            return crate::util_resp::bad_request(
-                maud! {
-                    p { "A round with this name already exists in this tournament." }
-                }
-                .render(),
-            );
-        }
-        Err(e) => return Err(e.into()),
+        .get_result::<Option<i64>>(&mut *conn)?
+        .unwrap_or(1);
+    let seq = form.seq.parse::<u32>().ok().map(i64::from);
+    let first_elim = rounds::table
+        .filter(rounds::tournament_id.eq(&tid))
+        .filter(rounds::kind.eq("E"))
+        .select(diesel::dsl::min(rounds::seq))
+        .first::<Option<i64>>(&mut *conn)?;
+    let last_prelim = rounds::table
+        .filter(rounds::tournament_id.eq(&tid))
+        .filter(rounds::kind.eq("P"))
+        .select(diesel::dsl::max(rounds::seq))
+        .first::<Option<i64>>(&mut *conn)?;
+    let mut error = if !(4..=32).contains(&form.name.len()) {
+        Some("Round name must be between 4 and 32 characters.")
+    } else if seq.is_none_or(|s| s < 1) {
+        Some("Sequence must be a positive integer.")
+    } else if seq.is_some_and(|s| s > max.saturating_add(1)) {
+        Some(
+            "Sequence must be at most one greater than the largest existing sequence.",
+        )
+    } else if round.kind == "P"
+        && seq.is_some_and(|s| first_elim.is_some_and(|e| s >= e))
+    {
+        Some("Preliminary rounds must precede elimination rounds.")
+    } else if round.kind == "E"
+        && seq.is_some_and(|s| last_prelim.is_some_and(|p| s <= p))
+    {
+        Some("Elimination rounds must follow preliminary rounds.")
+    } else {
+        None
     };
-    assert_eq!(n, 1);
-
-    take_snapshot(&tid, &mut *conn);
-
-    see_other_ok(Redirect::to(&format!("/tournaments/{tid}/rounds")))
+    if error.is_none() {
+        match diesel::update(
+            rounds::table
+                .filter(rounds::id.eq(&rid))
+                .filter(rounds::tournament_id.eq(&tid)),
+        )
+        .set((rounds::name.eq(&form.name), rounds::seq.eq(seq.unwrap())))
+        .execute(&mut *conn)
+        {
+            Ok(_) => {
+                take_snapshot(&tid, &mut *conn);
+                return after_edit(
+                    query,
+                    format!("/tournaments/{tid}/rounds/{}", seq.unwrap()),
+                );
+            }
+            Err(diesel::result::Error::DatabaseError(
+                DatabaseErrorKind::UniqueViolation,
+                _,
+            )) => {
+                error = Some(
+                    "A round with this name already exists in this tournament.",
+                )
+            }
+            Err(e) => return Err(e.into()),
+        }
+    }
+    let action = format!("/tournaments/{tid}/rounds/{rid}/edit");
+    form_page(
+        query,
+        "Edit round",
+        &format!("/tournaments/{tid}/rounds/{}", round.seq),
+        &tournament,
+        user,
+        round_form(&action, &form, error),
+        true,
+    )
 }

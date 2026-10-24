@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
-use axum::{Form, extract::Path, response::Redirect};
+use axum::{extract::Path, response::Redirect};
+use axum_extra::extract::Form;
 use diesel::{prelude::*, result::DatabaseErrorKind};
 use hypertext::prelude::*;
 use serde::Deserialize;
@@ -12,7 +13,6 @@ use crate::{
         team_break_eligibility, teams,
     },
     state::Conn,
-    template::{ActiveNav, Page},
     tournaments::{
         Tournament,
         categories::{
@@ -27,48 +27,46 @@ use crate::{
         standings::compute::TeamStandings,
         teams::Team,
     },
-    util_resp::{
-        StandardResponse, bad_request, err_not_found, see_other_ok, success,
-    },
+    util_resp::{StandardResponse, err_not_found},
 };
 
-#[derive(Deserialize)]
+#[derive(Deserialize, serde::Serialize)]
 pub struct CreateSpeakerCategoryForm {
     name: String,
     slug: Option<String>,
-    seq: i64,
+    seq: String,
     public: Option<String>,
-    limit_: i64,
+    limit_: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, serde::Serialize)]
 pub struct CreateBreakCategoryForm {
     name: String,
     slug: Option<String>,
-    seq: i64,
-    priority: i64,
-    break_size: i64,
-    reserve_size: i64,
+    seq: String,
+    priority: String,
+    break_size: String,
+    reserve_size: String,
     public: Option<String>,
-    limit_: i64,
+    limit_: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, serde::Serialize)]
 pub struct AddImplicationForm {
     child_category_id: String,
     parent_category_id: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, serde::Serialize)]
 pub struct UpdateBreakRuleForm {
     threshold_type: String,
-    count: Option<usize>,
-    minus: Option<usize>,
+    count: Option<String>,
+    minus: Option<String>,
     #[serde(default)]
     category_ids: Vec<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, serde::Serialize)]
 pub struct SaveBreakRemarkForm {
     team_id: String,
     remark: String,
@@ -89,11 +87,42 @@ struct BreakRemarkView {
 
 pub async fn manage_break_page(
     Path(tid): Path<String>,
-    user: User<true>,
+    axum::extract::Query(query): axum::extract::Query<
+        crate::tournaments::manage::workspace::WorkspaceQuery,
+    >,
+    user: Option<User<true>>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
-    tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+    let access = crate::permission::TournamentAccess::resolve(
+        &tournament.id,
+        user.as_ref().map(|u| u.id.as_str()),
+        &mut *conn,
+    )?;
+    if !access.is_superuser() {
+        if query.editing() {
+            return Err(crate::util_resp::FailureResponse::Unauthorized(()));
+        }
+        let speaker_names = speaker_categories::table
+            .filter(speaker_categories::tournament_id.eq(&tid))
+            .filter(speaker_categories::public.eq(true))
+            .order(speaker_categories::seq.asc())
+            .select(speaker_categories::name)
+            .load::<String>(&mut *conn)?;
+        let break_names = break_categories::table
+            .filter(break_categories::tournament_id.eq(&tid))
+            .filter(break_categories::public.eq(true))
+            .order(break_categories::seq.asc())
+            .select(break_categories::name)
+            .load::<String>(&mut *conn)?;
+        return crate::util_resp::success(crate::template::Page::new().user_opt(user).tournament(tournament).body(maud! {
+            h1 { "Categories" }
+            @if speaker_names.is_empty() && break_names.is_empty() { p { "Category information is not yet public." } }
+            @if !speaker_names.is_empty() { h2 { "Speaker categories" } ul { @for name in &speaker_names { li { (name) } } } }
+            @if !break_names.is_empty() { h2 { "Break categories" } ul { @for name in &break_names { li { (name) } } } }
+        }).render());
+    }
+    let user = user.expect("superuser is authenticated");
     let rounds = TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
 
     let speaker_categories = speaker_categories::table
@@ -118,330 +147,217 @@ pub async fn manage_break_page(
         .map(|category| (category.id.clone(), category))
         .collect();
 
-    success(
-        Page::new()
-            .active_nav(ActiveNav::Break)
-            .user(user)
-            .tournament(tournament.clone())
-            .body(maud! {
-                SidebarWrapper tournament=(&tournament) rounds=(&rounds) selected_seq=(None) active_page=(None) {
-                    div class="d-flex flex-column gap-5" {
-                        section {
-                            div class="d-flex justify-content-between align-items-center mb-3" {
-                                div {
-                                    h1 class="h3 fw-bold mb-1" { "Manage Break" }
-                                    p class="text-muted mb-0" { "Configure break categories, eligibility rules, and team overrides." }
-                                }
-                            }
-
-                            h2 class="h4 fw-bold mt-4 mb-3" { "Speaker Categories" }
-
-                            div class="card mb-4" {
-                                div class="card-body bg-light" {
-                                    form action=(format!("/tournaments/{}/categories/speaker/create", tournament.id)) method="post" class="row g-3 align-items-end" {
-                                        div class="col-md-4" {
-                                            label class="form-label" for="name" { "Name" }
-                                            input class="form-control" type="text" name="name" placeholder="ESL" required;
-                                        }
-                                        div class="col-md-2" {
-                                            label class="form-label" for="slug" { "Slug" }
-                                            input class="form-control" type="text" name="slug" placeholder="esl";
-                                        }
-                                        div class="col-md-2" {
-                                            label class="form-label" for="seq" { "Order" }
-                                            input class="form-control" type="number" name="seq" value=(speaker_categories.len() + 1) required;
-                                        }
-                                        div class="col-md-4" {
-                                            label class="form-label" for="limit_" { "Public limit" }
-                                            input class="form-control" type="number" name="limit_" value="0" min="0" required;
-                                        }
-                                        div class="col-12 d-flex align-items-center justify-content-end gap-3" {
-                                            div class="form-check m-0" {
-                                                input class="form-check-input" type="checkbox" name="public" id="speaker_public" checked;
-                                                label class="form-check-label" for="speaker_public" { "Public" }
-                                            }
-                                            button class="btn btn-primary flex-shrink-0" type="submit" { "Add" }
-                                        }
+    let speaker_options: Vec<(String, String)> = speaker_categories
+        .iter()
+        .map(|c| (c.id.clone(), c.name.clone()))
+        .collect();
+    let break_options: Vec<(String, String)> = break_categories
+        .iter()
+        .map(|c| (c.id.clone(), c.name.clone()))
+        .collect();
+    let canonical = format!("/tournaments/{tid}/categories");
+    if !query.editing() {
+        return crate::tournaments::manage::workspace::read_page(
+            &tournament,
+            user,
+            "Break categories",
+            &canonical,
+            &access,
+            maud! { h2 { "Speaker categories" } ul { @for category in &speaker_categories { li { (category.name) } } } h2 { "Break categories" } @for category in &break_categories { h3 { (category.name) } @if category.public { span class="badge text-bg-success" { "Public" } } @else { span class="badge text-bg-danger" { "Unpublished" } } @if let Some(preview) = previews.get(&category.id) { p { (preview.eligible_count) " eligible teams" } } } h2 { "Team break status" } ul { @for row in &break_team_rows { li { (row.team.name) ": " (row.eligible_categories.join(", ")) } } } },
+        );
+    }
+    crate::tournaments::manage::workspace::editor_page(
+        query.form(),
+        "Break categories",
+        &canonical,
+        &tournament.clone(),
+        user,
+        maud! {
+                    SidebarWrapper tournament=(&tournament) rounds=(&rounds) selected_seq=(None) active_page=(None) {
+                        div class="d-flex flex-column gap-5" {
+                            section {
+                                div class="d-flex justify-content-between align-items-center mb-3" {
+                                    div {
+                                        h1 class="h3 fw-bold mb-1" { "Manage Break" }
+                                        p class="text-muted mb-0" { "Configure break categories, eligibility rules, and team overrides." }
                                     }
                                 }
-                            }
 
-                            div class="table-responsive border rounded" {
-                                table class="table table-hover align-middle mb-0" {
-                                    thead class="bg-light" {
-                                        tr {
-                                            th { "Order" }
-                                            th { "Name" }
-                                            th { "Slug" }
-                                            th { "Public" }
-                                            th class="text-end" { "Actions" }
-                                        }
-                                    }
-                                    tbody {
-                                        @for category in &speaker_categories {
-                                            tr {
-                                                td { (category.seq) }
-                                                td class="fw-medium" { (category.name) }
-                                                td { code { (category.slug) } }
-                                                td { (if category.public { "Yes" } else { "No" }) }
-                                                td class="text-end" {
-                                                    form action=(format!("/tournaments/{}/categories/speaker/{}/delete", tournament.id, category.id)) method="post"
-                                                        onsubmit="return confirm('Delete this speaker category? Memberships and implication links will also be removed.');" {
-                                                        button class="btn btn-sm btn-outline-danger" type="submit" { "Delete" }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        @if speaker_categories.is_empty() {
-                                            tr { td colspan="5" class="text-center text-muted py-4" { "No speaker categories yet." } }
-                                        }
+                                h2 class="h4 fw-bold mt-4 mb-3" { "Speaker Categories" }
+
+                                div class="card mb-4" {
+                                    div class="card-body bg-light" {
+                                        (crate::tournaments::manage::workspace::submitted_form(&format!("/tournaments/{}/categories/speaker/create", tournament.id), crate::tournaments::manage::workspace::fields(&CreateSpeakerCategoryForm { name:String::new(),slug:Some(String::new()),seq:(speaker_categories.len()+1).to_string(),public:Some("true".into()),limit_:"0".into() }, &[]), None))
                                     }
                                 }
-                            }
-                        }
 
-                        section {
-                            h2 class="h4 fw-bold mb-3" { "Category Counts-As Rules" }
-                            div class="card mb-4" {
-                                div class="card-body bg-light" {
-                                    form action=(format!("/tournaments/{}/categories/implications/add", tournament.id)) method="post" class="row g-3 align-items-end" {
-                                        div class="col-md-5" {
-                                            label class="form-label" { "Category" }
-                                            select class="form-select" name="child_category_id" required {
-                                                option value="" selected disabled { "Choose category" }
-                                                @for category in &speaker_categories {
-                                                    option value=(category.id) { (category.name) }
-                                                }
-                                            }
-                                        }
-                                        div class="col-md-5" {
-                                            label class="form-label" { "Counts as" }
-                                            select class="form-select" name="parent_category_id" required {
-                                                option value="" selected disabled { "Choose parent category" }
-                                                @for category in &speaker_categories {
-                                                    option value=(category.id) { (category.name) }
-                                                }
-                                            }
-                                        }
-                                        div class="col-md-2" {
-                                            button class="btn btn-primary w-100" type="submit" { "Add" }
-                                        }
-                                    }
-                                }
-                            }
-                            div class="d-flex flex-wrap gap-2" {
-                                @for implication in &implications {
-                                    @let child = category_by_id.get(&implication.child_category_id);
-                                    @let parent = category_by_id.get(&implication.parent_category_id);
-                                    @if let (Some(child), Some(parent)) = (child, parent) {
-                                        div class="badge bg-white text-dark border d-inline-flex align-items-center gap-2 p-2" {
-                                            (child.name) " counts as " (parent.name)
-                                            form action=(format!("/tournaments/{}/categories/implications/{}/delete", tournament.id, implication.id)) method="post" class="m-0" {
-                                                button type="submit" class="btn-close" aria-label="Remove" {}
-                                            }
-                                        }
-                                    }
-                                }
-                                @if implications.is_empty() {
-                                    span class="text-muted" { "No counts-as rules yet." }
-                                }
-                            }
-                        }
-
-                        section {
-                            h2 class="h4 fw-bold mb-3" { "Break Categories" }
-                            div class="card mb-4" {
-                                div class="card-body bg-light" {
-                                    form action=(format!("/tournaments/{}/categories/break/create", tournament.id)) method="post" class="row g-3 align-items-end" {
-                                        div class="col-md-4" {
-                                            label class="form-label" { "Name" }
-                                            input class="form-control" type="text" name="name" placeholder="ESL" required;
-                                        }
-                                        div class="col-md-4" {
-                                            label class="form-label" { "Slug" }
-                                            input class="form-control" type="text" name="slug" placeholder="esl";
-                                        }
-                                        div class="col-md-2" {
-                                            label class="form-label" { "Order" }
-                                            input class="form-control" type="number" name="seq" value=(break_categories.len() + 1) required;
-                                        }
-                                        div class="col-md-2" {
-                                            label class="form-label" { "Priority" }
-                                            input class="form-control" type="number" name="priority" value="0" min="0" required;
-                                        }
-                                        div class="col-md-3" {
-                                            label class="form-label" { "Break" }
-                                            input class="form-control" type="number" name="break_size" value="2" min="2" required;
-                                        }
-                                        div class="col-md-3" {
-                                            label class="form-label" { "Reserve" }
-                                            input class="form-control" type="number" name="reserve_size" value="0" min="0" required;
-                                        }
-                                        div class="col-md-3" {
-                                            label class="form-label" { "Limit" }
-                                            input class="form-control" type="number" name="limit_" value="0" min="0" required;
-                                        }
-                                        div class="col-md-3 d-flex align-items-center justify-content-end gap-3" {
-                                            div class="form-check m-0" {
-                                                input class="form-check-input" type="checkbox" name="public" id="break_public" checked;
-                                                label class="form-check-label" for="break_public" { "Public" }
-                                            }
-                                            button class="btn btn-primary flex-shrink-0" type="submit" { "Add" }
-                                        }
-                                    }
-                                }
-                            }
-
-                            div class="list-group" {
-                                @for break_category in &break_categories {
-                                    @let rule = EligibilityRule::from_json_or_default(&break_category.eligibility_rule_json);
-                                    @let selected_categories = rule_category_ids(&rule);
-                                    @let preview = previews.get(&break_category.id);
-                                    @let show_count = matches!(rule, EligibilityRule::IfThresholdMet { threshold: SpeakerThreshold::Geq { .. }, .. });
-                                    @let show_minus = matches!(rule, EligibilityRule::IfThresholdMet { threshold: SpeakerThreshold::GeqNMinusK { .. }, .. });
-                                    @let show_categories = !is_everyone_rule(&rule);
-                                    div class="list-group-item p-4" {
-                                        div class="d-flex justify-content-between align-items-start gap-3 mb-3" {
-                                            div {
-                                                h3 class="h5 fw-bold mb-1" { (break_category.name) }
-                                                div class="text-muted small" {
-                                                    "Priority " (break_category.priority) " · break size " (break_category.break_size)
-                                                }
-                                            }
-                                            form action=(format!("/tournaments/{}/categories/break/{}/delete", tournament.id, break_category.id)) method="post"
-                                                onsubmit="return confirm('Delete this break category?');" {
-                                                button class="btn btn-sm btn-outline-danger" type="submit" { "Delete" }
-                                            }
-                                        }
-
-                                        form action=(format!("/tournaments/{}/categories/break/{}/rule", tournament.id, break_category.id)) method="post" class="row g-3 align-items-end mb-3"
-                                            onchange="const rule=this.elements.threshold_type.value; this.querySelector('[data-rule-count]').hidden=rule!=='at_least'; this.querySelector('[data-rule-minus]').hidden=rule!=='at_least_minus'; this.querySelector('[data-rule-categories]').hidden=rule==='everyone';" {
-                                            div class="col-lg-5" {
-                                                label class="form-label" { "Which teams are eligible?" }
-                                                select class="form-select" name="threshold_type" {
-                                                    option value="everyone" selected[is_everyone_rule(&rule)] { "Every team" }
-                                                    option value="all" selected[matches!(rule, EligibilityRule::IfThresholdMet { threshold: SpeakerThreshold::All, .. })] { "Teams whose every speaker is in a selected category" }
-                                                    option value="at_least" selected[matches!(rule, EligibilityRule::IfThresholdMet { threshold: SpeakerThreshold::Geq { .. }, .. })] { "Teams with at least a set number of qualifying speakers" }
-                                                    option value="at_least_minus" selected[matches!(rule, EligibilityRule::IfThresholdMet { threshold: SpeakerThreshold::GeqNMinusK { .. }, .. })] { "Teams with no more than a set number of non-qualifying speakers" }
-                                                }
-                                            }
-                                            div class="col-lg-3" data-rule-count hidden[!show_count] {
-                                                label class="form-label" { "Qualifying speakers required" }
-                                                input class="form-control" type="number" name="count" min="1" value=(rule_count(&rule).unwrap_or(1));
-                                            }
-                                            div class="col-lg-3" data-rule-minus hidden[!show_minus] {
-                                                label class="form-label" { "Non-qualifying speakers allowed" }
-                                                input class="form-control" type="number" name="minus" min="0" value=(rule_minus(&rule).unwrap_or(1));
-                                            }
-                                            div class="col-lg-7" data-rule-categories hidden[!show_categories] {
-                                                label class="form-label" { "Qualifying speaker categories" }
-                                                select class="form-select" name="category_ids" multiple size="3" {
-                                                    @for category in &speaker_categories {
-                                                        option value=(category.id) selected[selected_categories.contains(&category.id)] {
-                                                            (category.name)
-                                                        }
-                                                    }
-                                                }
-                                                div class="form-text" { "Hold Ctrl or Command to select more than one category." }
-                                            }
-                                            div class="col-12 d-flex justify-content-end" {
-                                                button class="btn btn-primary" type="submit" { "Save eligibility rule" }
-                                            }
-                                        }
-
-                                        @if let Some(preview) = preview {
-                                            div class="small text-muted mb-2" {
-                                                (preview.eligible_count) " eligible, " (preview.ineligible_count) " ineligible"
-                                            }
-                                            div class="table-responsive border rounded" {
-                                                table class="table table-sm mb-0 align-middle" {
-                                                    tbody {
-                                                        @for row in preview.rows.iter().take(8) {
-                                                            tr {
-                                                                td class=(if row.eligible { "text-success fw-medium" } else { "text-muted" }) {
-                                                                    (if row.eligible { "Eligible" } else { "Ineligible" })
-                                                                }
-                                                                td { (row.team_name) }
-                                                                td class="text-muted" { (row.explanation) }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                @if break_categories.is_empty() {
-                                    div class="list-group-item text-center text-muted py-5" { "No break categories yet." }
-                                }
-                            }
-
-                            div class="card mt-4" id="team-break-status" {
-                                div class="card-header bg-light" {
-                                    h3 class="h5 fw-bold mb-1" { "Team break status" }
-                                }
-                                div class="table-responsive" {
+                                div class="table-responsive border rounded" {
                                     table class="table table-hover align-middle mb-0" {
                                         thead class="bg-light" {
                                             tr {
-                                                th { "Team" }
-                                                th { "Currently breaking in" }
-                                                th { "Break status" }
-                                                th { "Remark and category overrides" }
+                                                th { "Order" }
+                                                th { "Name" }
+                                                th { "Slug" }
+                                                th { "Public" }
+                                                th class="text-end" { "Actions" }
                                             }
                                         }
                                         tbody {
-                                            @for row in &break_team_rows {
+                                            @for category in &speaker_categories {
                                                 tr {
-                                                    td class="fw-medium" { (row.team.name) }
-                                                    td {
-                                                        @for category in &row.eligible_categories {
-                                                            span class="badge text-bg-success me-1" { (category) }
-                                                        }
-                                                        @if row.eligible_categories.is_empty() {
-                                                            span class="text-muted" { "None" }
-                                                        }
-                                                    }
-                                                    td {
-                                                        @if row.remark.is_some() {
-                                                            span class="badge text-bg-danger" { "Excluded by default" }
-                                                        } @else {
-                                                            span class="badge text-bg-secondary" { "Automatically computed" }
+                                                    td { (category.seq) }
+                                                    td class="fw-medium" { (category.name) }
+                                                    td { code { (category.slug) } }
+                                                    td { (if category.public { "Yes" } else { "No" }) }
+                                                    td class="text-end" {
+                                                        form action=(format!("/tournaments/{}/categories/speaker/{}/delete", tournament.id, category.id)) hx-post=(format!("{}{}modal=true", format!("/tournaments/{}/categories/speaker/{}/delete", tournament.id, category.id), if format!("/tournaments/{}/categories/speaker/{}/delete", tournament.id, category.id).contains('?') { "&" } else { "?" })) hx-target="#ui-modal" hx-swap="innerHTML" method="post"
+                                                            onsubmit="return confirm('Delete this speaker category? Memberships and implication links will also be removed.');" {
+                                                            button class="btn btn-sm btn-outline-danger" type="submit" { "Delete" }
                                                         }
                                                     }
-                                                    td {
-                                                        @if let Some(remark) = &row.remark {
-                                                            form action=(format!("/tournaments/{}/categories/break-remarks/save", tournament.id)) method="post" class="mb-2" {
-                                                                input type="hidden" name="team_id" value=(row.team.id);
-                                                                div class="input-group input-group-sm mb-2" {
-                                                                    input class="form-control" type="text" name="remark" value=(remark.text) required;
-                                                                    button class="btn btn-primary" type="submit" { "Update" }
-                                                                }
-                                                                div class="small" {
-                                                                    span class="text-muted me-2" { "Explicitly include:" }
-                                                                    @for category in &break_categories {
-                                                                        span class="form-check form-check-inline mb-0" {
-                                                                            input class="form-check-input" type="checkbox" name="allowed_category_ids" value=(category.id) id=(format!("allow-{}-{}", row.team.id, category.id)) checked[remark.allowed_category_ids.contains(&category.id)];
-                                                                            label class="form-check-label" for=(format!("allow-{}-{}", row.team.id, category.id)) { (category.name) }
-                                                                        }
+                                                }
+                                            }
+                                            @if speaker_categories.is_empty() {
+                                                tr { td colspan="5" class="text-center text-muted py-4" { "No speaker categories yet." } }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            section {
+                                h2 class="h4 fw-bold mb-3" { "Category Counts-As Rules" }
+                                div class="card mb-4" {
+                                    div class="card-body bg-light" {
+                                        (crate::tournaments::manage::workspace::submitted_form(&format!("/tournaments/{}/categories/implications/add", tournament.id), crate::tournaments::manage::workspace::fields(&AddImplicationForm {child_category_id:String::new(),parent_category_id:String::new()}, &speaker_options), None))
+                                    }
+                                }
+                                div class="d-flex flex-wrap gap-2" {
+                                    @for implication in &implications {
+                                        @let child = category_by_id.get(&implication.child_category_id);
+                                        @let parent = category_by_id.get(&implication.parent_category_id);
+                                        @if let (Some(child), Some(parent)) = (child, parent) {
+                                            div class="badge bg-white text-dark border d-inline-flex align-items-center gap-2 p-2" {
+                                                (child.name) " counts as " (parent.name)
+                                                form action=(format!("/tournaments/{}/categories/implications/{}/delete", tournament.id, implication.id)) hx-post=(format!("{}{}modal=true", format!("/tournaments/{}/categories/implications/{}/delete", tournament.id, implication.id), if format!("/tournaments/{}/categories/implications/{}/delete", tournament.id, implication.id).contains('?') { "&" } else { "?" })) hx-target="#ui-modal" hx-swap="innerHTML" method="post" class="m-0" {
+                                                    button type="submit" class="btn-close" aria-label="Remove" {}
+                                                }
+                                            }
+                                        }
+                                    }
+                                    @if implications.is_empty() {
+                                        span class="text-muted" { "No counts-as rules yet." }
+                                    }
+                                }
+                            }
+
+                            section {
+                                h2 class="h4 fw-bold mb-3" { "Break Categories" }
+                                div class="card mb-4" {
+                                    div class="card-body bg-light" {
+                                        (crate::tournaments::manage::workspace::submitted_form(&format!("/tournaments/{}/categories/break/create", tournament.id), crate::tournaments::manage::workspace::fields(&CreateBreakCategoryForm { name:String::new(),slug:Some(String::new()),seq:(break_categories.len()+1).to_string(),priority:"0".into(),break_size:"2".into(),reserve_size:"0".into(),public:Some("true".into()),limit_:"0".into() }, &[]), None))
+                                    }
+                                }
+
+                                div class="list-group" {
+                                    @for break_category in &break_categories {
+                                        @let rule = EligibilityRule::from_json_or_default(&break_category.eligibility_rule_json);
+                                        @let selected_categories = rule_category_ids(&rule);
+                                        @let preview = previews.get(&break_category.id);
+                                        div class="list-group-item p-4" {
+                                            div class="d-flex justify-content-between align-items-start gap-3 mb-3" {
+                                                div {
+                                                    h3 class="h5 fw-bold mb-1" { (break_category.name) }
+                                                    div class="text-muted small" {
+                                                        "Priority " (break_category.priority) " · break size " (break_category.break_size)
+                                                    }
+                                                }
+                                                form action=(format!("/tournaments/{}/categories/break/{}/delete", tournament.id, break_category.id)) hx-post=(format!("{}{}modal=true", format!("/tournaments/{}/categories/break/{}/delete", tournament.id, break_category.id), if format!("/tournaments/{}/categories/break/{}/delete", tournament.id, break_category.id).contains('?') { "&" } else { "?" })) hx-target="#ui-modal" hx-swap="innerHTML" method="post"
+                                                    onsubmit="return confirm('Delete this break category?');" {
+                                                    button class="btn btn-sm btn-outline-danger" type="submit" { "Delete" }
+                                                }
+                                            }
+
+                                            (crate::tournaments::manage::workspace::submitted_form(&format!("/tournaments/{}/categories/break/{}/rule", tournament.id, break_category.id), crate::tournaments::manage::workspace::fields(&UpdateBreakRuleForm {
+            threshold_type: match rule { EligibilityRule::AllowAll => "everyone", EligibilityRule::IfThresholdMet { threshold: SpeakerThreshold::All,..} => "all", EligibilityRule::IfThresholdMet { threshold: SpeakerThreshold::Geq {..},..} => "at_least", _=> "at_least_minus" }.into(),
+            count: Some(rule_count(&rule).unwrap_or(1).to_string()), minus: Some(rule_minus(&rule).unwrap_or(1).to_string()), category_ids: selected_categories.iter().cloned().collect()
+        }, &speaker_options), None))
+
+                                            @if let Some(preview) = preview {
+                                                div class="small text-muted mb-2" {
+                                                    (preview.eligible_count) " eligible, " (preview.ineligible_count) " ineligible"
+                                                }
+                                                div class="table-responsive border rounded" {
+                                                    table class="table table-sm mb-0 align-middle" {
+                                                        tbody {
+                                                            @for row in preview.rows.iter().take(8) {
+                                                                tr {
+                                                                    td class=(if row.eligible { "text-success fw-medium" } else { "text-muted" }) {
+                                                                        (if row.eligible { "Eligible" } else { "Ineligible" })
                                                                     }
+                                                                    td { (row.team_name) }
+                                                                    td class="text-muted" { (row.explanation) }
                                                                 }
-                                                            }
-                                                            form action=(format!("/tournaments/{}/categories/break-remarks/{}/delete", tournament.id, row.team.id)) method="post" {
-                                                                button class="btn btn-sm btn-outline-secondary" type="submit" { "Return to automatic" }
-                                                            }
-                                                        } @else {
-                                                            form action=(format!("/tournaments/{}/categories/break-remarks/save", tournament.id)) method="post" class="input-group input-group-sm" {
-                                                                input type="hidden" name="team_id" value=(row.team.id);
-                                                                input class="form-control" type="text" name="remark" placeholder="e.g. Withdrawn" required;
-                                                                button class="btn btn-outline-danger" type="submit" disabled[break_categories.is_empty()] { "Exclude" }
                                                             }
                                                         }
                                                     }
                                                 }
                                             }
-                                            @if break_team_rows.is_empty() {
-                                                tr { td colspan="4" class="text-center text-muted py-4" { "No teams have been added." } }
+                                        }
+                                    }
+                                    @if break_categories.is_empty() {
+                                        div class="list-group-item text-center text-muted py-5" { "No break categories yet." }
+                                    }
+                                }
+
+                                div class="card mt-4" id="team-break-status" {
+                                    div class="card-header bg-light" {
+                                        h3 class="h5 fw-bold mb-1" { "Team break status" }
+                                    }
+                                    div class="table-responsive" {
+                                        table class="table table-hover align-middle mb-0" {
+                                            thead class="bg-light" {
+                                                tr {
+                                                    th { "Team" }
+                                                    th { "Currently breaking in" }
+                                                    th { "Break status" }
+                                                    th { "Remark and category overrides" }
+                                                }
+                                            }
+                                            tbody {
+                                                @for row in &break_team_rows {
+                                                    tr {
+                                                        td class="fw-medium" { (row.team.name) }
+                                                        td {
+                                                            @for category in &row.eligible_categories {
+                                                                span class="badge text-bg-success me-1" { (category) }
+                                                            }
+                                                            @if row.eligible_categories.is_empty() {
+                                                                span class="text-muted" { "None" }
+                                                            }
+                                                        }
+                                                        td {
+                                                            @if row.remark.is_some() {
+                                                                span class="badge text-bg-danger" { "Excluded by default" }
+                                                            } @else {
+                                                                span class="badge text-bg-secondary" { "Automatically computed" }
+                                                            }
+                                                        }
+                                                        td {
+                                                            @if let Some(remark) = &row.remark {
+                                                                (crate::tournaments::manage::workspace::submitted_form(&format!("/tournaments/{}/categories/break-remarks/save", tournament.id), crate::tournaments::manage::workspace::fields(&SaveBreakRemarkForm { team_id:row.team.id.clone(),remark:remark.text.clone(),allowed_category_ids:remark.allowed_category_ids.iter().cloned().collect() }, &break_options), None))
+                                                                form action=(format!("/tournaments/{}/categories/break-remarks/{}/delete", tournament.id, row.team.id)) hx-post=(format!("{}{}modal=true", format!("/tournaments/{}/categories/break-remarks/{}/delete", tournament.id, row.team.id), if format!("/tournaments/{}/categories/break-remarks/{}/delete", tournament.id, row.team.id).contains('?') { "&" } else { "?" })) hx-target="#ui-modal" hx-swap="innerHTML" method="post" {
+                                                                    button class="btn btn-sm btn-outline-secondary" type="submit" { "Return to automatic" }
+                                                                }
+                                                            } @else {
+                                                                (crate::tournaments::manage::workspace::submitted_form(&format!("/tournaments/{}/categories/break-remarks/save", tournament.id), crate::tournaments::manage::workspace::fields(&SaveBreakRemarkForm { team_id:row.team.id.clone(),remark:String::new(),allowed_category_ids:vec![] }, &break_options), None))
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                @if break_team_rows.is_empty() {
+                                                    tr { td colspan="4" class="text-center text-muted py-4" { "No teams have been added." } }
+                                                }
                                             }
                                         }
                                     }
@@ -449,14 +365,16 @@ pub async fn manage_break_page(
                             }
                         }
                     }
-                }
-            })
-            .render(),
+                },
+        false,
     )
 }
 
 pub async fn save_break_remark(
     Path(tid): Path<String>,
+    axum::extract::Query(modal_query): axum::extract::Query<
+        crate::ui::response::ModalQuery,
+    >,
     user: User<true>,
     mut conn: Conn<true>,
     Form(form): Form<SaveBreakRemarkForm>,
@@ -467,12 +385,15 @@ pub async fn save_break_remark(
 
     let remark = form.remark.trim();
     if remark.is_empty() {
-        return bad_request(
-            Page::new()
-                .user(user)
-                .tournament(tournament)
-                .body(maud! { "A break remark cannot be empty." })
-                .render(),
+        return invalid_category_form(
+            modal_query,
+            &tournament,
+            user,
+            &format!("/tournaments/{tid}/categories/break-remarks/save"),
+            &format!("/tournaments/{tid}/categories"),
+            &form,
+            &mut *conn,
+            "A break remark cannot be empty.",
         );
     }
 
@@ -482,14 +403,15 @@ pub async fn save_break_remark(
         .load::<String>(&mut *conn)
         .unwrap();
     if category_ids.is_empty() {
-        return bad_request(
-            Page::new()
-                .user(user)
-                .tournament(tournament)
-                .body(
-                    maud! { "Create a break category before excluding teams." },
-                )
-                .render(),
+        return invalid_category_form(
+            modal_query,
+            &tournament,
+            user,
+            &format!("/tournaments/{tid}/categories/break-remarks/save"),
+            &format!("/tournaments/{tid}/categories"),
+            &form,
+            &mut *conn,
+            "Create a break category before excluding teams.",
         );
     }
     let valid_category_ids: HashSet<&String> = category_ids.iter().collect();
@@ -527,13 +449,19 @@ pub async fn save_break_remark(
             .execute(&mut *conn)?;
     }
     recompute_break_eligibility(&tid, &mut *conn);
-    see_other_ok(Redirect::to(&format!(
-        "/tournaments/{tid}/break#team-break-status"
-    )))
+    crate::tournaments::manage::workspace::after_redirect(
+        modal_query,
+        Redirect::to(&format!(
+            "/tournaments/{tid}/categories#team-break-status"
+        )),
+    )
 }
 
 pub async fn delete_break_remark(
     Path((tid, team_id)): Path<(String, String)>,
+    axum::extract::Query(modal_query): axum::extract::Query<
+        crate::ui::response::ModalQuery,
+    >,
     user: User<true>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
@@ -547,29 +475,57 @@ pub async fn delete_break_remark(
     )
     .execute(&mut *conn)?;
     recompute_break_eligibility(&tid, &mut *conn);
-    see_other_ok(Redirect::to(&format!(
-        "/tournaments/{tid}/break#team-break-status"
-    )))
+    crate::tournaments::manage::workspace::after_redirect(
+        modal_query,
+        Redirect::to(&format!(
+            "/tournaments/{tid}/categories#team-break-status"
+        )),
+    )
 }
 
 pub async fn create_speaker_category(
     Path(tid): Path<String>,
+    axum::extract::Query(modal_query): axum::extract::Query<
+        crate::ui::response::ModalQuery,
+    >,
     user: User<true>,
     mut conn: Conn<true>,
     Form(form): Form<CreateSpeakerCategoryForm>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
-    let slug = clean_slug(form.slug.as_deref().unwrap_or(&form.name));
+    let seq = form.seq.parse::<i64>().ok();
+    let limit_ = form.limit_.parse::<i64>().ok();
+    if form.name.trim().is_empty()
+        || seq.is_none_or(|n| n < 1)
+        || limit_.is_none_or(|n| n < 0)
+    {
+        return invalid_category_form(
+            modal_query,
+            &tournament,
+            user,
+            &format!("/tournaments/{tid}/categories/speaker/create"),
+            &format!("/tournaments/{tid}/categories"),
+            &form,
+            &mut *conn,
+            "Enter a name and valid whole numbers. Order must be positive, teams advancing at least two, and other values non-negative.",
+        );
+    }
+    let slug = clean_slug(
+        form.slug
+            .as_deref()
+            .filter(|slug| !slug.trim().is_empty())
+            .unwrap_or(&form.name),
+    );
     let res = diesel::insert_into(speaker_categories::table)
         .values((
             speaker_categories::id.eq(uuid::Uuid::now_v7().to_string()),
             speaker_categories::tournament_id.eq(&tid),
             speaker_categories::name.eq(form.name.trim()),
             speaker_categories::slug.eq(slug),
-            speaker_categories::seq.eq(form.seq),
+            speaker_categories::seq.eq(seq.unwrap()),
             speaker_categories::public.eq(form.public.is_some()),
-            speaker_categories::limit_.eq(form.limit_),
+            speaker_categories::limit_.eq(limit_.unwrap()),
         ))
         .execute(&mut *conn);
     match res {
@@ -578,29 +534,44 @@ pub async fn create_speaker_category(
             DatabaseErrorKind::UniqueViolation,
             _,
         )) => {
-            return bad_request(
-                Page::new()
-                    .user(user)
-                    .tournament(tournament)
-                    .body(maud! {
-                        "Error: a speaker category with that slug or sequence already exists."
-                    })
-                    .render(),
+            return invalid_category_form(
+                modal_query,
+                &tournament,
+                user,
+                &format!("/tournaments/{tid}/categories/speaker/create"),
+                &format!("/tournaments/{tid}/categories"),
+                &form,
+                &mut *conn,
+                "Error: a speaker category with that slug or sequence already exists.",
             );
         }
         Err(e) => return Err(e.into()),
     }
     recompute_break_eligibility(&tid, &mut *conn);
-    see_other_ok(Redirect::to(&format!("/tournaments/{tid}/break")))
+    crate::tournaments::manage::workspace::after_redirect(
+        modal_query,
+        Redirect::to(&format!("/tournaments/{tid}/categories")),
+    )
 }
 
 pub async fn delete_speaker_category(
     Path((tid, category_id)): Path<(String, String)>,
+    axum::extract::Query(modal_query): axum::extract::Query<
+        crate::ui::response::ModalQuery,
+    >,
     user: User<true>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+    speaker_categories::table
+        .filter(speaker_categories::tournament_id.eq(&tid))
+        .filter(speaker_categories::id.eq(&category_id))
+        .select(speaker_categories::id)
+        .first::<String>(&mut *conn)
+        .optional()?
+        .ok_or(crate::util_resp::FailureResponse::NotFound(()))?;
+
     diesel::delete(
         speaker_category_implications::table.filter(
             speaker_category_implications::child_category_id
@@ -624,18 +595,52 @@ pub async fn delete_speaker_category(
     )
     .execute(&mut *conn)?;
     recompute_break_eligibility(&tid, &mut *conn);
-    see_other_ok(Redirect::to(&format!("/tournaments/{tid}/break")))
+    crate::tournaments::manage::workspace::after_redirect(
+        modal_query,
+        Redirect::to(&format!("/tournaments/{tid}/categories")),
+    )
 }
 
 pub async fn create_break_category(
     Path(tid): Path<String>,
+    axum::extract::Query(modal_query): axum::extract::Query<
+        crate::ui::response::ModalQuery,
+    >,
     user: User<true>,
     mut conn: Conn<true>,
     Form(form): Form<CreateBreakCategoryForm>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
-    let slug = clean_slug(form.slug.as_deref().unwrap_or(&form.name));
+    let seq = form.seq.parse::<i64>().ok();
+    let priority = form.priority.parse::<i64>().ok();
+    let break_size = form.break_size.parse::<i64>().ok();
+    let reserve_size = form.reserve_size.parse::<i64>().ok();
+    let limit_ = form.limit_.parse::<i64>().ok();
+    if form.name.trim().is_empty()
+        || seq.is_none_or(|n| n < 1)
+        || priority.is_none_or(|n| n < 0)
+        || break_size.is_none_or(|n| n < 2)
+        || reserve_size.is_none_or(|n| n < 0)
+        || limit_.is_none_or(|n| n < 0)
+    {
+        return invalid_category_form(
+            modal_query,
+            &tournament,
+            user,
+            &format!("/tournaments/{tid}/categories/break/create"),
+            &format!("/tournaments/{tid}/categories"),
+            &form,
+            &mut *conn,
+            "Enter a name and valid whole numbers. Order must be positive, teams advancing at least two, and other values non-negative.",
+        );
+    }
+    let slug = clean_slug(
+        form.slug
+            .as_deref()
+            .filter(|slug| !slug.trim().is_empty())
+            .unwrap_or(&form.name),
+    );
     let category_id = uuid::Uuid::now_v7().to_string();
     let manually_managed_teams: HashMap<String, String> =
         team_break_eligibility::table
@@ -654,13 +659,13 @@ pub async fn create_break_category(
             break_categories::id.eq(&category_id),
             break_categories::tournament_id.eq(&tid),
             break_categories::name.eq(form.name.trim()),
-            break_categories::priority.eq(form.priority),
+            break_categories::priority.eq(priority.unwrap()),
             break_categories::slug.eq(slug),
-            break_categories::seq.eq(form.seq),
-            break_categories::break_size.eq(form.break_size),
-            break_categories::reserve_size.eq(form.reserve_size),
+            break_categories::seq.eq(seq.unwrap()),
+            break_categories::break_size.eq(break_size.unwrap()),
+            break_categories::reserve_size.eq(reserve_size.unwrap()),
             break_categories::public.eq(form.public.is_some()),
-            break_categories::limit_.eq(form.limit_),
+            break_categories::limit_.eq(limit_.unwrap()),
             break_categories::eligibility_rule_json
                 .eq(serde_json::to_string(&EligibilityRule::AllowAll).unwrap()),
         ))
@@ -671,14 +676,15 @@ pub async fn create_break_category(
             DatabaseErrorKind::UniqueViolation,
             _,
         )) => {
-            return bad_request(
-                Page::new()
-                    .user(user)
-                    .tournament(tournament)
-                    .body(maud! {
-                        "Error: a break category with that slug or sequence already exists."
-                    })
-                    .render(),
+            return invalid_category_form(
+                modal_query,
+                &tournament,
+                user,
+                &format!("/tournaments/{tid}/categories/break/create"),
+                &format!("/tournaments/{tid}/categories"),
+                &form,
+                &mut *conn,
+                "Error: a break category with that slug or sequence already exists.",
             );
         }
         Err(e) => return Err(e.into()),
@@ -697,16 +703,30 @@ pub async fn create_break_category(
             .execute(&mut *conn)?;
     }
     recompute_break_eligibility(&tid, &mut *conn);
-    see_other_ok(Redirect::to(&format!("/tournaments/{tid}/break")))
+    crate::tournaments::manage::workspace::after_redirect(
+        modal_query,
+        Redirect::to(&format!("/tournaments/{tid}/categories")),
+    )
 }
 
 pub async fn delete_break_category(
     Path((tid, category_id)): Path<(String, String)>,
+    axum::extract::Query(modal_query): axum::extract::Query<
+        crate::ui::response::ModalQuery,
+    >,
     user: User<true>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+    break_categories::table
+        .filter(break_categories::tournament_id.eq(&tid))
+        .filter(break_categories::id.eq(&category_id))
+        .select(break_categories::id)
+        .first::<String>(&mut *conn)
+        .optional()?
+        .ok_or(crate::util_resp::FailureResponse::NotFound(()))?;
+
     diesel::delete(
         crate::schema::team_break_eligibility::table.filter(
             crate::schema::team_break_eligibility::break_category_id
@@ -720,11 +740,17 @@ pub async fn delete_break_category(
             .filter(break_categories::id.eq(&category_id)),
     )
     .execute(&mut *conn)?;
-    see_other_ok(Redirect::to(&format!("/tournaments/{tid}/break")))
+    crate::tournaments::manage::workspace::after_redirect(
+        modal_query,
+        Redirect::to(&format!("/tournaments/{tid}/categories")),
+    )
 }
 
 pub async fn add_implication(
     Path(tid): Path<String>,
+    axum::extract::Query(modal_query): axum::extract::Query<
+        crate::ui::response::ModalQuery,
+    >,
     user: User<true>,
     mut conn: Conn<true>,
     Form(form): Form<AddImplicationForm>,
@@ -743,14 +769,15 @@ pub async fn add_implication(
     if !selected_category_ids.contains(&form.child_category_id)
         || !selected_category_ids.contains(&form.parent_category_id)
     {
-        return bad_request(
-            Page::new()
-                .user(user)
-                .tournament(tournament)
-                .body(maud! {
-                    "Error: both speaker categories must belong to this tournament."
-                })
-                .render(),
+        return invalid_category_form(
+            modal_query,
+            &tournament,
+            user,
+            &format!("/tournaments/{tid}/categories/implications/add"),
+            &format!("/tournaments/{tid}/categories"),
+            &form,
+            &mut *conn,
+            "Error: both speaker categories must belong to this tournament.",
         );
     }
     let existing = speaker_category_implications::table
@@ -761,14 +788,15 @@ pub async fn add_implication(
         implication.child_category_id == form.child_category_id
             && implication.parent_category_id == form.parent_category_id
     }) {
-        return bad_request(
-            Page::new()
-                .user(user)
-                .tournament(tournament)
-                .body(maud! {
-                    "Error: that counts-as rule already exists."
-                })
-                .render(),
+        return invalid_category_form(
+            modal_query,
+            &tournament,
+            user,
+            &format!("/tournaments/{tid}/categories/implications/add"),
+            &format!("/tournaments/{tid}/categories"),
+            &form,
+            &mut *conn,
+            "Error: that counts-as rule already exists.",
         );
     }
     if form.child_category_id == form.parent_category_id
@@ -778,12 +806,15 @@ pub async fn add_implication(
             &existing,
         )
     {
-        return bad_request(
-            Page::new()
-                .user(user)
-                .tournament(tournament)
-                .body(maud! { "Error: that counts-as rule would create a cycle." })
-                .render(),
+        return invalid_category_form(
+            modal_query,
+            &tournament,
+            user,
+            &format!("/tournaments/{tid}/categories/implications/add"),
+            &format!("/tournaments/{tid}/categories"),
+            &form,
+            &mut *conn,
+            "Error: that counts-as rule would create a cycle.",
         );
     }
     let inserted = diesel::insert_into(speaker_category_implications::table)
@@ -800,11 +831,17 @@ pub async fn add_implication(
         .unwrap();
     assert_eq!(inserted, 1);
     recompute_break_eligibility(&tid, &mut *conn);
-    see_other_ok(Redirect::to(&format!("/tournaments/{tid}/break")))
+    crate::tournaments::manage::workspace::after_redirect(
+        modal_query,
+        Redirect::to(&format!("/tournaments/{tid}/categories")),
+    )
 }
 
 pub async fn delete_implication(
     Path((tid, implication_id)): Path<(String, String)>,
+    axum::extract::Query(modal_query): axum::extract::Query<
+        crate::ui::response::ModalQuery,
+    >,
     user: User<true>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
@@ -817,36 +854,89 @@ pub async fn delete_implication(
     )
     .execute(&mut *conn)?;
     recompute_break_eligibility(&tid, &mut *conn);
-    see_other_ok(Redirect::to(&format!("/tournaments/{tid}/break")))
+    crate::tournaments::manage::workspace::after_redirect(
+        modal_query,
+        Redirect::to(&format!("/tournaments/{tid}/categories")),
+    )
 }
 
 pub async fn update_break_rule(
     Path((tid, break_category_id)): Path<(String, String)>,
+    axum::extract::Query(modal_query): axum::extract::Query<
+        crate::ui::response::ModalQuery,
+    >,
     user: User<true>,
     mut conn: Conn<true>,
     Form(form): Form<UpdateBreakRuleForm>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+    break_categories::table
+        .filter(break_categories::tournament_id.eq(&tid))
+        .filter(break_categories::id.eq(&break_category_id))
+        .select(break_categories::id)
+        .first::<String>(&mut *conn)
+        .optional()?
+        .ok_or(crate::util_resp::FailureResponse::NotFound(()))?;
+
+    let count = form
+        .count
+        .as_deref()
+        .filter(|v| !v.is_empty())
+        .unwrap_or("1")
+        .parse::<usize>()
+        .ok();
+    let minus = form
+        .minus
+        .as_deref()
+        .filter(|v| !v.is_empty())
+        .unwrap_or("1")
+        .parse::<usize>()
+        .ok();
+    if count.is_none() || minus.is_none() {
+        return invalid_category_form(
+            modal_query,
+            &tournament,
+            user,
+            &format!(
+                "/tournaments/{tid}/categories/break/{break_category_id}/rule"
+            ),
+            &format!("/tournaments/{tid}/categories"),
+            &form,
+            &mut *conn,
+            "Speaker counts must be non-negative whole numbers.",
+        );
+    }
     let rule = match form.threshold_type.as_str() {
         "everyone" => EligibilityRule::AllowAll,
         "all" => EligibilityRule::IfThresholdMet {
-            included_categories: form.category_ids,
+            included_categories: form.category_ids.clone(),
             threshold: SpeakerThreshold::All,
         },
         "at_least" => EligibilityRule::IfThresholdMet {
-            included_categories: form.category_ids,
+            included_categories: form.category_ids.clone(),
             threshold: SpeakerThreshold::Geq {
-                count: form.count.unwrap_or(1),
+                count: count.unwrap(),
             },
         },
         "at_least_minus" => EligibilityRule::IfThresholdMet {
-            included_categories: form.category_ids,
-            threshold: SpeakerThreshold::GeqNMinusK {
-                k: form.minus.unwrap_or(1),
-            },
+            included_categories: form.category_ids.clone(),
+            threshold: SpeakerThreshold::GeqNMinusK { k: minus.unwrap() },
         },
-        _ => return err_not_found(),
+        _ => {
+            return invalid_category_form(
+                modal_query,
+                &tournament,
+                user,
+                &format!(
+                    "/tournaments/{tid}/categories/break/{break_category_id}/rule"
+                ),
+                &format!("/tournaments/{tid}/categories"),
+                &form,
+                &mut *conn,
+                "Choose an eligibility condition.",
+            );
+        }
     };
     let valid_category_ids: HashSet<String> = speaker_categories::table
         .filter(speaker_categories::tournament_id.eq(&tid))
@@ -856,12 +946,17 @@ pub async fn update_break_rule(
         .into_iter()
         .collect();
     if let Err(msg) = rule.validate(&valid_category_ids) {
-        return bad_request(
-            Page::new()
-                .user(user)
-                .tournament(tournament)
-                .body(maud! { (msg) })
-                .render(),
+        return invalid_category_form(
+            modal_query,
+            &tournament,
+            user,
+            &format!(
+                "/tournaments/{tid}/categories/break/{break_category_id}/rule"
+            ),
+            &format!("/tournaments/{tid}/categories"),
+            &form,
+            &mut *conn,
+            &msg,
         );
     }
     diesel::update(
@@ -875,7 +970,10 @@ pub async fn update_break_rule(
     )
     .execute(&mut *conn)?;
     recompute_break_eligibility(&tid, &mut *conn);
-    see_other_ok(Redirect::to(&format!("/tournaments/{tid}/break")))
+    crate::tournaments::manage::workspace::after_redirect(
+        modal_query,
+        Redirect::to(&format!("/tournaments/{tid}/categories")),
+    )
 }
 
 fn clean_slug(value: &str) -> String {
@@ -891,10 +989,6 @@ fn clean_slug(value: &str) -> String {
         }
     }
     slug.trim_matches('-').to_string()
-}
-
-fn is_everyone_rule(rule: &EligibilityRule) -> bool {
-    matches!(rule, EligibilityRule::AllowAll)
 }
 
 fn rule_category_ids(rule: &EligibilityRule) -> HashSet<String> {
@@ -1099,4 +1193,39 @@ fn eligibility_previews(
             )
         })
         .collect()
+}
+
+fn invalid_category_form(
+    query: crate::ui::response::ModalQuery,
+    tournament: &Tournament,
+    user: User<true>,
+    action: &str,
+    return_url: &str,
+    submitted: &impl serde::Serialize,
+    conn: &mut diesel::SqliteConnection,
+    error: &str,
+) -> StandardResponse {
+    let categories = if action.contains("break-remarks") {
+        break_categories::table
+            .filter(break_categories::tournament_id.eq(&tournament.id))
+            .order(break_categories::seq.asc())
+            .select((break_categories::id, break_categories::name))
+            .load::<(String, String)>(conn)?
+    } else {
+        speaker_categories::table
+            .filter(speaker_categories::tournament_id.eq(&tournament.id))
+            .order(speaker_categories::seq.asc())
+            .select((speaker_categories::id, speaker_categories::name))
+            .load::<(String, String)>(conn)?
+    };
+    crate::tournaments::manage::workspace::invalid_form(
+        query,
+        tournament,
+        user,
+        action,
+        return_url,
+        submitted,
+        &categories,
+        error,
+    )
 }

@@ -16,6 +16,10 @@ pub fn bad_request(html: Rendered<String>) -> StandardResponse {
     Err(FailureResponse::BadRequest(html))
 }
 
+pub fn hx_redirect(location: String) -> StandardResponse {
+    Ok(SuccessResponse::HxRedirect(location))
+}
+
 pub fn success(html: Rendered<String>) -> StandardResponse {
     Ok(SuccessResponse::Success(html))
 }
@@ -32,16 +36,28 @@ pub type StandardResponse = Result<SuccessResponse, FailureResponse>;
 pub enum SuccessResponse {
     Success(Rendered<String>),
     SeeOther(Box<Redirect>),
+    HxRedirect(String),
 }
 
 impl IntoResponse for SuccessResponse {
     fn into_response(self) -> Response {
-        match self {
+        let mut response = match self {
             SuccessResponse::Success(html) => {
                 Html(html.into_inner()).into_response()
             }
             SuccessResponse::SeeOther(redirect) => redirect.into_response(),
-        }
+            SuccessResponse::HxRedirect(location) => {
+                ([("HX-Redirect", location)], "").into_response()
+            }
+        };
+        response.headers_mut().insert(
+            axum::http::header::CACHE_CONTROL,
+            "private, no-store".parse().unwrap(),
+        );
+        response
+            .headers_mut()
+            .insert(axum::http::header::VARY, "HX-Request".parse().unwrap());
+        response
     }
 }
 
@@ -55,7 +71,7 @@ pub enum FailureResponse {
 
 impl IntoResponse for FailureResponse {
     fn into_response(self) -> Response {
-        match self {
+        let mut response = match self {
             FailureResponse::BadRequest(html) => {
                 (StatusCode::BAD_REQUEST, Html(html.into_inner()))
                     .into_response()
@@ -70,7 +86,15 @@ impl IntoResponse for FailureResponse {
                 (StatusCode::INTERNAL_SERVER_ERROR, "Server Error")
                     .into_response()
             }
-        }
+        };
+        response.headers_mut().insert(
+            axum::http::header::CACHE_CONTROL,
+            "private, no-store".parse().unwrap(),
+        );
+        response
+            .headers_mut()
+            .insert(axum::http::header::VARY, "HX-Request".parse().unwrap());
+        response
     }
 }
 

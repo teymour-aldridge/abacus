@@ -17,16 +17,26 @@ use crate::{
 
 pub mod login;
 pub mod register;
+pub mod request_origin;
 
 pub const LOGIN_COOKIE: &str = "jeremy_bearimy";
 
-#[derive(Debug, Queryable, Serialize, Deserialize, Clone)]
+#[derive(Queryable, Serialize, Deserialize, Clone)]
 pub struct User<const TX: bool> {
     pub id: String,
     pub email: String,
     pub username: String,
     pub password_hash: String,
     pub created_at: NaiveDateTime,
+}
+
+impl<const TX: bool> std::fmt::Debug for User<TX> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("User")
+            .field("id", &self.id)
+            .finish_non_exhaustive()
+    }
 }
 
 impl<const TX: bool> User<TX> {
@@ -129,19 +139,25 @@ where
 }
 
 pub fn set_login_cookie(id: String, jar: PrivateCookieJar) -> PrivateCookieJar {
-    jar.add(Cookie::new(
-        LOGIN_COOKIE,
-        serde_json::to_string(&LoginSession {
-            id,
-            expiry: Utc::now()
-                .naive_utc()
-                .checked_add_days(Days::new(7))
-                .unwrap(),
-        })
-        .unwrap(),
-    ))
+    jar.add(
+        Cookie::build((
+            LOGIN_COOKIE,
+            serde_json::to_string(&LoginSession {
+                id,
+                expiry: Utc::now()
+                    .naive_utc()
+                    .checked_add_days(Days::new(7))
+                    .unwrap(),
+            })
+            .unwrap(),
+        ))
+        .path("/")
+        .http_only(true)
+        .same_site(axum_extra::extract::cookie::SameSite::Lax)
+        .build(),
+    )
 }
 
 pub fn clear_login_cookie(jar: PrivateCookieJar) -> PrivateCookieJar {
-    jar.remove(Cookie::from(LOGIN_COOKIE))
+    jar.remove(Cookie::build(LOGIN_COOKIE).path("/").build())
 }

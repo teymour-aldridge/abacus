@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     schema::{motions_of_round, rounds},
-    util_resp::{FailureResponse, err_not_found},
+    util_resp::FailureResponse,
 };
 
 pub mod ballots;
@@ -102,12 +102,7 @@ impl Round {
                     .and(rounds::id.eq(round_id)),
             )
             .first::<Round>(conn)
-            .optional()
-            .unwrap()
-            .map(Ok)
-            .unwrap_or(err_not_found().map(|_| {
-                unreachable!("err_not_found always returns an `Err` variant")
-            }))
+            .map_err(Into::into)
     }
 
     pub fn fetch_direct(
@@ -117,12 +112,7 @@ impl Round {
         rounds::table
             .filter(rounds::id.eq(round_id))
             .first::<Round>(conn)
-            .optional()
-            .unwrap()
-            .map(Ok)
-            .unwrap_or(err_not_found().map(|_| {
-                unreachable!("err_not_found always returns an `Err` variant")
-            }))
+            .map_err(Into::into)
     }
 
     /// Retrieves the current rounds.

@@ -17,69 +17,53 @@ use crate::tournaments::config::{
 use crate::util_resp::{StandardResponse, SuccessResponse, see_other_ok};
 use crate::validation::is_valid_slug;
 
+fn tournament_form<'a>(
+    form: &'a CreateTournamentForm,
+    error: Option<&'a str>,
+) -> impl Renderable + 'a {
+    maud! { div class="container py-4" {
+        h1 { "Create tournament" }
+        @if let Some(error)=error { div class="alert alert-danger" role="alert" { (error) } }
+        form method="post" action="/tournaments/create" {
+            div class="mb-3" {
+                label for="tournament-name" class="form-label" { "Tournament name" }
+                input type="text" class="form-control" id="tournament-name" name="name" value=(&form.name) minlength="4" maxlength="32" required;
+            }
+            div class="mb-3" {
+                label for="tournament-abbreviation" class="form-label" { "Tournament abbreviation" }
+                input type="text" class="form-control" id="tournament-abbreviation" name="abbrv" value=(&form.abbrv) minlength="2" maxlength="8" required;
+            }
+            div class="mb-3" {
+                label for="tournament-slug" class="form-label" { "Tournament slug" }
+                input type="text" class="form-control" id="tournament-slug" name="slug" value=(&form.slug) pattern="[a-zA-Z0-9]+" required;
+            }
+            button type="submit" class="btn btn-primary" { "Create tournament" }
+        }
+    } }
+}
+fn invalid_tournament(
+    user: User<true>,
+    form: &CreateTournamentForm,
+    error: &str,
+) -> StandardResponse {
+    bad_request(
+        Page::new()
+            .user(user)
+            .body(tournament_form(form, Some(error)))
+            .render(),
+    )
+}
 pub async fn create_tournament_page(user: User<true>) -> SuccessResponse {
+    let form = CreateTournamentForm::default();
     SuccessResponse::Success(
         Page::new()
             .user(user)
-            .body(maud! {
-                form method="post" {
-                    div class="mb-3" {
-                        label for = "tournamentName" class="form-label" {
-                            "Tournament name"
-                        }
-                        input type = "text"
-                              class = "form-control"
-                              id = "tournamentName"
-                              aria-describedby="tournamentNameHelp"
-                              minlength = "4"
-                              maxlength = "32"
-                              required
-                              name="name";
-                        div id = "tournamentNameHelp" class="form-text" {
-                            "The full name of the tournament."
-                        }
-                    }
-                    div class="mb-3" {
-                        label for = "tournamentName" class="form-label" {
-                            "Tournament abbreviation"
-                        }
-                        input type = "text"
-                              minlength = "2"
-                              maxlength = "8"
-                              class = "form-control"
-                              id = "tournamentName"
-                              aria-describedby="tournamentNameHelp"
-                              required
-                              name="abbrv";
-                        div id = "tournamentNameHelp" class="form-text" {
-                            "A short name for the tournament."
-                        }
-                    }
-                    div class="mb-3" {
-                        label for = "tournamentSlug" class="form-label" {
-                            "Tournament slug"
-                        }
-                        input type = "text"
-                                class = "form-control"
-                                id = "tournamentSlug"
-                                aria-describedby="tournamentSlugHelp"
-                                required
-                                pattern = "[a-zA-Z0-9]+"
-                                name="slug";
-                        div id = "tournamentSlugHelp" class="form-text" {
-                            "A unique identifier for the tournament, used in URLs."
-                        }
-                    }
-                    button type="submit" class="btn btn-primary" {
-                        "Submit"
-                    }
-                }
-            })
+            .body(tournament_form(&form, None))
             .render(),
     )
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 pub struct CreateTournamentForm {
     name: String,
     abbrv: String,
@@ -94,16 +78,21 @@ pub async fn do_create_tournament(
     let tid = uuid::Uuid::now_v7().to_string();
 
     if !(4..=32).contains(&form.name.len()) {
-        return bad_request(
-            maud! {p {"Tournament name must be between 4 and 32 characters."}}
-                .render(),
+        return invalid_tournament(
+            user,
+            &form,
+            "Tournament name must be between 4 and 32 characters.",
         );
     }
     if !(2..=8).contains(&form.abbrv.len()) {
-        return bad_request(maud! {p {"Tournament abbreviation must be between 2 and 8 characters."}}.render());
+        return invalid_tournament(
+            user,
+            &form,
+            "Tournament abbreviation must be between 2 and 8 characters.",
+        );
     }
-    if let Err(e) = is_valid_slug(&form.slug) {
-        return bad_request(maud! {p {(e)}}.render());
+    if let Err(error) = is_valid_slug(&form.slug) {
+        return invalid_tournament(user, &form, &error.to_string());
     }
 
     let res = diesel::insert_into(tournaments::table)
@@ -155,13 +144,13 @@ pub async fn do_create_tournament(
         Err(diesel::result::Error::DatabaseError(e, _))
             if e == DatabaseErrorKind::UniqueViolation =>
         {
-            return bad_request(
-                maud! {p {"Tournament already exists."}}.render(),
+            return invalid_tournament(
+                user,
+                &form,
+                "Tournament already exists.",
             );
         }
-        Err(e) => {
-            panic!("unexpected error creating tournament: {e:?}")
-        }
+        Err(error) => return Err(error.into()),
     }
 
     let n = diesel::insert_into(org::table)
@@ -171,8 +160,7 @@ pub async fn do_create_tournament(
             org::tournament_id.eq(&tid),
             org::is_superuser.eq(true),
         ))
-        .execute(&mut *conn)
-        .unwrap();
+        .execute(&mut *conn)?;
     assert_eq!(n, 1);
 
     see_other_ok(Redirect::to(&format!("/tournaments/{tid}")))

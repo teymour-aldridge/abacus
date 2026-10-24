@@ -28,3 +28,9 @@ impl<S: ToString> Renderable for ErrorAlert<S> {
         .render_to(buffer);
     }
 }
+
+impl<C: ?Sized, S: ToString> super::View<C> for ErrorAlert<S> {
+    fn render_to(&self, _: &C, output: &mut super::HtmlBuffer) {
+        Renderable::render_to(self, output);
+    }
+}

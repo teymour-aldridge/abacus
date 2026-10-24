@@ -1,200 +1,106 @@
-use axum::{
-    extract::{Form, Path},
-    response::Redirect,
-};
-use diesel::prelude::*;
-use hypertext::prelude::*;
-
+use super::{create_judge::CreateJudgeForm, forms};
 use crate::{
     auth::User,
-    schema::{institutions, judges},
+    msg::{Msg, MsgContents},
+    schema::judges,
     state::Conn,
-    template::Page,
-    tournaments::{
-        Tournament,
-        participants::{
-            Institution, Judge,
-            manage::{
-                create_judge::CreateJudgeForm,
-                institution_selector::InstitutionSelector,
-            },
-        },
-    },
-    util_resp::{
-        StandardResponse, bad_request, err_not_found, see_other_ok, success,
-    },
-    validation::is_valid_email,
+    tournaments::participants::Judge,
+    ui::response::{ModalQuery, after_edit},
+    util_resp::StandardResponse,
 };
-
+use axum::extract::{Extension, Form, Path, Query};
+use diesel::prelude::*;
+use tokio::sync::broadcast::Sender;
 pub async fn edit_judge_details_page(
-    Path((tournament_id, judge_id)): Path<(String, String)>,
+    Path((tid, id)): Path<(String, String)>,
     user: User<true>,
     mut conn: Conn<true>,
+    Query(query): Query<ModalQuery>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
-    tournament.check_user_has_permission(
-        &user.id,
-        crate::permission::Permission::ManageParticipants,
+    let t = forms::authorize(&tid, &user.id, &mut *conn)?;
+    let judge = judges::table
+        .filter(judges::tournament_id.eq(&tid))
+        .filter(judges::id.eq(&id))
+        .first::<Judge>(&mut *conn)?;
+    forms::render(
+        query,
+        "Edit judge",
+        &format!("/tournaments/{tid}/judges/{id}/edit"),
+        &t,
+        user,
+        &judge.name,
+        Some(&judge.email),
+        Some(judge.institution_id.as_deref().unwrap_or("-----")),
+        None,
+        None,
         &mut *conn,
-    )?;
-
-    let judge = match judges::table
-        .filter(
-            judges::tournament_id
-                .eq(&tournament.id)
-                .and(judges::id.eq(&judge_id)),
-        )
-        .first::<Judge>(&mut *conn)
-        .optional()
-        .unwrap()
-    {
-        Some(judge) => judge,
-        None => return err_not_found(),
-    };
-
-    let institutions = institutions::table
-        .filter(institutions::tournament_id.eq(&tournament_id))
-        .load::<Institution>(&mut *conn)
-        .unwrap();
-
-    let institution_picker = InstitutionSelector::new(
-        &institutions,
-        match &judge.institution_id {
-            Some(id) => Some(id.as_str()),
-            None => None,
-        },
-        Some("institution_id"),
-    );
-
-    success(
-        Page::new()
-            .user(user)
-            .tournament(tournament)
-            .body(maud! {
-                form method="post" {
-                  div class="mb-3" {
-                    label for="judgeName" class="form-label" { "Name of judge" }
-                    input type="text"
-                          class="form-control"
-                          id="judgeName"
-                          aria-describedby="judgeNameHelp"
-                          value=(judge.name)
-                          name="name";
-                    div id="judgeNameHelp" class="form-text" {
-                        "The name of the judge (this will be displayed publicly"
-                        "on the tab site)."
-                    }
-                  }
-                  div class="mb-3" {
-                    label for="judgeEmail" class="form-label" { "Email of judge" }
-                    input type="email"
-                          class="form-control"
-                          id="judgeEmail"
-                          aria-describedby="judgeEmailHelp"
-                          value=(judge.email)
-                          name="email";
-                    div id="judgeNameHelp" class="form-text" {
-                        "The email of the judge (not displayed publicly)."
-                    }
-                  }
-                  (institution_picker)
-                  button type="submit" class="btn btn-primary" { "Create team" }
-                }
-            })
-            .render(),
     )
 }
-
 pub async fn do_edit_judge_details(
-    Path((tournament_id, judge_id)): Path<(String, String)>,
+    Path((tid, id)): Path<(String, String)>,
     user: User<true>,
+    Extension(tx): Extension<Sender<Msg>>,
     mut conn: Conn<true>,
+    Query(query): Query<ModalQuery>,
     Form(form): Form<CreateJudgeForm>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
-    tournament.check_user_has_permission(
-        &user.id,
-        crate::permission::Permission::ManageParticipants,
-        &mut *conn,
-    )?;
-
-    if form.name.len() > 128 {
-        return bad_request(
-            Page::new()
-                .user(user)
-                .tournament(tournament)
-                .body(maud! {
-                    "Error: Name is too long (max 128 characters)."
-                })
-                .render(),
+    let t = forms::authorize(&tid, &user.id, &mut *conn)?;
+    let _judge = judges::table
+        .filter(judges::tournament_id.eq(&tid))
+        .filter(judges::id.eq(&id))
+        .select(judges::id)
+        .first::<String>(&mut *conn)?;
+    let inst = forms::institution(&tid, &form.institution_id, &mut *conn)?;
+    if let Some(error) = forms::person_error(&form.name, &form.email) {
+        return forms::render(
+            query,
+            "Edit judge",
+            &format!("/tournaments/{tid}/judges/{id}/edit"),
+            &t,
+            user,
+            &form.name,
+            Some(&form.email),
+            Some(&form.institution_id),
+            None,
+            Some(error),
+            &mut *conn,
         );
     }
-    if form.email.len() > 254 {
-        return bad_request(
-            Page::new()
-                .user(user)
-                .tournament(tournament)
-                .body(maud! {
-                    "Error: Email is too long (max 254 characters)."
-                })
-                .render(),
-        );
-    }
-    if let Err(_) = is_valid_email(&form.email) {
-        return bad_request(
-            Page::new()
-                .user(user)
-                .tournament(tournament)
-                .body(maud! {
-                    "Error: Invalid email address."
-                })
-                .render(),
-        );
-    }
-
-    let judge = match judges::table
-        .find(judge_id)
-        .filter(judges::tournament_id.eq(&tournament.id))
-        .first::<Judge>(&mut *conn)
-        .optional()
-        .unwrap()
+    let result = diesel::update(
+        judges::table
+            .filter(judges::tournament_id.eq(&tid))
+            .filter(judges::id.eq(&id)),
+    )
+    .set((
+        judges::name.eq(&form.name),
+        judges::email.eq(&form.email),
+        judges::institution_id.eq(inst),
+    ))
+    .execute(&mut *conn);
+    if let Err(diesel::result::Error::DatabaseError(
+        diesel::result::DatabaseErrorKind::UniqueViolation,
+        _,
+    )) = &result
     {
-        Some(judge) => judge,
-        None => return err_not_found(),
-    };
-
-    let institution_id = match form.institution_id.as_str() {
-        "-----" => None,
-        id => {
-            let inst_exists = diesel::dsl::select(diesel::dsl::exists(
-                institutions::table.filter(
-                    // Changed from judges to institutions as it seems to be checking if institution exists?
-                    institutions::id.eq(id),
-                ),
-            ))
-            .get_result::<bool>(&mut *conn)
-            .unwrap();
-
-            if inst_exists {
-                Some(id)
-            } else {
-                return err_not_found();
-            }
-        }
-    };
-
-    diesel::update(judges::table.filter(judges::id.eq(&judge.id)))
-        .set((
-            judges::tournament_id.eq(&tournament.id),
-            judges::name.eq(&form.name),
-            judges::email.eq(&form.email),
-            judges::institution_id.eq(institution_id),
-        ))
-        .execute(&mut *conn)
-        .unwrap();
-
-    see_other_ok(Redirect::to(&format!(
-        "/tournaments/{}/participants",
-        tournament.id
-    )))
+        return forms::render(
+            query,
+            "Edit judge",
+            &format!("/tournaments/{tid}/judges/{id}/edit"),
+            &t,
+            user,
+            &form.name,
+            Some(&form.email),
+            Some(&form.institution_id),
+            None,
+            Some("A judge with that name already exists."),
+            &mut *conn,
+        );
+    }
+    result?;
+    crate::tournaments::snapshots::take_snapshot(&tid, &mut *conn);
+    let _ = tx.send(Msg {
+        tournament: t,
+        inner: MsgContents::ParticipantsUpdate,
+    });
+    after_edit(query, format!("/tournaments/{tid}/participants"))
 }

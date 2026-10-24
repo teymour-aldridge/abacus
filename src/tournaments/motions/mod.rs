@@ -1,151 +1,76 @@
-use axum::extract::Path;
-use diesel::prelude::*;
-use hypertext::{maud, prelude::*};
-
 use crate::{
     auth::User,
-    schema::motions_of_round,
+    permission::TournamentAccess,
+    schema::{motions_of_round, rounds},
     state::Conn,
     template::Page,
-    tournaments::{
-        Tournament,
-        manage::sidebar::SidebarWrapper,
-        rounds::{Motion, Round, TournamentRounds},
+    tournaments::Tournament,
+    ui::{
+        self, View,
+        presentation::{Publication, action, publication},
     },
     util_resp::{StandardResponse, success},
-    widgets::non_public::NonPublic,
 };
-
-#[derive(Clone)]
-struct MotionsContent<'a> {
-    motions: &'a Vec<(Motion, String)>,
-}
-
-impl Renderable for MotionsContent<'_> {
-    fn render_to(
-        &self,
-        buffer: &mut hypertext::Buffer<hypertext::context::Node>,
-    ) {
-        maud! {
-            h1 { "Motions" }
-
-            @if self.motions.is_empty() {
-                p class="text-muted" { "No motions have been released yet." }
-            } @else {
-                div class="table-responsive" {
-                    table class="table table-striped" {
-                        thead {
-                            tr {
-                                th scope="col" { "Round" }
-                                th scope="col" { "Motion" }
-                                th scope="col" { "Infoslide" }
-                            }
-                        }
-                        tbody {
-                            @for (motion, round_name) in self.motions {
-                                tr {
-                                    td { (round_name) }
-                                    td { (motion.motion) }
-                                    td {
-                                        @if let Some(infoslide) = &motion.infoslide {
-                                            (infoslide)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }.render_to(buffer);
-    }
-}
+use axum::extract::Path;
+use diesel::prelude::*;
+use hypertext::prelude::*;
 
 pub async fn public_motions_page(
-    Path(tournament_id): Path<String>,
+    Path(tid): Path<String>,
     user: Option<User<true>>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
-    let rounds_data =
-        TournamentRounds::fetch(&tournament_id, &mut *conn).unwrap();
-
-    let all_rounds: Vec<Round> = rounds_data
-        .prelim
-        .iter()
-        .chain(rounds_data.elim.iter())
-        .cloned()
-        .collect();
-
-    let is_admin = if let Some(ref u) = user {
-        tournament
-            .check_user_is_superuser(&u.id, &mut *conn)
-            .is_ok()
-    } else {
-        false
-    };
-
+    let tournament = Tournament::fetch(&tid, &mut *conn)?;
+    let access = TournamentAccess::resolve(
+        &tid,
+        user.as_ref().map(|u| u.id.as_str()),
+        &mut *conn,
+    )?;
     let mut query = motions_of_round::table
-        .filter(motions_of_round::tournament_id.eq(&tournament_id))
+        .inner_join(rounds::table)
+        .filter(motions_of_round::tournament_id.eq(&tid))
+        .filter(rounds::tournament_id.eq(&tid))
         .into_boxed();
-
-    if !is_admin {
+    if !access.is_superuser() {
         query = query.filter(motions_of_round::published_at.is_not_null());
     }
-
-    let motions: Vec<(Motion, String)> = query
-        .load::<Motion>(&mut *conn)
-        .unwrap()
-        .into_iter()
-        .filter_map(|motion| {
-            all_rounds
-                .iter()
-                .find(|r| r.id == motion.round_id)
-                .map(|round| (motion, round.name.clone()))
-        })
-        .collect();
-
-    let has_unpublished_motions =
-        motions.iter().any(|(m, _)| m.published_at.is_none());
-
-    let current_rounds = Round::current_rounds(&tournament_id, &mut *conn);
-
-    let motions_content = MotionsContent { motions: &motions };
-
-    if is_admin {
-        success(
-            Page::new()
-                .active_nav(crate::template::ActiveNav::Motions)
-                .user_opt(user)
-                .tournament(tournament.clone())
-                .current_rounds(current_rounds.clone())
-                .body(maud! {
-                    SidebarWrapper tournament=(&tournament) rounds=(&rounds_data) selected_seq=(current_rounds.first().map(|r| r.seq)) active_page=(None) {
-                        @if has_unpublished_motions {
-                            (NonPublic {
-                                title: "Unpublished Motions",
-                                child: motions_content.clone()
-                            })
-                        } @else {
-                            (motions_content)
-                        }
+    let rows = query
+        .order((rounds::seq.asc(), motions_of_round::id.asc()))
+        .select((
+            rounds::name,
+            rounds::seq,
+            motions_of_round::motion,
+            motions_of_round::infoslide,
+            motions_of_round::published_at.is_not_null(),
+        ))
+        .load::<(String, i64, String, Option<String>, bool)>(&mut *conn)?;
+    let rows = &rows;
+    let tid = tid.as_str();
+    let view = ui::html(|ctx: &TournamentAccess, out| {
+        maud! {
+        div class="container py-4" {
+            h1 { "Motions" }
+            @if rows.is_empty() { p role="status" { "No motions have been released yet." } }
+            @for (name, seq, motion, infoslide, published) in rows {
+                section class="mb-4" {
+                    h2 class="h4" { a href=(format!("/tournaments/{tid}/rounds/{seq}")) { (name) } }
+                    @if ctx.is_superuser() {
+                        (publication::<TournamentAccess>("Motion", if *published { Publication::Public } else { Publication::Unpublished }).bind(ctx))
                     }
-                })
-                .render(),
-        )
-    } else {
-        success(
-            Page::new()
-                .active_nav(crate::template::ActiveNav::Motions)
-                .user_opt(user)
-                .tournament(tournament.clone())
-                .current_rounds(current_rounds)
-                .body(maud! {
-                    div class="container py-5 px-4" {
-                        (motions_content)
-                    }
-                })
-                .render(),
-        )
-    }
+                    p class="fw-semibold" { (motion) }
+                    @if let Some(infoslide) = infoslide { p { (infoslide) } }
+                    (action(TournamentAccess::is_superuser, &format!("/tournaments/{tid}/rounds/{seq}/briefing"), "Publication and briefing", true).bind(ctx))
+                }
+            }
+        }
+    }.render_to(out)
+    });
+    success(
+        Page::new()
+            .active_nav(crate::template::ActiveNav::Motions)
+            .tournament(tournament)
+            .user_opt(user)
+            .body(view.bind(&access))
+            .render(),
+    )
 }

@@ -22,3 +22,9 @@ impl<'r> Renderable for Actions<'r> {
         .render_to(buffer);
     }
 }
+
+impl<C: ?Sized> super::View<C> for Actions<'_> {
+    fn render_to(&self, _: &C, output: &mut super::HtmlBuffer) {
+        Renderable::render_to(self, output);
+    }
+}

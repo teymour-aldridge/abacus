@@ -16,42 +16,49 @@ use crate::{
     schema::users,
     state::Conn,
     template::Page,
-    util_resp::{FailureResponse, StandardResponse, bad_request, see_other_ok},
-    // widgets::alert::ErrorAlert,
+    util_resp::{StandardResponse, bad_request, see_other_ok, success},
 };
 
-pub async fn login_page(user: Option<User<true>>) -> StandardResponse {
-    if user.is_some() {
-        return Err(FailureResponse::BadRequest(
-            Page::new()
-                .user_opt(user)
-                .body(maud! {
-                    div class="alert alert-danger" {
-                         "You are already logged in, so cannot log in!"
-                    }
-                })
-                .render(),
-        ));
-    }
-
-    bad_request(Page::new().user_opt(user).body(maud! {
-        div class="container-fluid p-3" {
+fn login_form<'a>(id: &'a str, error: Option<&'a str>) -> impl Renderable + 'a {
+    maud! {
+        div class="container py-4" {
             h1 { "Sign in" }
+            @if let Some(error)=error { div class="alert alert-danger" role="alert" { (error) } }
             form method="post" class="mt-4" {
                 div class="mb-3" {
                     label for="email" class="form-label" { "Email or username" }
-                    input type="text" class="form-control" id="email" name="id" placeholder="Enter email or username";
+                    input type="text" class="form-control" id="email" name="id" value=(id) autocomplete="username" required;
                 }
                 div class="mb-3" {
                     label for="password" class="form-label" { "Password" }
-                    input type="password" class="form-control" id="password" name="password" placeholder="Password";
+                    input type="password" class="form-control" id="password" name="password" autocomplete="current-password" required;
                 }
-                div class="mb-3" {
-                    button type="submit" class="btn btn-primary" { "Submit" }
-                }
+                button type="submit" class="btn btn-primary" { "Sign in" }
             }
         }
-    }).render())
+    }
+}
+fn invalid_login(user: Option<User<true>>, id: &str) -> StandardResponse {
+    bad_request(
+        Page::new()
+            .user_opt(user)
+            .body(login_form(
+                id,
+                Some("The username or password was not recognised."),
+            ))
+            .render(),
+    )
+}
+pub async fn login_page(user: Option<User<true>>) -> StandardResponse {
+    if user.is_some() {
+        return see_other_ok(Redirect::to("/"));
+    }
+    success(
+        Page::new()
+            .user_opt(user)
+            .body(login_form("", None))
+            .render(),
+    )
 }
 
 #[derive(Deserialize)]
@@ -65,7 +72,7 @@ pub struct NextParams {
     next: Option<String>,
 }
 
-#[tracing::instrument(skip(conn, params, jar, form))]
+#[tracing::instrument(skip(user, conn, params, jar, form))]
 pub async fn do_login(
     user: Option<User<true>>,
     Query(params): Query<NextParams>,
@@ -74,29 +81,23 @@ pub async fn do_login(
     // note: MUST be skipped in tracing for security reasons!
     Form(form): Form<LoginForm>,
 ) -> (PrivateCookieJar<Key>, StandardResponse) {
+    if user.is_some() {
+        return (jar, see_other_ok(Redirect::to("/")));
+    }
     let next = params.next.as_deref();
+    let login_id = form.id.as_str();
 
     let span = tracing::span!(Level::TRACE, "retrieve_user");
     let guard = span.enter();
-    let user1 =
-        match users::table
-            .filter(users::email.eq(&form.id).or(users::username.eq(&form.id)))
-            .first::<User<true>>(&mut *conn)
-            .optional()
-            .unwrap()
-        {
-            Some(user) => user,
-            None => return (jar, Err(FailureResponse::BadRequest(
-                Page::new()
-                    .user_opt(user)
-                    .body(maud! {
-                        div class="alert alert-danger" {
-                             "No such user exists. Please return to the previous page and try again."
-                        }
-                    })
-                    .render(),
-             ))),
-        };
+    let user1 = match users::table
+        .filter(users::email.eq(&form.id).or(users::username.eq(&form.id)))
+        .first::<User<true>>(&mut *conn)
+        .optional()
+    {
+        Ok(Some(user)) => user,
+        Ok(None) => return (jar, invalid_login(user, login_id)),
+        Err(error) => return (jar, Err(error.into())),
+    };
     drop(guard);
 
     // todo: invert this (this flow is confusing)
@@ -104,7 +105,9 @@ pub async fn do_login(
         let hash = user1.password_hash.clone();
         let r = spawn_blocking(move || {
             if !cfg!(test) {
-                let parsed_hash = PasswordHash::new(&hash).unwrap();
+                let Ok(parsed_hash) = PasswordHash::new(&hash) else {
+                    return true;
+                };
 
                 Argon2::default()
                     .verify_password(form.password.as_bytes(), &parsed_hash)
@@ -130,17 +133,7 @@ pub async fn do_login(
     };
 
     if wrong_password {
-        // todo: password rate limiting
-        return (jar, bad_request(
-            Page::new()
-                .user_opt(user)
-                .body(maud! {
-                    div class="alert alert-danger" {
-                        "Incorrect password. Please return to the previous page and try again."
-                    }
-                })
-                .render(),
-        ));
+        return (jar, invalid_login(user, login_id));
     }
 
     let jar = set_login_cookie(user1.id, jar);
@@ -148,17 +141,28 @@ pub async fn do_login(
     (
         jar,
         see_other_ok({
-            let redirect_to = if let Some(url) =
-                next.and_then(|url| url.parse::<Url>().ok())
-            {
-                url.path().to_string()
-            } else {
-                "/".to_string()
-            };
+            let redirect_to = local_redirect(next);
 
             Redirect::to(&redirect_to)
         }),
     )
+}
+
+fn local_redirect(next: Option<&str>) -> String {
+    fn local(path: &str) -> bool {
+        path.starts_with('/')
+            && !path.starts_with("//")
+            && !path.contains('\\')
+            && !path.chars().any(|c| c.is_ascii_control())
+    }
+    next.filter(|next| local(next))
+        .map(str::to_owned)
+        .or_else(|| {
+            next.and_then(|next| next.parse::<Url>().ok())
+                .map(|url| url.path().to_owned())
+                .filter(|path| local(path))
+        })
+        .unwrap_or_else(|| "/".to_owned())
 }
 
 pub async fn do_logout(

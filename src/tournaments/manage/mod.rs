@@ -1,3 +1,4 @@
 pub mod config;
 pub mod sidebar;
-pub mod view;
+
+pub mod workspace;

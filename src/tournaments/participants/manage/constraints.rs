@@ -5,17 +5,18 @@ use crate::{
         speaker_room_constraints, speakers,
     },
     state::Conn,
-    template::Page,
     tournaments::{
         Tournament,
-        manage::sidebar::SidebarWrapper,
         participants::{Judge, Speaker},
         rooms::{JudgeRoomConstraint, RoomCategory, SpeakerRoomConstraint},
-        rounds::TournamentRounds,
     },
-    util_resp::{FailureResponse, StandardResponse, see_other_ok, success},
+    ui::response::{ModalQuery, after_edit, form_page},
+    util_resp::{FailureResponse, StandardResponse},
 };
-use axum::{Form, extract::Path, response::Redirect};
+use axum::{
+    Form,
+    extract::{Path, Query},
+};
 use diesel::prelude::*;
 use hypertext::prelude::*;
 use serde::Deserialize;
@@ -159,16 +160,13 @@ pub async fn manage_constraints_page(
     )>,
     user: User<true>,
     mut conn: Conn<true>,
+    Query(query): Query<ModalQuery>,
 ) -> StandardResponse {
     let ptype = ParticipantType::from_str(&participant_type)
         .ok_or_else(|| FailureResponse::NotFound(()))?;
 
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
-
-    let rounds = TournamentRounds::fetch(&tournament.id, &mut *conn).unwrap();
-    let current_rounds =
-        crate::tournaments::rounds::Round::current_rounds(&tid, &mut *conn);
 
     let (participant_name, constraint_data) = match ptype {
         ParticipantType::Speaker => {
@@ -193,14 +191,14 @@ pub async fn manage_constraints_page(
         }
     };
 
-    success(
-        Page::new()
-            .active_nav(crate::template::ActiveNav::Participants)
-            .user(user)
-            .tournament(tournament.clone())
-            .current_rounds(current_rounds.clone())
-            .body(maud! {
-                SidebarWrapper tournament=(&tournament) rounds=(&rounds) selected_seq=(current_rounds.first().map(|r| r.seq)) active_page=(None) {
+    form_page(
+        query,
+        "Room preferences",
+        &format!("/tournaments/{tid}/participants"),
+        &tournament,
+        user,
+        maud! {
+        p class="badge text-bg-secondary" { "Restricted: Tournament organisers" }
                     div class="container-fluid px-3 px-md-4 py-3" {
                         // Header
                         div class="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-2 border-bottom pb-3 mb-4" {
@@ -253,7 +251,7 @@ pub async fn manage_constraints_page(
 
                                             // Controls
                                             div class="d-flex gap-1 flex-shrink-0" {
-                                                form method="post" action=(format!("/tournaments/{}/participants/{}/{}/constraints/move", tid, ptype.as_str(), participant_id)) class="d-inline" {
+                                                form method="post" action=(format!("/tournaments/{}/participants/{}/{}/constraints/move", tid, ptype.as_str(), participant_id)) hx-post=(format!("/tournaments/{}/participants/{}/{}/constraints/move", tid, ptype.as_str(), participant_id).to_string()+"?modal=true") hx-target="#ui-modal" hx-swap="innerHTML" class="d-inline" {
                                                     input type="hidden" name="category_id" value=(cat.id);
                                                     input type="hidden" name="direction" value="up";
                                                     button
@@ -265,7 +263,7 @@ pub async fn manage_constraints_page(
                                                         "↑"
                                                     }
                                                 }
-                                                form method="post" action=(format!("/tournaments/{}/participants/{}/{}/constraints/move", tid, ptype.as_str(), participant_id)) class="d-inline" {
+                                                form method="post" action=(format!("/tournaments/{}/participants/{}/{}/constraints/move", tid, ptype.as_str(), participant_id)) hx-post=(format!("/tournaments/{}/participants/{}/{}/constraints/move", tid, ptype.as_str(), participant_id).to_string()+"?modal=true") hx-target="#ui-modal" hx-swap="innerHTML" class="d-inline" {
                                                     input type="hidden" name="category_id" value=(cat.id);
                                                     input type="hidden" name="direction" value="down";
                                                     button
@@ -277,7 +275,7 @@ pub async fn manage_constraints_page(
                                                         "↓"
                                                     }
                                                 }
-                                                form method="post" action=(format!("/tournaments/{}/participants/{}/{}/constraints/remove", tid, ptype.as_str(), participant_id)) class="d-inline" {
+                                                form method="post" action=(format!("/tournaments/{}/participants/{}/{}/constraints/remove", tid, ptype.as_str(), participant_id)) hx-post=(format!("/tournaments/{}/participants/{}/{}/constraints/remove", tid, ptype.as_str(), participant_id).to_string()+"?modal=true") hx-target="#ui-modal" hx-swap="innerHTML" class="d-inline" {
                                                     input type="hidden" name="category_id" value=(cat.id);
                                                     button type="submit" class="btn btn-sm btn-outline-danger" title="Remove" {
                                                         "✕"
@@ -312,7 +310,7 @@ pub async fn manage_constraints_page(
                                                 div class="fw-bold text-truncate" { (cat.private_name) }
                                                 div class="text-muted small text-truncate" { (cat.public_name) }
                                             }
-                                            form method="post" action=(format!("/tournaments/{}/participants/{}/{}/constraints/add", tid, ptype.as_str(), participant_id)) class="d-inline" {
+                                            form method="post" action=(format!("/tournaments/{}/participants/{}/{}/constraints/add", tid, ptype.as_str(), participant_id)) hx-post=(format!("/tournaments/{}/participants/{}/{}/constraints/add", tid, ptype.as_str(), participant_id).to_string()+"?modal=true") hx-target="#ui-modal" hx-swap="innerHTML" class="d-inline" {
                                                 input type="hidden" name="category_id" value=(cat.id);
                                                 button type="submit" class="btn btn-sm btn-primary flex-shrink-0" {
                                                     "+ Add"
@@ -324,9 +322,8 @@ pub async fn manage_constraints_page(
                             }
                         }
                     }
-                }
-            })
-            .render(),
+            },
+        false,
     )
 }
 
@@ -338,6 +335,7 @@ pub async fn move_constraint(
     )>,
     user: User<true>,
     mut conn: Conn<true>,
+    Query(query): Query<ModalQuery>,
     Form(form): Form<MoveConstraintForm>,
 ) -> StandardResponse {
     let ptype = ParticipantType::from_str(&participant_type)
@@ -345,6 +343,13 @@ pub async fn move_constraint(
 
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+    require_resources(
+        ptype,
+        &tid,
+        &participant_id,
+        &form.category_id,
+        &mut *conn,
+    )?;
 
     conn.transaction(|conn| {
         match ptype {
@@ -453,12 +458,7 @@ pub async fn move_constraint(
     })
     .map_err(FailureResponse::from)?;
 
-    see_other_ok(Redirect::to(&format!(
-        "/tournaments/{}/participants/{}/{}/constraints",
-        tid,
-        ptype.as_str(),
-        participant_id
-    )))
+    after_edit(query, format!("/tournaments/{tid}/participants"))
 }
 
 pub async fn add_constraint(
@@ -469,6 +469,7 @@ pub async fn add_constraint(
     )>,
     user: User<true>,
     mut conn: Conn<true>,
+    Query(query): Query<ModalQuery>,
     Form(form): Form<AddConstraintForm>,
 ) -> StandardResponse {
     let ptype = ParticipantType::from_str(&participant_type)
@@ -476,6 +477,13 @@ pub async fn add_constraint(
 
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+    require_resources(
+        ptype,
+        &tid,
+        &participant_id,
+        &form.category_id,
+        &mut *conn,
+    )?;
 
     let category_exists = room_categories::table
         .filter(room_categories::id.eq(&form.category_id))
@@ -593,12 +601,7 @@ pub async fn add_constraint(
     })
     .map_err(FailureResponse::from)?;
 
-    see_other_ok(Redirect::to(&format!(
-        "/tournaments/{}/participants/{}/{}/constraints",
-        tid,
-        ptype.as_str(),
-        participant_id
-    )))
+    after_edit(query, format!("/tournaments/{tid}/participants"))
 }
 
 pub async fn remove_constraint(
@@ -609,6 +612,7 @@ pub async fn remove_constraint(
     )>,
     user: User<true>,
     mut conn: Conn<true>,
+    Query(query): Query<ModalQuery>,
     Form(form): Form<RemoveConstraintForm>,
 ) -> StandardResponse {
     let ptype = ParticipantType::from_str(&participant_type)
@@ -616,6 +620,13 @@ pub async fn remove_constraint(
 
     let tournament = Tournament::fetch(&tid, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+    require_resources(
+        ptype,
+        &tid,
+        &participant_id,
+        &form.category_id,
+        &mut *conn,
+    )?;
 
     conn.transaction(|conn| {
         match ptype {
@@ -690,10 +701,36 @@ pub async fn remove_constraint(
     })
     .map_err(FailureResponse::from)?;
 
-    see_other_ok(Redirect::to(&format!(
-        "/tournaments/{}/participants/{}/{}/constraints",
-        tid,
-        ptype.as_str(),
-        participant_id
-    )))
+    after_edit(query, format!("/tournaments/{tid}/participants"))
+}
+
+fn require_resources(
+    ptype: ParticipantType,
+    tid: &str,
+    id: &str,
+    category: &str,
+    conn: &mut SqliteConnection,
+) -> Result<(), FailureResponse> {
+    match ptype {
+        ParticipantType::Speaker => {
+            speakers::table
+                .filter(speakers::tournament_id.eq(tid))
+                .filter(speakers::id.eq(id))
+                .select(speakers::id)
+                .first::<String>(conn)?;
+        }
+        ParticipantType::Judge => {
+            judges::table
+                .filter(judges::tournament_id.eq(tid))
+                .filter(judges::id.eq(id))
+                .select(judges::id)
+                .first::<String>(conn)?;
+        }
+    }
+    room_categories::table
+        .filter(room_categories::tournament_id.eq(tid))
+        .filter(room_categories::id.eq(category))
+        .select(room_categories::id)
+        .first::<String>(conn)?;
+    Ok(())
 }

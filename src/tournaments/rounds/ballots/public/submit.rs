@@ -23,11 +23,11 @@ use crate::{
             draws::{Debate, DebateRepr},
         },
     },
+    ui::alert::ErrorAlert,
     util_resp::{
         FailureResponse, StandardResponse, bad_request, err_not_found,
         see_other_ok, success,
     },
-    widgets::alert::ErrorAlert,
 };
 
 /// Page judges use to submit ballots. They are directed here from their private
@@ -63,9 +63,18 @@ pub async fn submit_ballot_page(
     )?;
 
     let debate = debate_of_judge_in_round(&judge.id, &round.id, &mut *conn)?;
-    let debate_repr = DebateRepr::fetch(&debate.id, &mut *conn);
+    let mut debate_repr = DebateRepr::try_fetch(&debate.id, &mut *conn)?;
+    debate_repr
+        .motions
+        .retain(|_, motion| motion.published_at.is_some());
+    if debate_repr.motions.is_empty() {
+        return bad_request(maud! { div class="alert alert-warning" { "Ballot entry is unavailable until a motion has been published for this debate." } }.render());
+    }
 
-    let current_rounds = Round::current_rounds(&tournament_id, &mut *conn);
+    let current_rounds = Round::current_rounds(&tournament_id, &mut *conn)
+        .into_iter()
+        .filter(|r| r.draw_status == "released_full")
+        .collect();
 
     let existing_ballot = debate_repr
         .latest_ballots(&mut *conn)
@@ -75,11 +84,6 @@ pub async fn submit_ballot_page(
         .as_ref()
         .map(|ballot| BallotForm::from_repr(ballot, &debate_repr, &tournament));
     let round_name = round.name.clone();
-
-    assert!(
-        !debate_repr.motions.is_empty(),
-        "ballot submission requires at least one motion"
-    );
 
     let ballot_form = fields_of_single_ballot_form(
         &tournament,
@@ -95,6 +99,7 @@ pub async fn submit_ballot_page(
             .current_rounds(current_rounds)
             .body(maud! {
                 div class="container py-5" style="max-width: 800px;" {
+                    span class="badge bg-secondary" { "Restricted: Participant and tournament organisers" }
                     header class="mb-5" {
                         h1 class="display-4 fw-bold mb-3" { "Submit Ballot" }
                         span class="badge bg-light text-dark" {
@@ -123,7 +128,10 @@ fn check_round_not_completed(
     round: &Round,
 ) -> Result<(), FailureResponse> {
     if round.completed {
-        let current_rounds = Round::current_rounds(tournament_id, conn);
+        let current_rounds = Round::current_rounds(tournament_id, conn)
+            .into_iter()
+            .filter(|r| r.draw_status == "released_full")
+            .collect();
         return Err(bad_request(
             Page::new()
                 .tournament(tournament.clone())
@@ -147,7 +155,10 @@ fn check_round_released(
     round: &Round,
 ) -> Result<(), FailureResponse> {
     if round.draw_status != "released_full" {
-        let current_rounds = Round::current_rounds(tournament_id, conn);
+        let current_rounds = Round::current_rounds(tournament_id, conn)
+            .into_iter()
+            .filter(|r| r.draw_status == "released_full")
+            .collect();
         return Err(bad_request(
             Page::new()
                 .tournament(tournament.clone())
@@ -175,8 +186,6 @@ fn build_submit_ballot(
     prior_version: i64,
     has_prior_ballot: bool,
 ) -> Result<BallotRepr, FailureResponse> {
-    tracing::debug!("form = {form:?}");
-
     use crate::util_resp::bad_request_from_string;
 
     let mut builder = crate::tournaments::rounds::ballots::BallotBuilder::new(
@@ -218,7 +227,7 @@ fn build_submit_ballot(
 // TODO: it would be nice to display the errors inline. However, this is more
 // programming effort, so currently we collate a list of problems and then
 // display a list of problems at the top of the page.
-#[tracing::instrument(skip(conn))]
+#[tracing::instrument(skip_all)]
 pub async fn do_submit_ballot(
     Path((tournament_id, private_url, round_id)): Path<(
         String,
@@ -234,13 +243,6 @@ pub async fn do_submit_ballot(
         Judge::of_private_url(&private_url, &tournament_id, &mut *conn)?;
 
     let round = Round::fetch(&tournament_id, &round_id, &mut *conn)?;
-
-    tracing::debug!(
-        "Resolved tournament={}, judge={}, round={}.",
-        tournament.id,
-        judge.id,
-        round.id
-    );
 
     check_round_released(
         &tournament_id,
@@ -258,7 +260,17 @@ pub async fn do_submit_ballot(
     )?;
 
     let debate = debate_of_judge_in_round(&judge.id, &round.id, &mut *conn)?;
-    let debate_repr = DebateRepr::fetch(&debate.id, &mut *conn);
+    let mut debate_repr = DebateRepr::try_fetch(&debate.id, &mut *conn)?;
+    debate_repr
+        .motions
+        .retain(|_, motion| motion.published_at.is_some());
+    if debate_repr.motions.is_empty() {
+        return bad_request(maud! { div class="alert alert-warning" { "Ballot entry is unavailable until a motion has been published for this debate." } }.render());
+    }
+
+    if !debate_repr.motions.contains_key(&form.motion_id) {
+        return bad_request(maud! { div class="alert alert-danger" { "Choose a published motion for this debate." } }.render());
+    }
 
     let prior = ballots::table
         .filter(ballots::tournament_id.eq(&tournament.id))
@@ -288,7 +300,7 @@ pub async fn do_submit_ballot(
     };
 
     let repr = build_submit_ballot(
-        form,
+        form.clone(),
         &mut *conn,
         &tournament,
         &round,
@@ -298,12 +310,30 @@ pub async fn do_submit_ballot(
         expected_version,
         prior_version,
         has_prior_ballot,
-    )?;
+    );
+    let repr = match repr {
+        Ok(repr) => repr,
+        Err(FailureResponse::BadRequest(_)) => {
+            let fields = fields_of_single_ballot_form(
+                &tournament,
+                &round,
+                &debate_repr,
+                Some(&form),
+            );
+            return bad_request(Page::new().user_opt(user).tournament(tournament.clone())
+                .body(maud! { div class="container py-4" {
+                    h1 { "Submit ballot" }
+                    div class="alert alert-danger" { "The ballot is invalid or has changed. Check the scores, speakers, points, and version, then retry." }
+                    form method="post" { (fields) button type="submit" { "Submit ballot" } }
+                } }).render());
+        }
+        Err(error) => return Err(error),
+    };
 
     repr.insert(&mut *conn);
 
     // Refresh debate repr so we pick up the newly inserted ballot
-    let debate_repr = DebateRepr::fetch(&debate.id, &mut *conn);
+    let debate_repr = DebateRepr::try_fetch(&debate.id, &mut *conn)?;
     update_debate_status(&debate_repr, &tournament, &mut *conn);
 
     see_other_ok(Redirect::to(&format!(

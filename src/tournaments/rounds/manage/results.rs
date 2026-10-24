@@ -1,4 +1,7 @@
-use axum::{Form, extract::Path, response::Redirect};
+use axum::{
+    Form,
+    extract::{Path, Query},
+};
 use chrono::Utc;
 use diesel::prelude::*;
 use hypertext::prelude::*;
@@ -11,25 +14,23 @@ use crate::{
         motions_of_round, rounds,
     },
     state::Conn,
-    template::Page,
     tournaments::{
         Tournament,
-        manage::sidebar::SidebarWrapper,
         rounds::{
-            Round, TournamentRounds,
+            Round,
             ballots::{BallotRepr, aggregate::aggregate_ballot_set},
             draws::{DebateRepr, RoundDrawRepr},
         },
         standings::compute::refresh_saved_team_standings,
     },
-    util_resp::{
-        StandardResponse, bad_request, err_not_found, see_other_ok, success,
-    },
+    ui::response::{ModalQuery, after_edit, form_page},
+    util_resp::{StandardResponse, err_not_found},
 };
 
 struct ResultsView {
     tournament: Tournament,
     rounds_in_seq: Vec<Round>,
+    error: Option<String>,
 }
 
 impl Renderable for ResultsView {
@@ -39,6 +40,7 @@ impl Renderable for ResultsView {
     ) {
         maud! {
             div {
+                @if let Some(error)=&self.error { div class="alert alert-danger" role="alert" { (error) } }
                 h1 {
                     "Results"
                 }
@@ -80,14 +82,14 @@ impl Renderable for ResultsView {
 
                                     div class="mt-auto" {
                                         @if round.completed {
-                                            form action=(format!("/tournaments/{}/rounds/{}/complete", self.tournament.id, round.id)) method="post" class="mb-2" {
+                                            form action=(format!("/tournaments/{}/rounds/{}/complete", self.tournament.id, round.id)) method="post" hx-post=(format!("/tournaments/{}/rounds/{}/complete?modal=true", self.tournament.id, round.id)) hx-target="#ui-modal" class="mb-2" {
                                                 input type="hidden" name="completed" value="false";
                                                 button class="btn btn-outline-secondary w-100" type="submit" {
                                                     "Mark Incomplete"
                                                 }
                                             }
                                         } @else {
-                                            form action=(format!("/tournaments/{}/rounds/{}/complete", self.tournament.id, round.id)) method="post" class="mb-2" {
+                                            form action=(format!("/tournaments/{}/rounds/{}/complete", self.tournament.id, round.id)) method="post" hx-post=(format!("/tournaments/{}/rounds/{}/complete?modal=true", self.tournament.id, round.id)) hx-target="#ui-modal" class="mb-2" {
                                                 input type="hidden" name="completed" value="true";
                                                 button class="btn btn-primary w-100" type="submit" {
                                                     "Mark Complete"
@@ -97,14 +99,14 @@ impl Renderable for ResultsView {
 
                                         @if round.completed {
                                             @if round.results_published_at.is_some() {
-                                                form action=(format!("/tournaments/{}/rounds/{}/results/publish", self.tournament.id, round.id)) method="post" {
+                                                form action=(format!("/tournaments/{}/rounds/{}/results/publish", self.tournament.id, round.id)) method="post" hx-post=(format!("/tournaments/{}/rounds/{}/results/publish?modal=true", self.tournament.id, round.id)) hx-target="#ui-modal" {
                                                     input type="hidden" name="published" value="false";
                                                     button class="btn btn-danger w-100" type="submit" {
                                                         "Unpublish Results"
                                                     }
                                                 }
                                             } @else {
-                                                form action=(format!("/tournaments/{}/rounds/{}/results/publish", self.tournament.id, round.id)) method="post" {
+                                                form action=(format!("/tournaments/{}/rounds/{}/results/publish", self.tournament.id, round.id)) method="post" hx-post=(format!("/tournaments/{}/rounds/{}/results/publish?modal=true", self.tournament.id, round.id)) hx-target="#ui-modal" {
                                                     input type="hidden" name="published" value="true";
                                                     button class="btn btn-success w-100" type="submit" {
                                                         "Publish Results"
@@ -132,34 +134,42 @@ impl Renderable for ResultsView {
 
 pub async fn manage_results_page(
     Path((tid, round_seq)): Path<(String, i64)>,
+    Query(query): Query<ModalQuery>,
     user: User<true>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
-    let tournament = Tournament::fetch(&tid, &mut *conn)?;
-    tournament.check_user_is_superuser(&user.id, &mut *conn)?;
-
-    let all_rounds = TournamentRounds::fetch(&tid, &mut *conn).unwrap();
-    let rounds_in_seq = Round::of_seq(round_seq, &tid, &mut *conn);
-
+    result_controls(&tid, round_seq, query, user, &mut conn, None)
+}
+fn result_controls(
+    tid: &str,
+    seq: i64,
+    query: ModalQuery,
+    user: User<true>,
+    conn: &mut diesel::SqliteConnection,
+    error: Option<&str>,
+) -> StandardResponse {
+    let tournament = Tournament::fetch(tid, conn)?;
+    tournament.check_user_is_superuser(&user.id, conn)?;
+    let rounds_in_seq = rounds::table
+        .filter(rounds::tournament_id.eq(tid))
+        .filter(rounds::seq.eq(seq))
+        .load::<Round>(conn)?;
     if rounds_in_seq.is_empty() {
         return err_not_found();
     }
-
     let view = ResultsView {
         tournament: tournament.clone(),
         rounds_in_seq,
+        error: error.map(str::to_owned),
     };
-
-    success(
-        Page::new()
-            .user(user)
-            .tournament(tournament.clone())
-            .body(maud! {
-                SidebarWrapper tournament=(&tournament) rounds=(&all_rounds) active_page=(Some(crate::tournaments::manage::sidebar::SidebarPage::Results)) selected_seq=(Some(round_seq)) {
-                    (view)
-                }
-            })
-            .render(),
+    form_page(
+        query,
+        "Result controls",
+        &format!("/tournaments/{tid}/rounds/{seq}/results"),
+        &tournament,
+        user,
+        view,
+        error.is_some(),
     )
 }
 
@@ -169,6 +179,7 @@ pub struct SetRoundCompleted {
 }
 
 pub async fn set_round_completed(
+    Query(query): Query<ModalQuery>,
     Path((tournament_id, round_id)): Path<(String, String)>,
     user: User<true>,
     mut conn: Conn<true>,
@@ -186,25 +197,30 @@ pub async fn set_round_completed(
                 rounds::completed.eq(false),
                 rounds::results_published_at.eq(None::<chrono::NaiveDateTime>),
             ))
-            .execute(&mut *conn)
-            .unwrap();
+            .execute(&mut *conn)?;
     } else {
         if round.draw_status != "released_full" {
-            return bad_request(
-                Page::new()
-                    .tournament(tournament.clone())
-                    .user(user)
-                    .body(maud! {
-                        (crate::widgets::alert::ErrorAlert { msg: "Cannot mark round as complete before publishing the full draw." })
-                    })
-                    .render(),
+            return result_controls(
+                &tournament_id,
+                round.seq,
+                query,
+                user,
+                &mut conn,
+                Some(
+                    "Cannot mark round as complete before publishing the full draw.",
+                ),
             );
         }
-
-        assert!(
-            round_has_motion(&round.id, &mut *conn),
-            "completed rounds must have at least one motion"
-        );
+        if !round_has_motion(&round.id, &mut *conn)? {
+            return result_controls(
+                &tournament_id,
+                round.seq,
+                query,
+                user,
+                &mut conn,
+                Some("Add a motion before completing this round."),
+            );
+        }
 
         // Enforce invariant: can only complete if all non-trainee judges have submitted ballots
         // and there are no conflicts.
@@ -225,58 +241,52 @@ pub async fn set_round_completed(
                 });
 
             if !all_non_trainees_submitted {
-                return bad_request(
-                    Page::new()
-                        .tournament(tournament.clone())
-                        .user(user)
-                        .body(maud! {
-                            (crate::widgets::alert::ErrorAlert { msg: "Cannot mark round as complete: missing ballots for debate {}" })
-                        })
-                        .render(),
+                return result_controls(
+                    &tournament_id,
+                    round.seq,
+                    query,
+                    user,
+                    &mut conn,
+                    Some("Cannot mark round as complete: missing ballots."),
                 );
             }
 
             let problems =
                 BallotRepr::problems_of_set(&ballots, &tournament, &debate);
             if !problems.is_empty() {
-                return bad_request(
-                    Page::new()
-                        .tournament(tournament.clone())
-                        .user(user)
-                        .body(maud! {
-                            (crate::widgets::alert::ErrorAlert { msg: "Cannot mark round as complete: conflicting ballots for debate {}" })
-                        })
-                        .render(),
+                return result_controls(
+                    &tournament_id,
+                    round.seq,
+                    query,
+                    user,
+                    &mut conn,
+                    Some("Cannot mark round as complete: conflicting ballots."),
                 );
             }
         }
 
         diesel::update(rounds::table.find(&round.id))
             .set(rounds::completed.eq(true))
-            .execute(&mut *conn)
-            .unwrap();
+            .execute(&mut *conn)?;
 
         // Aggregate ballot results for all debates in this round.
         // First, clear any existing aggregated data for these debates.
         let debate_ids: Vec<String> = debates::table
             .filter(debates::round_id.eq(&round.id))
             .select(debates::id)
-            .load(&mut *conn)
-            .unwrap();
+            .load(&mut *conn)?;
 
         diesel::delete(agg_speaker_results_of_debate::table.filter(
             agg_speaker_results_of_debate::debate_id.eq_any(&debate_ids),
         ))
-        .execute(&mut *conn)
-        .unwrap();
+        .execute(&mut *conn)?;
 
         diesel::delete(
             agg_team_results_of_debate::table.filter(
                 agg_team_results_of_debate::debate_id.eq_any(&debate_ids),
             ),
         )
-        .execute(&mut *conn)
-        .unwrap();
+        .execute(&mut *conn)?;
 
         // Re-fetch and aggregate each debate's ballots.
         // (The validation loop above consumed `draw.debates`.)
@@ -295,12 +305,12 @@ pub async fn set_round_completed(
         }
     }
 
-    refresh_saved_team_standings(&tournament_id, &mut *conn).unwrap();
+    refresh_saved_team_standings(&tournament_id, &mut *conn)?;
 
-    see_other_ok(Redirect::to(&format!(
-        "/tournaments/{}/rounds/{}/results/manage",
-        tournament_id, round.seq
-    )))
+    after_edit(
+        query,
+        format!("/tournaments/{tournament_id}/rounds/{}/results", round.seq),
+    )
 }
 
 fn round_has_motion(
@@ -308,13 +318,12 @@ fn round_has_motion(
     conn: &mut impl diesel::connection::LoadConnection<
         Backend = diesel::sqlite::Sqlite,
     >,
-) -> bool {
-    motions_of_round::table
+) -> Result<bool, diesel::result::Error> {
+    Ok(motions_of_round::table
         .filter(motions_of_round::round_id.eq(round_id))
         .count()
-        .get_result::<i64>(conn)
-        .unwrap_or(0)
-        > 0
+        .get_result::<i64>(conn)?
+        > 0)
 }
 
 #[derive(Deserialize, Debug)]
@@ -323,6 +332,7 @@ pub struct SetResultsPublished {
 }
 
 pub async fn set_results_published(
+    Query(query): Query<ModalQuery>,
     Path((tournament_id, round_id)): Path<(String, String)>,
     user: User<true>,
     mut conn: Conn<true>,
@@ -335,13 +345,13 @@ pub async fn set_results_published(
 
     // Enforce invariant: can only publish if round is complete
     if form.published && !round.completed {
-        return bad_request(
-            maud! {
-                div class="alert alert-danger" {
-                    "Cannot publish results for an incomplete round."
-                }
-            }
-            .render(),
+        return result_controls(
+            &tournament_id,
+            round.seq,
+            query,
+            user,
+            &mut conn,
+            Some("Cannot publish results for an incomplete round."),
         );
     }
 
@@ -351,11 +361,10 @@ pub async fn set_results_published(
         } else {
             None
         }))
-        .execute(&mut *conn)
-        .unwrap();
+        .execute(&mut *conn)?;
 
-    see_other_ok(Redirect::to(&format!(
-        "/tournaments/{}/rounds/{}/results/manage",
-        tournament_id, round.seq
-    )))
+    after_edit(
+        query,
+        format!("/tournaments/{tournament_id}/rounds/{}/results", round.seq),
+    )
 }

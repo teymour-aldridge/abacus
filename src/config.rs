@@ -45,8 +45,7 @@ async fn home(
             )
             .select(tournaments::all_columns)
             .order_by(tournaments::created_at.desc())
-            .load::<Tournament>(&mut *conn)
-            .unwrap(); // In production avoid unwrap
+            .load::<Tournament>(&mut *conn)?;
 
         let tournaments_html = maud! {
             div class="mx-auto" style="max-width: 960px;" {
@@ -218,12 +217,10 @@ pub fn create_app(pool: DbPool) -> Router {
     let secret_str = std::env::var("SECRET_KEY").ok();
     let key = if let Some(secret) = secret_str.filter(|s| s.len() >= 64) {
         Key::from(secret.as_bytes())
+    } else if cfg!(debug_assertions) {
+        Key::from(&[0; 64])
     } else {
-        if cfg!(debug_assertions) {
-            Key::from(&[0; 64])
-        } else {
-            Key::generate()
-        }
+        Key::generate()
     };
 
     let (tx, _rx) = tokio::sync::broadcast::channel::<crate::msg::Msg>(1000);
@@ -245,7 +242,6 @@ pub fn create_app(pool: DbPool) -> Router {
         .route("/tournaments/:id/participants/ws", get(crate::tournaments::participants::manage::tournament_participant_updates))
         .route("/tournaments/:id/participants/privateurls", get(crate::tournaments::participants::manage::manage_private_urls::view_private_urls))
         .route("/tournaments/:id/categories", get(crate::tournaments::categories::manage::manage_break_page))
-        .route("/tournaments/:id/break", get(crate::tournaments::categories::manage::manage_break_page))
         .route("/tournaments/:id/categories/speaker/create", post(crate::tournaments::categories::manage::create_speaker_category))
         .route("/tournaments/:id/categories/speaker/:category_id/delete", post(crate::tournaments::categories::manage::delete_speaker_category))
         .route("/tournaments/:id/categories/implications/add", post(crate::tournaments::categories::manage::add_implication))
@@ -268,44 +264,11 @@ pub fn create_app(pool: DbPool) -> Router {
                 .post(crate::tournaments::participants::manage::create_speaker::do_create_speaker),
         )
 
+        .route("/tournaments/:id/teams/:team_id/speakers/:speaker_id/edit",get(crate::tournaments::participants::manage::edit_speaker::edit_speaker_page).post(crate::tournaments::participants::manage::edit_speaker::do_edit_speaker))
+
         // Judges
         .route("/tournaments/:id/judges/create", get(crate::tournaments::participants::manage::create_judge::create_judge_page).post(crate::tournaments::participants::manage::create_judge::do_create_judge))
         .route("/tournaments/:id/judges/:judge_id/edit", get(crate::tournaments::participants::manage::manage_judge::edit_judge_details_page).post(crate::tournaments::participants::manage::manage_judge::do_edit_judge_details))
-
-        // Legacy routes (for backwards compatibility)
-        .route(
-            "/tournaments/:id/participants/team",
-            get(crate::tournaments::participants::manage::manage_team::manage_team_page)
-        )
-        .route(
-            "/tournaments/:id/participants/team/create",
-            get(crate::tournaments::participants::manage::create_team::create_teams_page)
-                .post(crate::tournaments::participants::manage::create_team::do_create_team)
-        )
-        .route(
-            "/tournaments/:id/participants/team/edit",
-            get(crate::tournaments::participants::manage::manage_team::edit_team_details_page)
-                .post(crate::tournaments::participants::manage::manage_team::do_edit_team_details)
-        )
-        .route(
-            "/tournaments/:id/participants/judge/create",
-            get(crate::tournaments::participants::manage::create_judge::create_judge_page)
-                .post(crate::tournaments::participants::manage::create_judge::do_create_judge)
-        )
-        .route(
-            "/tournaments/:id/participants/judge/edit",
-            get(crate::tournaments::participants::manage::manage_judge::edit_judge_details_page)
-                .post(crate::tournaments::participants::manage::manage_judge::do_edit_judge_details)
-        )
-        .route(
-            "/tournaments/:id/participants/speaker/create",
-            get(crate::tournaments::participants::manage::create_speaker::create_speaker_page)
-                .post(crate::tournaments::participants::manage::create_speaker::do_create_speaker)
-        )
-        .route(
-            "/tournaments/:id/participants/updates",
-            get(crate::tournaments::participants::manage::tournament_participant_updates)
-        )
 
         // Constraints (unified for both speakers and judges)
         .route("/tournaments/:id/participants/:ptype/:pid/constraints", get(crate::tournaments::participants::manage::constraints::manage_constraints_page))
@@ -326,7 +289,6 @@ pub fn create_app(pool: DbPool) -> Router {
         .route("/tournaments/:id/configuration", get(crate::tournaments::manage::config::view_tournament_configuration).post(crate::tournaments::manage::config::update_tournament_configuration))
         .route("/tournaments/:id/configuration/custom", get(crate::tournaments::manage::config::view_custom_tournament_configuration))
         .route("/tournaments/:id/configuration/preset", post(crate::tournaments::manage::config::apply_tournament_preset))
-        .route("/tournaments/:id/manage", get(crate::tournaments::manage::view::admin_view_tournament))
 
         // Feedback
         .route("/tournaments/:id/feedback/manage", get(crate::tournaments::feedback::manage::config::manage_feedback_page))
@@ -339,20 +301,18 @@ pub fn create_app(pool: DbPool) -> Router {
         .route("/tournaments/:id/privateurls/:private_url/rounds/:round_id/feedback/submit", get(crate::tournaments::feedback::public::submit::submit_feedback_page).post(crate::tournaments::feedback::public::submit::do_submit_feedback))
 
         // Rounds
-        .route("/tournaments/:id/rounds", get(crate::tournaments::rounds::manage::manage_rounds_page))
-        .route("/tournaments/:id/rounds/:round_seq/setup", get(crate::tournaments::rounds::manage::setup::setup_round_page))
+        .route("/tournaments/:id/rounds", get(crate::tournaments::view::view_round_list))
         .route("/tournaments/:id/rounds/create", get(crate::tournaments::rounds::manage::create::create_new_round))
         .route("/tournaments/:id/rounds/:category_id/create", get(crate::tournaments::rounds::manage::create::create_new_round_of_specific_category_page).post(crate::tournaments::rounds::manage::create::do_create_new_round_of_specific_category))
-        .route("/tournaments/:id/rounds/:round_seq", get(crate::tournaments::rounds::manage::view::view_rounds_page))
+        .route("/tournaments/:id/rounds/:round_seq", get(crate::tournaments::view::view_round_page))
         .route("/tournaments/:id/rounds/:round_seq/draw", get(crate::tournaments::rounds::draws::public::view::view_active_draw_page))
-        .route("/tournaments/:id/rounds/:round_seq/draw/manage", get(crate::tournaments::rounds::manage::draw_view::view_draws_page))
         .route("/tournaments/:id/rounds/:round_id/edit", get(crate::tournaments::rounds::manage::edit::edit_round_page).post(crate::tournaments::rounds::manage::edit::do_edit_round))
         .route("/tournaments/:id/rounds/:round_seq/briefing", get(crate::tournaments::rounds::manage::briefing::get_briefing_room))
         .route("/tournaments/:id/rounds/:id/draws/setreleased", post(crate::tournaments::rounds::manage::briefing::set_draw_published))
         .route("/tournaments/:id/rounds/:round_seq/results", get(crate::tournaments::rounds::results::view_results_page))
         .route("/tournaments/:id/rounds/:round_seq/results/manage", get(crate::tournaments::rounds::manage::results::manage_results_page))
         .route("/tournaments/:id/rounds/:round_id/complete", post(crate::tournaments::rounds::manage::results::set_round_completed))
-        .route("/tournaments/:id/rounds/:round_id/motions/create", post(crate::tournaments::rounds::manage::motions::create_motion))
+        .route("/tournaments/:id/rounds/:round_id/motions/create", get(crate::tournaments::rounds::manage::motions::create_motion_page).post(crate::tournaments::rounds::manage::motions::create_motion))
         .route("/tournaments/:id/rounds/:round_id/motions/publish", post(crate::tournaments::rounds::manage::motions::publish_motions))
         .route("/tournaments/:id/rounds/:round_id/results/publish", post(crate::tournaments::rounds::manage::results::set_results_published))
 
@@ -378,7 +338,6 @@ pub fn create_app(pool: DbPool) -> Router {
         .route("/tournaments/:id/rounds/:round_id/draws/create", get(crate::tournaments::rounds::draws::manage::create::generate_draw_page).post(crate::tournaments::rounds::draws::manage::create::do_generate_draw))
 
         // Standings
-        .route("/tournaments/:id/standings/teams", get(crate::tournaments::standings::manage::admin_team_standings::admin_view_team_standings))
         .route("/tournaments/:id/tab/team", get(crate::tournaments::standings::public::public_team_tab_page))
 
         // Public Draw
@@ -405,6 +364,8 @@ pub fn create_app(pool: DbPool) -> Router {
         .layer(axum::Extension(tx))
         .layer(axum::Extension(state.pool.clone()))
         .with_state(state)
+        .layer(axum::middleware::from_fn(crate::auth::request_origin::check_request_origin))
+        .layer(axum::middleware::from_fn(crate::ui::response::private_ui_response))
         .layer(
             ServiceBuilder::new()
                 .layer(TraceLayer::new_for_http()

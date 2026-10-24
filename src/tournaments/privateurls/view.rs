@@ -51,7 +51,16 @@ fn private_url_page_of_speaker(
     user: Option<User<true>>,
     conn: &mut impl LoadConnection<Backend = diesel::sqlite::Sqlite>,
 ) -> StandardResponse {
-    let current_rounds = Round::current_rounds(&tournament.id, conn);
+    let current_rounds = Round::current_rounds(&tournament.id, conn)
+        .into_iter()
+        .filter(|r| {
+            tournament.show_draws
+                && matches!(
+                    r.draw_status.as_str(),
+                    "released_teams" | "released_full"
+                )
+        })
+        .collect_vec();
 
     let current_debate_info = if !current_rounds.is_empty() {
         // todo: should make sure that teams can only ever be allocated to ONE
@@ -82,12 +91,11 @@ fn private_url_page_of_speaker(
                     .select(debates::id)
             }))
             .first::<DebateTeam>(conn)
-            .optional()
-            .unwrap();
+            .optional()?;
 
         if let Some(team_debate) = team_debate {
             let tournament = tournament.clone();
-            let debate = DebateRepr::fetch(&team_debate.debate_id, conn);
+            let debate = DebateRepr::try_fetch(&team_debate.debate_id, conn)?;
 
             Some(maud! {
                 div class="card mb-4" {
@@ -135,6 +143,7 @@ fn private_url_page_of_speaker(
             .body(maud! {
                 div class="container py-5" style="max-width: 800px;" {
                     header class="mb-5" {
+                        span class="badge bg-secondary" { "Restricted: Participant" }
                         h1 class="display-4 fw-bold mb-3" {
                             (speaker.name)
                         }
@@ -163,15 +172,18 @@ fn private_url_page_of_judge(
     let rounds = TournamentRounds::fetch(&tournament.id, conn).unwrap();
     let current_rounds = Round::current_rounds(&tournament.id, conn)
         .into_iter()
-        .filter(|round| round.draw_released_at.is_some())
+        .filter(|round| {
+            tournament.show_draws && round.draw_status == "released_full"
+        })
         .collect_vec();
 
     let institution_name = if let Some(ref inst_id) = judge.institution_id {
         institutions::table
             .filter(institutions::id.eq(inst_id))
+            .filter(institutions::tournament_id.eq(&tournament.id))
             .select(institutions::name)
             .first::<String>(conn)
-            .ok()
+            .optional()?
     } else {
         None
     };
@@ -193,11 +205,10 @@ fn private_url_page_of_judge(
             }))
             .select((judges_of_debate::debate_id, judges_of_debate::status))
             .first::<(String, String)>(conn)
-            .optional()
-            .unwrap();
+            .optional()?;
 
         if let Some((debate_id, status)) = judge_debate {
-            let debate = DebateRepr::fetch(&debate_id, conn);
+            let debate = DebateRepr::try_fetch(&debate_id, conn)?;
             let round_id = debate.debate.round_id.clone();
             let tournament_id = tournament.id.clone();
             let judge_private_url = judge.private_url.clone();
@@ -249,7 +260,7 @@ fn private_url_page_of_judge(
         None
     };
 
-    let all_current_rounds = Round::current_rounds(&tournament.id, conn);
+    let all_current_rounds = current_rounds.clone();
 
     success(
         Page::new()
@@ -259,6 +270,7 @@ fn private_url_page_of_judge(
             .body(maud! {
                 div class="container py-5" style="max-width: 800px;" {
                     header class="mb-5" {
+                        span class="badge bg-secondary" { "Restricted: Participant" }
                         h1 class="display-4 fw-bold mb-3" {
                             (judge.name)
                         }
@@ -276,13 +288,13 @@ fn private_url_page_of_judge(
                         }
                     }
 
-                    @if rounds.prelim.iter().any(|r| r.completed) {
+                    @if rounds.prelim.iter().any(|r| r.completed && r.draw_status == "released_full") {
                         section class="mb-5" {
                             h2 class="h4 text-uppercase fw-bold text-secondary mb-4" {
                                 "Feedback Submissions"
                             }
                             div class="d-flex flex-wrap gap-3" {
-                                @for round in rounds.prelim.iter().filter(|r| r.completed) {
+                                @for round in rounds.prelim.iter().filter(|r| r.completed && r.draw_status == "released_full") {
                                     a href=(
                                         format!("/tournaments/{}/privateurls/{}/rounds/{}/feedback/submit", tournament.id, judge.private_url, round.id)
                                     ) class="btn btn-outline-dark" {

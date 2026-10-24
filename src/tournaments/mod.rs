@@ -8,9 +8,7 @@ use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
 
 use crate::{
     permission::Permission,
-    schema::{
-        groups, members_of_group, org, permissions_of_group, tournaments,
-    },
+    schema::{org, tournaments},
     tournaments::{
         config::{PullupMetric, RankableTeamMetric},
         rounds::{Round, ballots::aggregate::BallotAggregationMethod},
@@ -26,7 +24,6 @@ pub mod manage;
 pub mod motions;
 pub mod participants;
 pub mod privateurls;
-pub mod public;
 pub mod rooms;
 pub mod rounds;
 pub mod snapshots;
@@ -274,8 +271,7 @@ impl Tournament {
                     .and(org::is_superuser.eq(true)),
             ),
         ))
-        .get_result::<bool>(conn)
-        .unwrap()
+        .get_result::<bool>(conn)?
         {
             true => Ok(()),
             false => unauthorized().map(|_| ()),
@@ -289,48 +285,25 @@ impl Tournament {
         permission: Permission,
         conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Result<(), FailureResponse> {
-        let has_permission = diesel::dsl::select(diesel::dsl::exists(
-            org::table
-                .filter(org::user_id.eq(user_id))
-                .filter(org::tournament_id.eq(&self.id))
-                .inner_join(
-                    groups::table.on(diesel::dsl::exists(
-                        members_of_group::table.filter(
-                            members_of_group::group_id
-                                .eq(groups::id)
-                                .and(members_of_group::member_id.eq(org::id)),
-                        ),
-                    )),
-                )
-                .inner_join(
-                    permissions_of_group::table
-                        .on(permissions_of_group::group_id.eq(groups::id)),
-                )
-                .filter(
-                    permissions_of_group::permission
-                        .eq(serde_json::to_string(&permission).unwrap()),
-                )
-                .select(true.into_sql::<diesel::sql_types::Bool>()),
-        ));
-        let is_superuser = org::table
-            .filter(org::user_id.eq(user_id).and(org::is_superuser.eq(true)))
-            .select(true.into_sql::<diesel::sql_types::Bool>());
-        let select = diesel::dsl::select(diesel::dsl::exists(
-            has_permission.union(is_superuser),
-        ));
-
-        let get_result = select.get_result::<bool>(conn).unwrap();
-
-        tracing::trace!(
-            "User has permission {:?} = {}",
-            permission,
-            get_result
-        );
-
-        match get_result {
-            true => Ok(()),
-            false => unauthorized().map(|_| ()),
+        if self.user_has_permission(user_id, permission, conn)? {
+            Ok(())
+        } else {
+            unauthorized().map(|_| ())
         }
+    }
+
+    pub fn user_has_permission(
+        &self,
+        user_id: &str,
+        permission: Permission,
+        conn: &mut impl LoadConnection<Backend = Sqlite>,
+    ) -> Result<bool, FailureResponse> {
+        Ok(crate::permission::TournamentAccess::resolve(
+            &self.id,
+            Some(user_id),
+            conn,
+        )?
+        .allows(permission))
     }
 
     pub fn speaker_position_name(

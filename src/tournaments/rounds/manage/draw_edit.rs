@@ -3,7 +3,7 @@
 use std::{collections::HashSet, fmt::Write};
 
 use axum::{
-    Extension, Form,
+    Extension,
     extract::{Path, Query, WebSocketUpgrade, ws},
     response::{IntoResponse, Redirect},
 };
@@ -21,6 +21,7 @@ use uuid::Uuid;
 use crate::{
     auth::User,
     msg::{Msg, MsgContents},
+    permission::{Permission, TournamentAccess},
     schema::{
         debates, judges, judges_of_debate, rooms, rounds, teams_of_debate,
     },
@@ -36,6 +37,7 @@ use crate::{
             draws::{Debate, DebateRepr, DebateTeam, RoundDrawRepr},
         },
     },
+    ui::View as _,
     util_resp::{
         StandardResponse, bad_request, err_not_found, see_other_ok, success,
     },
@@ -52,6 +54,8 @@ pub struct EditDrawsQueryString {
     error: Option<String>,
     #[serde(default)]
     partial: bool,
+    #[serde(default)]
+    modal: bool,
 }
 
 #[tracing::instrument(skip(conn))]
@@ -64,7 +68,11 @@ pub async fn edit_draws_page(
     mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
-    tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+    let access =
+        TournamentAccess::resolve(&tournament_id, Some(&user.id), &mut *conn)?;
+    if !can_allocate(&access) {
+        return crate::util_resp::unauthorized();
+    }
 
     if query.rounds.is_empty() {
         return err_not_found();
@@ -97,30 +105,49 @@ pub async fn edit_draws_page(
         &mut *conn,
     );
 
-    if query.partial {
+    if query.partial || query.modal {
         let state = DrawAllocatorState::from_query(
             &participants,
             &unallocated_rooms,
             &draw_reprs,
-            query.selected_judge_id.as_deref(),
+            query
+                .selected_judge_id
+                .as_deref()
+                .filter(|_| access.allows(Permission::ManageJudgeAlloc)),
             query.source_debate_id.as_deref(),
-            query.selected_room_id.as_deref(),
+            query
+                .selected_room_id
+                .as_deref()
+                .filter(|_| access.allows(Permission::ManageRoomAlloc)),
             query.source_room_debate_id.as_deref(),
         );
 
-        return success(
-            DrawAllocatorPage {
-                tournament: &tournament,
-                reprs: &draw_reprs,
-                participants: &participants,
-                unallocated_rooms: &unallocated_rooms,
-                round_ids: &round_ids,
-                state,
-                error: query.error.as_deref(),
-                oob: false,
-            }
-            .render(),
-        );
+        let content = DrawAllocatorPage {
+            access: &access,
+            tournament: &tournament,
+            reprs: &draw_reprs,
+            participants: &participants,
+            unallocated_rooms: &unallocated_rooms,
+            round_ids: &round_ids,
+            state,
+            error: query.error.as_deref(),
+            oob: false,
+        };
+        if query.modal {
+            let return_url = format!(
+                "/tournaments/{}/rounds/{}/draw",
+                tournament.id, rounds2edit[0].seq
+            );
+            return success(
+                crate::ui::presentation::modal(
+                    "Allocate draw",
+                    &return_url,
+                    content,
+                )
+                .render(),
+            );
+        }
+        return success(content.render());
     }
 
     success(
@@ -129,15 +156,11 @@ pub async fn edit_draws_page(
             .user(user)
             .current_rounds(current_rounds)
             .active_nav(crate::template::ActiveNav::Draw)
-            .extra_head(
-                maud! {
-                    script src="https://cdn.jsdelivr.net/npm/htmx-ext-ws@2.0.2" crossorigin="anonymous" {
-                    }
-                }
-            )
+
             .body(maud! {
                 SidebarWrapper rounds=(&_all_rounds) tournament=(&tournament) active_page=(Some(crate::tournaments::manage::sidebar::SidebarPage::Draw)) selected_seq=(Some(rounds2edit[0].seq)) {
                     (DrawAllocatorPage {
+                        access: &access,
                         tournament: &tournament,
                         reprs: &draw_reprs,
                         participants: &participants,
@@ -147,9 +170,9 @@ pub async fn edit_draws_page(
                             &participants,
                             &unallocated_rooms,
                             &draw_reprs,
-                            query.selected_judge_id.as_deref(),
+                            query.selected_judge_id.as_deref().filter(|_| access.allows(Permission::ManageJudgeAlloc)),
                             query.source_debate_id.as_deref(),
-                            query.selected_room_id.as_deref(),
+                            query.selected_room_id.as_deref().filter(|_| access.allows(Permission::ManageRoomAlloc)),
                             query.source_room_debate_id.as_deref(),
                         ),
                         error: query.error.as_deref(),
@@ -161,7 +184,13 @@ pub async fn edit_draws_page(
     )
 }
 
+fn can_allocate(access: &TournamentAccess) -> bool {
+    access.allows(Permission::ManageJudgeAlloc)
+        || access.allows(Permission::ManageRoomAlloc)
+}
+
 struct DrawAllocatorPage<'a> {
+    access: &'a TournamentAccess,
     tournament: &'a Tournament,
     reprs: &'a [RoundDrawRepr],
     participants: &'a TournamentParticipants,
@@ -300,15 +329,36 @@ impl Renderable for DrawAllocatorPage<'_> {
         );
         maud! {
             div id="draw-allocator" class="draw-allocator"
-                hx-ext="ws" hx-swap-oob=(if self.oob { "morphdom" } else { "false" }) "ws-connect"=(ws_url) {
+                hx-ext="ws" hx-swap-oob="outerHTML"[self.oob] "ws-connect"=(ws_url) {
                 div class="draw-allocator-header" {
                     h1 { "Draw editor" }
                     a class="btn btn-outline-secondary btn-sm" href=(edit_url)
                         hx-get=(partial_href(&edit_url))
                         hx-target="#draw-allocator"
                         hx-swap="outerHTML show:none"
-                        hx-push-url=(edit_url) {
+                        hx-push-url="false" {
                         "Clear selection"
+                    }
+                }
+
+                (crate::ui::presentation::restricted::<TournamentAccess>("Draw allocators").bind(self.access))
+                @if self.access.is_superuser() {
+                    details class="my-3" {
+                        summary { "Swap teams" }
+                        form method="post" action=(format!("/tournaments/{}/rounds/draws/edit/move_team",self.tournament.id))
+                            hx-post=(format!("/tournaments/{}/rounds/draws/edit/move_team?partial=true",self.tournament.id)) hx-target="#draw-allocator" hx-swap="outerHTML" {
+                            @for id in self.round_ids { input type="hidden" name="rounds" value=(id); }
+                            @for (field,label) in [("team1_id","First team"),("team2_id","Second team")] {
+                                label class="form-label" { (label)
+                                    select class="form-select" name=(field) required {
+                                        @for repr in self.reprs { @for debate in &repr.debates { @for assigned in &debate.teams_of_debate {
+                                            @if let Some(team)=debate.teams.get(&assigned.team_id) { option value=(team.id) { (self.participants.canonical_name_of_team(team)) } }
+                                        } } }
+                                    }
+                                }
+                            }
+                            button type="submit" class="btn btn-primary" { "Swap teams" }
+                        }
                     }
                 }
 
@@ -316,6 +366,7 @@ impl Renderable for DrawAllocatorPage<'_> {
                     div class="alert alert-danger" role="alert" { (error) }
                 }
 
+                @if self.access.allows(Permission::ManageRoomAlloc) {
                 section class="draw-unallocated-bar" {
                     h2 { "Unallocated rooms" }
                     div class="draw-judge-strip" {
@@ -326,7 +377,7 @@ impl Renderable for DrawAllocatorPage<'_> {
                                 hx-get=(partial_href(&href))
                                 hx-target="#draw-allocator"
                                 hx-swap="outerHTML show:none"
-                                hx-push-url=(&href) {
+                                hx-push-url="false" {
                                 (room.name)
                             }
                         }
@@ -349,6 +400,8 @@ impl Renderable for DrawAllocatorPage<'_> {
                     }
                 }
 
+                }
+                @if self.access.allows(Permission::ManageJudgeAlloc) {
                 section class="draw-unallocated-bar" {
                     h2 { "Unallocated judges" }
                     div class="draw-judge-strip" {
@@ -360,7 +413,7 @@ impl Renderable for DrawAllocatorPage<'_> {
                                 hx-get=(partial_href(&href))
                                 hx-target="#draw-allocator"
                                 hx-swap="outerHTML show:none"
-                                hx-push-url=(&href) {
+                                hx-push-url="false" {
                                 (judge.name) " (j" (judge.number) ")"
                             }
                         }
@@ -385,6 +438,7 @@ impl Renderable for DrawAllocatorPage<'_> {
                     }
                 }
 
+                }
                 @for repr in self.reprs {
                     section class="draw-round-section" {
                         h2 { (repr.round.name) }
@@ -408,7 +462,7 @@ impl Renderable for DrawAllocatorPage<'_> {
                                     tr {
                                         th scope="row" { (debate.debate.number) }
                                         td class="draw-room-cell" {
-                                            (render::room_cell(self.tournament, self.round_ids, debate, &self.state))
+                                            (render::room_cell(self.tournament, self.round_ids, debate, &self.state, self.access.allows(Permission::ManageRoomAlloc)))
                                         }
                                         @for debate_team in &debate.teams_of_debate {
                                             td class="draw-team-cell" {
@@ -420,9 +474,9 @@ impl Renderable for DrawAllocatorPage<'_> {
                                         }
                                         td class="draw-panel-cell" {
                                             div class="draw-panel-grid" {
-                                            (render::judge_role(self.tournament, self.round_ids, self.participants, debate, &self.state, Role::Chair, "Chair"))
-                                            (render::judge_role(self.tournament, self.round_ids, self.participants, debate, &self.state, Role::Panelist, "Panelist"))
-                                            (render::judge_role(self.tournament, self.round_ids, self.participants, debate, &self.state, Role::Trainee, "Trainee"))
+                                            (render::judge_role(self.tournament, self.round_ids, self.participants, debate, &self.state, Role::Chair, "Chair", self.access.allows(Permission::ManageJudgeAlloc)))
+                                            (render::judge_role(self.tournament, self.round_ids, self.participants, debate, &self.state, Role::Panelist, "Panelist", self.access.allows(Permission::ManageJudgeAlloc)))
+                                            (render::judge_role(self.tournament, self.round_ids, self.participants, debate, &self.state, Role::Trainee, "Trainee", self.access.allows(Permission::ManageJudgeAlloc)))
                                             }
                                         }
                                     }
@@ -446,6 +500,7 @@ mod render {
         round_ids: &'a [String],
         debate: &'a DebateRepr,
         state: &'a DrawAllocatorState<'a>,
+        allowed: bool,
     ) -> impl Renderable + 'a {
         let selected_already_in_target = match state {
             DrawAllocatorState::RoomSelected(source) => {
@@ -459,18 +514,20 @@ mod render {
             div class="draw-room-slot" {
                 @if let (Some(room), Some(room_id)) = (&debate.room, debate.debate.room_id.as_deref()) {
                     @let href = select_room_href(tournament, round_ids, room_id, Some(&debate.debate.id));
+                    @if allowed {
                     a class=(room_link_class(state, room_id, "judge-pill room-pill"))
                         href=(&href)
                         hx-get=(partial_href(&href))
                         hx-target="#draw-allocator"
                         hx-swap="outerHTML show:none"
-                        hx-push-url=(&href) {
+                        hx-push-url="false" {
                         (room.name)
                     }
+                    } @else { span { (room.name) } }
                 } @else {
                     span class="draw-empty-slot" { "Open" }
                 }
-                @if let DrawAllocatorState::RoomSelected(source) = state {
+                @if let (true, DrawAllocatorState::RoomSelected(source)) = (allowed, state) {
                     div class="draw-cell-action" {
                         (MoveRoomActionForm {
                             tournament,
@@ -499,6 +556,7 @@ mod render {
         state: &'a DrawAllocatorState<'a>,
         role: Role,
         role_label: &'a str,
+        allowed: bool,
     ) -> impl Renderable + 'a {
         let status = role.to_string();
         let judges = debate
@@ -523,14 +581,16 @@ mod render {
                     @for debate_judge in &judges {
                         @let judge = participants.judges.get(&debate_judge.judge_id).unwrap();
                         @let href = select_judge_href(tournament, round_ids, &judge.id, Some(&debate.debate.id));
+                        @if allowed {
                         a class=(judge_link_class(state, &judge.id, &role_class(role)))
                             href=(&href)
                             hx-get=(partial_href(&href))
                             hx-target="#draw-allocator"
                             hx-swap="outerHTML show:none"
-                            hx-push-url=(&href) {
+                            hx-push-url="false" {
                             (judge.name) " (j" (judge.number) ")"
                         }
+                        } @else { span { (judge.name) } }
                     }
                     @let show_open_slot = judges.is_empty() || role != Role::Chair;
                     @if show_open_slot {
@@ -542,7 +602,7 @@ mod render {
                             }
                         }
                     }
-                    @if let DrawAllocatorState::JudgeSelected(source) = state {
+                    @if let (true, DrawAllocatorState::JudgeSelected(source)) = (allowed, state) {
                         @if show_open_slot || role == Role::Chair {
                             div class="draw-cell-action" {
                                 (MoveJudgeHtmlForm {
@@ -671,6 +731,22 @@ fn load_draw_allocator_context(
         participants,
         unallocated_rooms,
     })
+}
+
+fn validate_round_ids(
+    tournament_id: &str,
+    ids: &[String],
+    conn: &mut impl LoadConnection<Backend = Sqlite>,
+) -> Result<(), crate::util_resp::FailureResponse> {
+    let count = rounds::table
+        .filter(rounds::tournament_id.eq(tournament_id))
+        .filter(rounds::id.eq_any(ids))
+        .count()
+        .get_result::<i64>(conn)?;
+    if ids.is_empty() || count as usize != ids.len() {
+        return Err(crate::util_resp::FailureResponse::NotFound(()));
+    }
+    Ok(())
 }
 
 fn edit_path(tournament: &Tournament, round_ids: &[String]) -> String {
@@ -970,7 +1046,8 @@ impl Renderable for MoveJudgeHtmlForm<'_> {
         buffer: &mut hypertext::Buffer<hypertext::context::Node>,
     ) {
         maud! {
-            form class="draw-move-form" method="post" action=(format!("/tournaments/{}/rounds/draws/edit/move", self.tournament.id)) {
+            form class="draw-move-form" method="post" action=(format!("/tournaments/{}/rounds/draws/edit/move", self.tournament.id)) hx-post=(format!("/tournaments/{}/rounds/draws/edit/move?partial=true", self.tournament.id))
+                hx-target="#draw-allocator" hx-swap="outerHTML" {
                 input type="hidden" name="judge_id" value=(self.judge.id);
                 input type="hidden" name="to_debate_id" value=(self.dest.target.location.debate_id().unwrap_or(""));
                 input type="hidden" name="role" value=(self.dest.role.to_string());
@@ -1001,7 +1078,8 @@ impl Renderable for MoveRoomActionForm<'_> {
         buffer: &mut hypertext::Buffer<hypertext::context::Node>,
     ) {
         maud! {
-            form class="draw-move-form" method="post" action=(format!("/tournaments/{}/rounds/draws/edit/move_room", self.tournament.id)) {
+            form class="draw-move-form" method="post" action=(format!("/tournaments/{}/rounds/draws/edit/move_room", self.tournament.id)) hx-post=(format!("/tournaments/{}/rounds/draws/edit/move_room?partial=true", self.tournament.id))
+                hx-target="#draw-allocator" hx-swap="outerHTML" {
                 input type="hidden" name="room_id" value=(self.room_id);
                 input type="hidden" name="from_debate_id" value=(self.source_debate_id.unwrap_or(""));
                 input type="hidden" name="to_debate_id" value=(self.target_debate_id.unwrap_or(""));
@@ -1042,37 +1120,33 @@ pub async fn draw_updates(
 
     let pool1 = pool.clone();
     let round_ids_clone = round_ids.clone();
-    let setup_result = spawn_blocking(move || {
-        let round_ids = round_ids_clone;
-        let mut conn = pool1.get().unwrap();
-        let tournament = Tournament::fetch(&tournament_id, &mut conn).ok()?;
-        tournament
-            .check_user_is_superuser(&user.id, &mut conn)
-            .ok()?;
-
-        let rounds = rounds::table
-            .filter(rounds::tournament_id.eq(&tournament.id))
-            .filter(rounds::id.eq_any(&round_ids))
-            .load::<Round>(&mut conn)
-            .optional()
-            .unwrap();
-
-        if rounds.as_ref().unwrap_or(&vec![]).len() != round_ids.len() {
-            return None;
-        }
-
-        rounds.map(|_| tournament)
-    })
-    .await
-    .unwrap();
-
-    let tournament = match setup_result {
-        Some(t) => t,
-        None => {
-            return (
-                axum::http::StatusCode::NOT_FOUND,
-                "Not found or access denied",
-            )
+    let user_id = user.id.clone();
+    let setup_result = spawn_blocking(
+        move || -> Result<_, crate::util_resp::FailureResponse> {
+            let mut conn = pool1.get().map_err(|_| {
+                crate::util_resp::FailureResponse::ServerError(())
+            })?;
+            let tournament = Tournament::fetch(&tournament_id, &mut conn)?;
+            let access = TournamentAccess::resolve(
+                &tournament.id,
+                Some(&user.id),
+                &mut conn,
+            )?;
+            if !can_allocate(&access) {
+                return Err(
+                    crate::util_resp::FailureResponse::Unauthorized(()),
+                );
+            }
+            validate_round_ids(&tournament.id, &round_ids_clone, &mut conn)?;
+            Ok((tournament, access))
+        },
+    )
+    .await;
+    let (tournament, initial_access) = match setup_result {
+        Ok(Ok(value)) => value,
+        Ok(Err(error)) => return error.into_response(),
+        Err(_) => {
+            return crate::util_resp::FailureResponse::ServerError(())
                 .into_response();
         }
     };
@@ -1089,6 +1163,8 @@ pub async fn draw_updates(
             tournament_id_str,
             round_ids,
             tournament,
+            user_id,
+            initial_access,
         )
     })
 }
@@ -1100,44 +1176,90 @@ async fn handle_socket(
     tournament_id: String,
     round_ids: Vec<String>,
     tournament: Tournament,
+    user_id: String,
+    initial_access: TournamentAccess,
 ) {
     let (mut sender, mut receiver) = socket.split();
 
     let mut send_task = tokio::spawn(async move {
-        while let Ok(msg) = rx.recv().await {
-            let should_update = if msg.tournament.id == tournament_id {
-                if let MsgContents::DrawUpdated(updated_round_id) = &msg.inner {
-                    round_ids.contains(updated_round_id)
-                } else {
-                    false
+        let rights = |access: &TournamentAccess| {
+            (
+                access.allows(Permission::ManageJudgeAlloc),
+                access.allows(Permission::ManageRoomAlloc),
+                access.is_superuser(),
+            )
+        };
+        let mut last_rights = rights(&initial_access);
+        let mut recheck = tokio::time::interval_at(
+            tokio::time::Instant::now() + std::time::Duration::from_secs(15),
+            std::time::Duration::from_secs(15),
+        );
+        loop {
+            let force_update = tokio::select! {
+                _ = recheck.tick() => false,
+                message = rx.recv() => match message {
+                    Ok(msg) if msg.tournament.id == tournament_id && matches!(&msg.inner, MsgContents::DrawUpdated(id) if round_ids.contains(id)) => true,
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => true,
+                    Ok(_) => continue,
+                    Err(_) => break,
                 }
-            } else {
-                false
             };
-
-            if should_update {
-                let pool1 = pool.clone();
-                let tournament = tournament.clone();
-                let round_ids_clone = round_ids.clone();
-
-                let rendered = spawn_blocking(move || {
-                    let mut conn = pool1.get().unwrap();
-                    render_draw_allocator(
-                        &tournament,
-                        &round_ids_clone,
-                        &mut conn,
-                    )
-                })
-                .await
-                .unwrap();
-
-                if sender
-                    .send(ws::Message::Text(rendered.into()))
-                    .await
-                    .is_err()
-                {
-                    break;
+            let pool1 = pool.clone();
+            let tournament = tournament.clone();
+            let round_ids = round_ids.clone();
+            let user_id = user_id.clone();
+            let rendered = spawn_blocking(move || {
+                let mut conn = pool1.get().ok()?;
+                let access = TournamentAccess::resolve(
+                    &tournament.id,
+                    Some(&user_id),
+                    &mut conn,
+                )
+                .ok()?;
+                if !can_allocate(&access) {
+                    return None;
                 }
+                let count = rounds::table
+                    .filter(rounds::tournament_id.eq(&tournament.id))
+                    .filter(rounds::id.eq_any(&round_ids))
+                    .count()
+                    .get_result::<i64>(&mut conn)
+                    .ok()?;
+                if count as usize != round_ids.len() {
+                    return None;
+                }
+                let current_rights = rights(&access);
+                let html = if force_update || current_rights != last_rights {
+                    Some(render_draw_allocator(
+                        &access,
+                        &tournament,
+                        &round_ids,
+                        &mut conn,
+                    ))
+                } else {
+                    None
+                };
+                Some((current_rights, html))
+            })
+            .await
+            .ok()
+            .flatten();
+            let revoked = rendered.is_none();
+            let rendered = match rendered {
+                Some((current_rights, html)) => {
+                    last_rights = current_rights;
+                    let Some(html) = html else { continue; };
+                    html
+                }
+                None => r#"<div id="draw-allocator" hx-swap-oob="outerHTML" role="alert">Draw editor access is no longer available. Close and refresh the draw.</div>"#.into(),
+            };
+            if sender
+                .send(ws::Message::Text(rendered.into()))
+                .await
+                .is_err()
+                || revoked
+            {
+                break;
             }
         }
     });
@@ -1155,6 +1277,7 @@ async fn handle_socket(
 }
 
 fn render_draw_allocator(
+    access: &TournamentAccess,
     tournament: &Tournament,
     round_ids: &[String],
     conn: &mut impl LoadConnection<Backend = Sqlite>,
@@ -1163,6 +1286,7 @@ fn render_draw_allocator(
         load_draw_allocator_context(&tournament.id, round_ids, conn).unwrap();
 
     DrawAllocatorPage {
+        access,
         tournament,
         reprs: &draw.reprs,
         participants: &draw.participants,
@@ -1205,6 +1329,12 @@ impl Role {
     }
 }
 
+#[derive(Deserialize, Default)]
+pub struct DrawMutationQuery {
+    #[serde(default)]
+    partial: bool,
+}
+
 #[derive(Deserialize, Debug)]
 pub struct MoveJudgeForm {
     judge_id: String,
@@ -1216,13 +1346,18 @@ pub struct MoveJudgeForm {
 
 pub async fn move_judge(
     Path(tournament_id): Path<String>,
+    Query(query): Query<DrawMutationQuery>,
     user: User<true>,
     Extension(tx): Extension<Sender<Msg>>,
     mut conn: Conn<true>,
     axum_extra::extract::Form(form): axum_extra::extract::Form<MoveJudgeForm>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
-    tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+    tournament.check_user_has_permission(
+        &user.id,
+        Permission::ManageJudgeAlloc,
+        &mut *conn,
+    )?;
 
     let judge = match judges::table
         .filter(judges::id.eq(&form.judge_id))
@@ -1301,11 +1436,12 @@ pub async fn move_judge(
         };
 
     let conflict_redirect = || {
-        see_other_ok(Redirect::to(&edit_path_with_error(
-            &tournament_id,
-            &round_ids,
-            "conflict",
-        )))
+        let path = edit_path_with_error(&tournament_id, &round_ids, "conflict");
+        see_other_ok(Redirect::to(&if query.partial {
+            partial_href(&path)
+        } else {
+            path
+        }))
     };
 
     let transaction_result = conn.transaction(|conn| {
@@ -1434,10 +1570,12 @@ pub async fn move_judge(
         });
     }
 
-    see_other_ok(Redirect::to(&edit_path_for_tournament_id(
-        &tournament_id,
-        &round_ids,
-    )))
+    let path = edit_path_for_tournament_id(&tournament_id, &round_ids);
+    see_other_ok(Redirect::to(&if query.partial {
+        partial_href(&path)
+    } else {
+        path
+    }))
 }
 
 #[derive(Deserialize, Debug)]
@@ -1450,15 +1588,21 @@ pub struct MoveRoomForm {
 
 pub async fn move_room(
     Path(tournament_id): Path<String>,
+    Query(query): Query<DrawMutationQuery>,
     user: User<true>,
     Extension(tx): Extension<Sender<Msg>>,
     mut conn: Conn<true>,
     axum_extra::extract::Form(form): axum_extra::extract::Form<MoveRoomForm>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
-    tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+    tournament.check_user_has_permission(
+        &user.id,
+        Permission::ManageRoomAlloc,
+        &mut *conn,
+    )?;
 
     let round_ids = form.rounds;
+    validate_round_ids(&tournament.id, &round_ids, &mut *conn)?;
     if round_ids.is_empty() {
         return bad_request(maud! { "No rounds specified" }.render());
     }
@@ -1556,10 +1700,12 @@ pub async fn move_room(
         });
     }
 
-    see_other_ok(Redirect::to(&edit_path_for_tournament_id(
-        &tournament_id,
-        &round_ids,
-    )))
+    let path = edit_path_for_tournament_id(&tournament_id, &round_ids);
+    see_other_ok(Redirect::to(&if query.partial {
+        partial_href(&path)
+    } else {
+        path
+    }))
 }
 
 #[derive(Deserialize)]
@@ -1576,25 +1722,60 @@ pub async fn change_judge_role(
     user: User<true>,
     Extension(tx): Extension<Sender<Msg>>,
     mut conn: Conn<true>,
-    Form(form): Form<ChangeRoleForm>,
+    axum_extra::extract::Form(form): axum_extra::extract::Form<ChangeRoleForm>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
-    tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+    tournament.check_user_has_permission(
+        &user.id,
+        Permission::ManageJudgeAlloc,
+        &mut *conn,
+    )?;
 
     let round_ids = form.rounds;
+    validate_round_ids(&tournament.id, &round_ids, &mut *conn)?;
 
-    let role = Role::of_str(&form.role).unwrap_or(Role::Panelist);
+    let debate = debates::table
+        .filter(debates::id.eq(&form.debate_id))
+        .filter(debates::tournament_id.eq(&tournament.id))
+        .filter(debates::round_id.eq_any(&round_ids))
+        .first::<Debate>(&mut *conn)?;
+    let role = Role::of_str(&form.role)
+        .map_err(crate::util_resp::bad_request_from_string)?;
 
-    diesel::update(
-        judges_of_debate::table.filter(
-            judges_of_debate::judge_id
-                .eq(&form.judge_id)
-                .and(judges_of_debate::debate_id.eq(&form.debate_id)),
-        ),
-    )
-    .set(judges_of_debate::status.eq(role.to_string()))
-    .execute(&mut *conn)
-    .unwrap();
+    conn.transaction::<_, diesel::result::Error, _>(|conn| {
+        let assignment_id = judges_of_debate::table
+            .inner_join(judges::table)
+            .filter(judges_of_debate::judge_id.eq(&form.judge_id))
+            .filter(judges_of_debate::debate_id.eq(&debate.id))
+            .filter(judges_of_debate::tournament_id.eq(&tournament.id))
+            .filter(judges::tournament_id.eq(&tournament.id))
+            .select(judges_of_debate::id)
+            .first::<String>(conn)?;
+
+        if role == Role::Chair {
+            diesel::update(
+                judges_of_debate::table
+                    .filter(judges_of_debate::tournament_id.eq(&tournament.id))
+                    .filter(judges_of_debate::debate_id.eq(&debate.id))
+                    .filter(judges_of_debate::id.ne(&assignment_id))
+                    .filter(judges_of_debate::status.eq("C")),
+            )
+            .set(judges_of_debate::status.eq(Role::Panelist.to_string()))
+            .execute(conn)?;
+        }
+        let changed = diesel::update(
+            judges_of_debate::table
+                .filter(judges_of_debate::id.eq(&assignment_id))
+                .filter(judges_of_debate::tournament_id.eq(&tournament.id))
+                .filter(judges_of_debate::debate_id.eq(&debate.id)),
+        )
+        .set(judges_of_debate::status.eq(role.to_string()))
+        .execute(conn)?;
+        if changed != 1 {
+            return Err(diesel::result::Error::NotFound);
+        }
+        Ok(())
+    })?;
 
     for round_id in &round_ids {
         let _ = tx.send(Msg {
@@ -1618,6 +1799,7 @@ pub struct MoveTeamForm {
 
 pub async fn move_team(
     Path(tournament_id): Path<String>,
+    Query(query): Query<DrawMutationQuery>,
     user: User<true>,
     Extension(tx): Extension<Sender<Msg>>,
     mut conn: Conn<true>,
@@ -1627,6 +1809,7 @@ pub async fn move_team(
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
     let round_ids = form.rounds;
+    validate_round_ids(&tournament.id, &round_ids, &mut *conn)?;
 
     let transaction_result = conn.transaction(|conn| {
         let team1_debate_team = teams_of_debate::table
@@ -1635,6 +1818,7 @@ pub async fn move_team(
             .filter(
                 teams_of_debate::debate_id.eq_any(
                     debates::table
+                        .filter(debates::tournament_id.eq(&tournament.id))
                         .filter(debates::round_id.eq_any(&round_ids))
                         .select(debates::id),
                 ),
@@ -1647,6 +1831,7 @@ pub async fn move_team(
             .filter(
                 teams_of_debate::debate_id.eq_any(
                     debates::table
+                        .filter(debates::tournament_id.eq(&tournament.id))
                         .filter(debates::round_id.eq_any(&round_ids))
                         .select(debates::id),
                 ),
@@ -1679,11 +1864,11 @@ pub async fn move_team(
         ))
         .execute(conn)?;
 
-        Ok(success(Default::default()))
+        Ok(())
     });
 
-    let res = match transaction_result {
-        Ok(res) => res,
+    match transaction_result {
+        Ok(()) => {}
         Err(diesel::result::Error::NotFound) => {
             return bad_request(maud! { "Team not found in draw." }.render());
         }
@@ -1699,5 +1884,10 @@ pub async fn move_team(
         });
     }
 
-    res
+    let path = edit_path_for_tournament_id(&tournament_id, &round_ids);
+    see_other_ok(Redirect::to(&if query.partial {
+        partial_href(&path)
+    } else {
+        path
+    }))
 }

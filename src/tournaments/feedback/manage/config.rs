@@ -11,42 +11,66 @@ use crate::{
     auth::User,
     schema::feedback_questions,
     state::Conn,
-    template::Page,
     tournaments::{
         Tournament, feedback::FeedbackQuestion,
         manage::sidebar::SidebarWrapper, rounds::TournamentRounds,
     },
-    util_resp::{
-        StandardResponse, bad_request, err_not_found, see_other_ok, success,
-    },
+    util_resp::{StandardResponse, err_not_found},
 };
 
 pub async fn manage_feedback_page(
     Path(tournament_id): Path<String>,
-    user: User<true>,
+    axum::extract::Query(query): axum::extract::Query<
+        crate::tournaments::manage::workspace::WorkspaceQuery,
+    >,
+    user: Option<User<true>>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
-    tournament.check_user_is_superuser(&user.id, &mut *conn)?;
-
+    let access = crate::permission::TournamentAccess::resolve(
+        &tournament_id,
+        user.as_ref().map(|u| u.id.as_str()),
+        &mut *conn,
+    )?;
+    if !access.is_superuser() {
+        if query.editing() {
+            return Err(crate::util_resp::FailureResponse::Unauthorized(()));
+        }
+        return crate::tournaments::manage::workspace::unavailable(
+            &tournament,
+            user,
+            "Feedback questions",
+        );
+    }
+    let user = user.expect("superuser is authenticated");
     let questions = feedback_questions::table
         .filter(feedback_questions::tournament_id.eq(&tournament_id))
         .order_by(feedback_questions::seq.asc())
-        .load::<FeedbackQuestion>(&mut *conn)
-        .unwrap();
-
-    let rounds = TournamentRounds::fetch(&tournament_id, &mut *conn).unwrap();
-
-    success(
-        Page::new()
-            .user(user)
-            .tournament(tournament.clone())
-            .body(FeedbackConfigRenderer {
-                tournament,
-                questions,
-                rounds,
-            })
-            .render(),
+        .load::<FeedbackQuestion>(&mut *conn)?;
+    let canonical = format!("/tournaments/{tournament_id}/feedback/manage");
+    if !query.editing() {
+        return crate::tournaments::manage::workspace::read_page(
+            &tournament,
+            user,
+            "Feedback questions",
+            &canonical,
+            &access,
+            maud! { ol { @for question in &questions { li { (question.question) } } } },
+        );
+    }
+    let rounds = TournamentRounds::fetch(&tournament_id, &mut *conn)?;
+    crate::tournaments::manage::workspace::editor_page(
+        query.form(),
+        "Feedback questions",
+        &canonical,
+        &tournament.clone(),
+        user,
+        FeedbackConfigRenderer {
+            tournament,
+            questions,
+            rounds,
+        },
+        false,
     )
 }
 
@@ -86,26 +110,26 @@ impl Renderable for FeedbackConfigRenderer {
                                     td {
                                         div class="btn-group" role="group" {
                                             a
-                                                href=(format!("/tournaments/{}/feedback/manage/{}/edit", self.tournament.id, question.id))
+                                                href=(format!("/tournaments/{}/feedback/manage/{}/edit", self.tournament.id, question.id)) hx-get=(format!("/tournaments/{}/feedback/manage/{}/edit?modal=true", self.tournament.id, question.id)) hx-target="#ui-modal"
                                                 class="btn btn-sm btn-outline-primary"
                                             {
                                                 "Edit"
                                             }
 
-                                            form method="post" action=(format!("/tournaments/{}/feedback/manage/delete", self.tournament.id)) class="d-inline" {
+                                            form method="post" action=(format!("/tournaments/{}/feedback/manage/delete", self.tournament.id)) hx-post=(format!("{}{}modal=true", format!("/tournaments/{}/feedback/manage/delete", self.tournament.id), if format!("/tournaments/{}/feedback/manage/delete", self.tournament.id).contains('?') { "&" } else { "?" })) hx-target="#ui-modal" hx-swap="innerHTML" class="d-inline" {
                                                 input type="hidden" name="question_id" value=(question.id);
                                                 button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Are you sure?')" { "Delete" }
                                             }
 
                                             @if i > 0 {
-                                                form method="post" action=(format!("/tournaments/{}/feedback/manage/up", self.tournament.id)) class="d-inline" {
+                                                form method="post" action=(format!("/tournaments/{}/feedback/manage/up", self.tournament.id)) hx-post=(format!("{}{}modal=true", format!("/tournaments/{}/feedback/manage/up", self.tournament.id), if format!("/tournaments/{}/feedback/manage/up", self.tournament.id).contains('?') { "&" } else { "?" })) hx-target="#ui-modal" hx-swap="innerHTML" class="d-inline" {
                                                     input type="hidden" name="question_id" value=(question.id);
                                                     button type="submit" class="btn btn-sm btn-outline-secondary" { "Up" }
                                                 }
                                             }
 
                                             @if i < self.questions.len() - 1 {
-                                                form method="post" action=(format!("/tournaments/{}/feedback/manage/down", self.tournament.id)) class="d-inline" {
+                                                form method="post" action=(format!("/tournaments/{}/feedback/manage/down", self.tournament.id)) hx-post=(format!("{}{}modal=true", format!("/tournaments/{}/feedback/manage/down", self.tournament.id), if format!("/tournaments/{}/feedback/manage/down", self.tournament.id).contains('?') { "&" } else { "?" })) hx-target="#ui-modal" hx-swap="innerHTML" class="d-inline" {
                                                     input type="hidden" name="question_id" value=(question.id);
                                                     button type="submit" class="btn btn-sm btn-outline-secondary" { "Down" }
                                                 }
@@ -119,29 +143,7 @@ impl Renderable for FeedbackConfigRenderer {
                 }
 
                 h3 { "Add New Question" }
-                form method="post" action=(format!("/tournaments/{}/feedback/manage/add", self.tournament.id)) {
-                    div class="mb-3" {
-                        label for="question" class="form-label" { "Question" }
-                        input type="text" class="form-control" id="question" name="question" required;
-                    }
-                    div class="mb-3" {
-                        label for="kind" class="form-label" { "Type" }
-                        select class="form-select" id="kind" name="kind" required {
-                            option value="score" { "Score (1-10)" }
-                            option value="text" { "Text" }
-                            option value="bool" { "Yes/No" }
-                        }
-                    }
-                    div class="mb-3" {
-                        label for="judges"  class="form-labale" {"For judges?"}
-                        input type="checkbox" class="form-check-input" id="judges" name="for_judges" value="true";
-                    }
-                    div class="mb-3" {
-                        label for="teams" class="form-labale" {"For teams?"}
-                        input type="checkbox" class="form-check-input" id="teams" name="for_teams" value="true";
-                    }
-                    button type="submit" class="btn btn-primary" { "Add Question" }
-                }
+                (question_form(&format!("/tournaments/{}/feedback/manage/add",self.tournament.id),None,"","score",None,Some((false,false)),None))
             }
         }
         .render_to(buffer);
@@ -150,6 +152,9 @@ impl Renderable for FeedbackConfigRenderer {
 
 pub async fn edit_feedback_question_page(
     Path((tournament_id, question_id)): Path<(String, String)>,
+    axum::extract::Query(query): axum::extract::Query<
+        crate::ui::response::ModalQuery,
+    >,
     user: User<true>,
     mut conn: Conn<true>,
 ) -> StandardResponse {
@@ -158,22 +163,25 @@ pub async fn edit_feedback_question_page(
     let rounds = TournamentRounds::fetch(&tournament_id, &mut *conn).unwrap();
 
     let question = feedback_questions::table
-        .find(question_id)
+        .filter(feedback_questions::tournament_id.eq(&tournament_id))
+        .filter(feedback_questions::id.eq(question_id))
         .first::<FeedbackQuestion>(&mut *conn)
         .optional()
         .unwrap();
 
     if let Some(question) = question {
-        success(
-            Page::new()
-                .user(user)
-                .tournament(tournament.clone())
-                .body(EditFeedbackQuestionRenderer {
-                    tournament,
-                    question,
-                    rounds,
-                })
-                .render(),
+        crate::tournaments::manage::workspace::editor_page(
+            query,
+            "Edit feedback question",
+            &format!("/tournaments/{tournament_id}/feedback/manage"),
+            &tournament.clone(),
+            user,
+            EditFeedbackQuestionRenderer {
+                tournament,
+                question,
+                rounds,
+            },
+            false,
         )
     } else {
         err_not_found()
@@ -194,43 +202,7 @@ impl Renderable for EditFeedbackQuestionRenderer {
         maud! {
             SidebarWrapper tournament=(&self.tournament) rounds=(&self.rounds) active_page=(None) selected_seq=(None) {
                 h1 { "Edit Feedback Question" }
-                form method="post" action=(format!("/tournaments/{}/feedback/manage/{}/edit", self.tournament.id, self.question.id)) {
-                    @let kind: FeedbackQuestionKind = serde_json::from_str(&self.question.kind).unwrap();
-                    input type="hidden" name="question_id" value=(self.question.id);
-                    div class="mb-3" {
-                        label for="question" class="form-label" { "Question" }
-                        input
-                            type="text"
-                            class="form-control"
-                            id="question"
-                            name="question"
-                            value=(self.question.question)
-                            required;
-                    }
-                    div class="mb-3" {
-                        label for="kind" class="form-label" { "Type" }
-                        select class="form-select" id="kind" name="kind" required {
-                            option value="score" selected[matches!(kind, FeedbackQuestionKind::IntegerScale { .. })] {
-                                "Score (1-10)"
-                            }
-                            option value="text" selected[matches!(kind, FeedbackQuestionKind::Text { .. })] {
-                                "Text"
-                            }
-                            option value="bool" selected[matches!(kind, FeedbackQuestionKind::Boolean { .. })] {
-                                "Yes/No"
-                            }
-                        }
-                    }
-                    input type="hidden" name="seq" value=(self.question.seq);
-
-                    button type="submit" class="btn btn-primary" { "Save Changes" }
-                    a
-                        href=(format!("/tournaments/{}/feedback/manage", self.tournament.id))
-                        class="btn btn-secondary ms-2"
-                    {
-                        "Cancel"
-                    }
-                }
+                (question_form(&format!("/tournaments/{}/feedback/manage/{}/edit",self.tournament.id,self.question.id),Some(&self.question.id),&self.question.question,kind_name(&self.question.kind),Some(&self.question.seq.to_string()),None,None))
 
             }
         }
@@ -269,6 +241,9 @@ fn feedback_question_kind_from_form(
 
 pub async fn add_feedback_question(
     Path(tournament_id): Path<String>,
+    axum::extract::Query(modal_query): axum::extract::Query<
+        crate::ui::response::ModalQuery,
+    >,
     user: User<true>,
     mut conn: Conn<true>,
     axum_extra::extract::Form(form): axum_extra::extract::Form<AddQuestionForm>,
@@ -276,16 +251,21 @@ pub async fn add_feedback_question(
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
 
-    let Some(feedback_q_kind) = feedback_question_kind_from_form(&form.kind)
-    else {
-        // todo: proper error message
-        return bad_request(
-            maud! {
-                "Error: invalid question kind."
-            }
-            .render(),
+    let feedback_q_kind = feedback_question_kind_from_form(&form.kind);
+    if feedback_q_kind.is_none() || form.question.trim().is_empty() {
+        return invalid_question(
+            modal_query,
+            &tournament_id,
+            &tournament,
+            user,
+            None,
+            &form.question,
+            &form.kind,
+            None,
+            Some((form.for_judges, form.for_teams)),
         );
-    };
+    }
+    let feedback_q_kind = feedback_q_kind.unwrap();
 
     let max_seq = feedback_questions::table
         .filter(feedback_questions::tournament_id.eq(&tournament_id))
@@ -309,10 +289,13 @@ pub async fn add_feedback_question(
         .execute(&mut *conn)
         .unwrap();
 
-    see_other_ok(Redirect::to(&format!(
-        "/tournaments/{}/feedback/manage",
-        tournament_id
-    )))
+    crate::tournaments::manage::workspace::after_redirect(
+        modal_query,
+        Redirect::to(&format!(
+            "/tournaments/{}/feedback/manage",
+            tournament_id
+        )),
+    )
 }
 
 #[derive(Deserialize)]
@@ -320,11 +303,14 @@ pub struct EditQuestionForm {
     question_id: String,
     question: String,
     kind: String,
-    seq: i64,
+    seq: String,
 }
 
 pub async fn edit_feedback_question(
-    Path((tournament_id, _question_id)): Path<(String, String)>,
+    Path((tournament_id, question_id)): Path<(String, String)>,
+    axum::extract::Query(modal_query): axum::extract::Query<
+        crate::ui::response::ModalQuery,
+    >,
     user: User<true>,
     mut conn: Conn<true>,
     axum_extra::extract::Form(form): axum_extra::extract::Form<
@@ -333,32 +319,54 @@ pub async fn edit_feedback_question(
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+    feedback_questions::table
+        .filter(feedback_questions::tournament_id.eq(&tournament_id))
+        .filter(feedback_questions::id.eq(&form.question_id))
+        .select(feedback_questions::id)
+        .first::<String>(&mut *conn)
+        .optional()?
+        .ok_or(crate::util_resp::FailureResponse::NotFound(()))?;
 
-    let Some(feedback_q_kind) = feedback_question_kind_from_form(&form.kind)
-    else {
-        // todo: proper error message
-        return bad_request(
-            maud! {
-                "Error: invalid question kind."
-            }
-            .render(),
+    if question_id != form.question_id {
+        return err_not_found();
+    }
+    let seq = form.seq.parse::<i64>().ok().filter(|seq| *seq >= 0);
+    let feedback_q_kind = feedback_question_kind_from_form(&form.kind);
+    if feedback_q_kind.is_none()
+        || form.question.trim().is_empty()
+        || seq.is_none()
+    {
+        return invalid_question(
+            modal_query,
+            &tournament_id,
+            &tournament,
+            user,
+            Some(&form.question_id),
+            &form.question,
+            &form.kind,
+            Some(&form.seq),
+            None,
         );
-    };
+    }
+    let feedback_q_kind = feedback_q_kind.unwrap();
 
     diesel::update(feedback_questions::table.find(&form.question_id))
         .set((
             feedback_questions::question.eq(&form.question),
             feedback_questions::kind
                 .eq(serde_json::to_string(&feedback_q_kind).unwrap()),
-            feedback_questions::seq.eq(&form.seq),
+            feedback_questions::seq.eq(seq.unwrap()),
         ))
         .execute(&mut *conn)
         .unwrap();
 
-    see_other_ok(Redirect::to(&format!(
-        "/tournaments/{}/feedback/manage",
-        tournament_id
-    )))
+    crate::tournaments::manage::workspace::after_redirect(
+        modal_query,
+        Redirect::to(&format!(
+            "/tournaments/{}/feedback/manage",
+            tournament_id
+        )),
+    )
 }
 
 #[derive(Deserialize)]
@@ -368,6 +376,9 @@ pub struct DeleteQuestionForm {
 
 pub async fn delete_feedback_question(
     Path(tournament_id): Path<String>,
+    axum::extract::Query(modal_query): axum::extract::Query<
+        crate::ui::response::ModalQuery,
+    >,
     user: User<true>,
     mut conn: Conn<true>,
     axum_extra::extract::Form(form): axum_extra::extract::Form<
@@ -376,15 +387,25 @@ pub async fn delete_feedback_question(
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+    feedback_questions::table
+        .filter(feedback_questions::tournament_id.eq(&tournament_id))
+        .filter(feedback_questions::id.eq(&form.question_id))
+        .select(feedback_questions::id)
+        .first::<String>(&mut *conn)
+        .optional()?
+        .ok_or(crate::util_resp::FailureResponse::NotFound(()))?;
 
     diesel::delete(feedback_questions::table.find(&form.question_id))
         .execute(&mut *conn)
         .unwrap();
 
-    see_other_ok(Redirect::to(&format!(
-        "/tournaments/{}/feedback/manage",
-        tournament_id
-    )))
+    crate::tournaments::manage::workspace::after_redirect(
+        modal_query,
+        Redirect::to(&format!(
+            "/tournaments/{}/feedback/manage",
+            tournament_id
+        )),
+    )
 }
 
 #[derive(Deserialize)]
@@ -394,6 +415,9 @@ pub struct ReorderQuestionForm {
 
 pub async fn move_feedback_question_up(
     Path(tournament_id): Path<String>,
+    axum::extract::Query(modal_query): axum::extract::Query<
+        crate::ui::response::ModalQuery,
+    >,
     user: User<true>,
     mut conn: Conn<true>,
     axum_extra::extract::Form(form): axum_extra::extract::Form<
@@ -402,6 +426,13 @@ pub async fn move_feedback_question_up(
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+    feedback_questions::table
+        .filter(feedback_questions::tournament_id.eq(&tournament_id))
+        .filter(feedback_questions::id.eq(&form.question_id))
+        .select(feedback_questions::id)
+        .first::<String>(&mut *conn)
+        .optional()?
+        .ok_or(crate::util_resp::FailureResponse::NotFound(()))?;
 
     let current_question = feedback_questions::table
         .find(&form.question_id)
@@ -431,20 +462,33 @@ pub async fn move_feedback_question_up(
             .unwrap();
     }
 
-    see_other_ok(Redirect::to(&format!(
-        "/tournaments/{}/feedback/manage",
-        tournament_id
-    )))
+    crate::tournaments::manage::workspace::after_redirect(
+        modal_query,
+        Redirect::to(&format!(
+            "/tournaments/{}/feedback/manage",
+            tournament_id
+        )),
+    )
 }
 
 pub async fn move_feedback_question_down(
     Path(tournament_id): Path<String>,
+    axum::extract::Query(modal_query): axum::extract::Query<
+        crate::ui::response::ModalQuery,
+    >,
     user: User<true>,
     mut conn: Conn<true>,
     Form(form): Form<ReorderQuestionForm>,
 ) -> StandardResponse {
     let tournament = Tournament::fetch(&tournament_id, &mut *conn)?;
     tournament.check_user_is_superuser(&user.id, &mut *conn)?;
+    feedback_questions::table
+        .filter(feedback_questions::tournament_id.eq(&tournament_id))
+        .filter(feedback_questions::id.eq(&form.question_id))
+        .select(feedback_questions::id)
+        .first::<String>(&mut *conn)
+        .optional()?
+        .ok_or(crate::util_resp::FailureResponse::NotFound(()))?;
 
     let current_question = feedback_questions::table
         .find(&form.question_id)
@@ -474,8 +518,86 @@ pub async fn move_feedback_question_down(
             .unwrap();
     }
 
-    see_other_ok(Redirect::to(&format!(
-        "/tournaments/{}/feedback/manage",
-        tournament_id
-    )))
+    crate::tournaments::manage::workspace::after_redirect(
+        modal_query,
+        Redirect::to(&format!(
+            "/tournaments/{}/feedback/manage",
+            tournament_id
+        )),
+    )
+}
+
+fn kind_name(raw: &str) -> &str {
+    if raw.contains("IntegerScale") {
+        "score"
+    } else if raw.contains("Boolean") {
+        "bool"
+    } else {
+        "text"
+    }
+}
+fn question_form<'a>(
+    action: &'a str,
+    id: Option<&'a str>,
+    question: &'a str,
+    kind: &'a str,
+    seq: Option<&'a str>,
+    audience: Option<(bool, bool)>,
+    error: Option<&'a str>,
+) -> impl Renderable + 'a {
+    crate::tournaments::manage::workspace::submitted_form(
+        action,
+        maud! {
+            @if let Some(id)=id { input type="hidden" name="question_id" value=(id); }
+            @if let Some(seq)=seq { input type="hidden" name="seq" value=(seq); }
+            label class="form-label d-block" { "Question" input class="form-control" name="question" value=(question) required; }
+            label class="form-label d-block" { "Answer type"
+                select class="form-select" name="kind" {
+                    @for (value, title) in [("score","Score (1–10)"),("text","Text"),("bool","Yes or no")] {
+                        option value=(value) selected[kind==value] { (title) }
+                    }
+                }
+            }
+            @if let Some((judges, teams))=audience {
+                label class="form-check-label d-block" { input type="checkbox" name="for_judges" value="true" checked[judges]; " For judges" }
+                label class="form-check-label d-block" { input type="checkbox" name="for_teams" value="true" checked[teams]; " For teams" }
+            }
+        },
+        error,
+    )
+}
+fn invalid_question(
+    query: crate::ui::response::ModalQuery,
+    tid: &str,
+    tournament: &Tournament,
+    user: User<true>,
+    id: Option<&str>,
+    question: &str,
+    kind: &str,
+    seq: Option<&str>,
+    audience: Option<(bool, bool)>,
+) -> StandardResponse {
+    let action = match id {
+        Some(id) => format!("/tournaments/{tid}/feedback/manage/{id}/edit"),
+        None => format!("/tournaments/{tid}/feedback/manage/add"),
+    };
+    crate::tournaments::manage::workspace::editor_page(
+        query,
+        "Feedback question",
+        &format!("/tournaments/{tid}/feedback/manage"),
+        tournament,
+        user,
+        question_form(
+            &action,
+            id,
+            question,
+            kind,
+            seq,
+            audience,
+            Some(
+                "Enter a question and choose an answer type. Display order must be a non-negative whole number.",
+            ),
+        ),
+        true,
+    )
 }

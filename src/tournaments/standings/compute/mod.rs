@@ -75,11 +75,7 @@ impl TeamStandings {
             .first::<Tournament>(conn)
             .unwrap();
 
-        let metrics: Vec<RankableTeamMetric> = tournament
-            .metrics()
-            .into_iter()
-            .sorted_by_key(RankableTeamMetric::sort_order_for_comp)
-            .collect();
+        let metrics = tournament.metrics();
         let pullup_metrics = tournament.pullup_metrics();
 
         // Some pullup metrics need to be computed ahead of time (for example,
@@ -91,7 +87,7 @@ impl TeamStandings {
                     PullupMetric::LowestRank
                     | PullupMetric::HighestRank
                     | PullupMetric::Random => false,
-                    // these always needs to be manually computed
+                    // these always need to be manually computed
                     PullupMetric::FewerPreviousPullups
                     | PullupMetric::LowestDsRank => true,
                     PullupMetric::LowestDsSpeaks => metrics.iter().any(|m| {
@@ -105,7 +101,10 @@ impl TeamStandings {
             Vec<(RankableTeamMetric, Decimal)>,
         > = HashMap::new();
 
-        for metric in &metrics {
+        for metric in metrics
+            .iter()
+            .sorted_by_key(|metric| metric.sort_order_for_comp())
+        {
             let val2merge: HashMap<String, rust_decimal::Decimal> = match metric
             {
                 RankableTeamMetric::Wins => points_of_team((tid,), conn)
@@ -186,6 +185,13 @@ impl TeamStandings {
                     )
                     .or_insert(vec![(*metric, v)]);
             }
+        }
+
+        // Compare and expose metric values in the tournament's configured order.
+        for values in ranked_metrics_of_team.values_mut() {
+            values.sort_by_key(|(kind, _)| {
+                metrics.iter().position(|metric| metric == kind).unwrap()
+            });
         }
 
         let mut teams = teams::table

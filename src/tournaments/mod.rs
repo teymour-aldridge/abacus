@@ -201,37 +201,43 @@ impl Tournament {
         is_reply: bool,
         speaker_name: String,
     ) -> Result<(), String> {
-        if !is_reply {
-            if let Some(min) = self.min_substantive_speak() {
-                if score < min {
-                    return Err(format!(
-                        "Score of {score} for {speaker_name} is lower than the minimum permissible speak {min}.",
-                    ));
-                }
-            }
-
-            if let Some(max) = self.max_substantive_speak() {
-                if max < score {
-                    return Err(format!(
-                        "Score of {score} for {speaker_name} is greater than the maximum permissible speak {max}.",
-                    ));
-                }
-            }
-
-            if let Some(step) = self.speak_step() {
-                if step != rust_decimal::Decimal::ZERO
-                    && score % step != rust_decimal::Decimal::ZERO
-                {
-                    return Err(format!(
-                        "Score of {score} for {speaker_name} does not match requirement \
-                         that the score be a multiple of {step}.",
-                    ));
-                }
-            }
+        let (min, max) = if is_reply {
+            (
+                self.reply_speech_min_speak
+                    .and_then(rust_decimal::Decimal::from_f32_retain),
+                self.reply_speech_max_speak
+                    .and_then(rust_decimal::Decimal::from_f32_retain),
+            )
         } else {
-            todo!("validation for reply speaks")
+            (self.min_substantive_speak(), self.max_substantive_speak())
+        };
+
+        if let Some(min) = min {
+            if score < min {
+                return Err(format!(
+                    "Score of {score} for {speaker_name} is lower than the minimum permissible speak {min}.",
+                ));
+            }
         }
 
+        if let Some(max) = max {
+            if max < score {
+                return Err(format!(
+                    "Score of {score} for {speaker_name} is greater than the maximum permissible speak {max}.",
+                ));
+            }
+        }
+
+        if let Some(step) = self.speak_step() {
+            if step != rust_decimal::Decimal::ZERO
+                && score % step != rust_decimal::Decimal::ZERO
+            {
+                return Err(format!(
+                    "Score of {score} for {speaker_name} does not match requirement \
+                         that the score be a multiple of {step}.",
+                ));
+            }
+        }
         Ok(())
     }
 

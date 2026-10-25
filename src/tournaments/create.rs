@@ -6,19 +6,24 @@ use serde::Deserialize;
 
 use crate::util_resp::bad_request;
 
-use crate::schema::{tournament_membership, tournaments};
+use crate::schema::{tournament_membership, tournament_presets, tournaments};
 use crate::state::Conn;
 use crate::template::Page;
 
 use crate::auth::User;
-use crate::tournaments::config::{
-    PullupMetric, RankableTeamMetric, SpeakerMetric,
+use crate::tournaments::{
+    Tournament,
+    config::{PullupMetric, RankableTeamMetric, SpeakerMetric},
+    manage::config::{
+        TournamentPreset, apply_tournament_config, parse_tournament_config,
+    },
 };
 use crate::util_resp::{StandardResponse, SuccessResponse, see_other_ok};
 use crate::validation::is_valid_slug;
 
 fn tournament_form<'a>(
     form: &'a CreateTournamentForm,
+    presets: &'a [TournamentPreset],
     error: Option<&'a str>,
 ) -> impl Renderable + 'a {
     maud! { div class="container py-4" {
@@ -37,6 +42,15 @@ fn tournament_form<'a>(
                 label for="tournament-slug" class="form-label" { "Tournament slug" }
                 input type="text" class="form-control" id="tournament-slug" name="slug" value=(&form.slug) pattern="[a-zA-Z0-9]+" required;
             }
+            div class="mb-3" {
+                label for="tournament-preset" class="form-label" { "Format preset" }
+                select id="tournament-preset" name="preset_id" class="form-select" required {
+                    @for preset in presets {
+                        option value=(&preset.id) selected[form.preset_id == preset.id] { (preset.name) }
+                    }
+                }
+                div class="form-text" { "You can customize these settings in Configuration after creating the tournament." }
+            }
             button type="submit" class="btn btn-primary" { "Create tournament" }
         }
     } }
@@ -44,30 +58,54 @@ fn tournament_form<'a>(
 fn invalid_tournament(
     user: User<true>,
     form: &CreateTournamentForm,
+    presets: &[TournamentPreset],
     error: &str,
 ) -> StandardResponse {
     bad_request(
         Page::new()
             .user(user)
-            .body(tournament_form(form, Some(error)))
+            .body(tournament_form(form, presets, Some(error)))
             .render(),
     )
 }
-pub async fn create_tournament_page(user: User<true>) -> SuccessResponse {
+pub async fn create_tournament_page(
+    user: User<true>,
+    mut conn: Conn<true>,
+) -> StandardResponse {
+    let presets = tournament_presets::table
+        .order(tournament_presets::name.asc())
+        .load::<TournamentPreset>(&mut *conn)?;
     let form = CreateTournamentForm::default();
-    SuccessResponse::Success(
+    Ok(SuccessResponse::Success(
         Page::new()
             .user(user)
-            .body(tournament_form(&form, None))
+            .body(tournament_form(&form, &presets, None))
             .render(),
-    )
+    ))
 }
 
-#[derive(Deserialize, Default)]
+fn default_preset_id() -> String {
+    "british-parliamentary".to_string()
+}
+
+#[derive(Deserialize)]
 pub struct CreateTournamentForm {
     name: String,
     abbrv: String,
     slug: String,
+    #[serde(default = "default_preset_id")]
+    preset_id: String,
+}
+
+impl Default for CreateTournamentForm {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            abbrv: String::new(),
+            slug: String::new(),
+            preset_id: default_preset_id(),
+        }
+    }
 }
 
 pub async fn do_create_tournament(
@@ -76,11 +114,23 @@ pub async fn do_create_tournament(
     Form(form): Form<CreateTournamentForm>,
 ) -> StandardResponse {
     let tid = uuid::Uuid::now_v7().to_string();
+    let presets = tournament_presets::table
+        .order(tournament_presets::name.asc())
+        .load::<TournamentPreset>(&mut *conn)?;
+    let Some(preset) = presets.iter().find(|p| p.id == form.preset_id) else {
+        return invalid_tournament(
+            user,
+            &form,
+            &presets,
+            "Choose a valid format preset.",
+        );
+    };
 
     if !(4..=32).contains(&form.name.len()) {
         return invalid_tournament(
             user,
             &form,
+            &presets,
             "Tournament name must be between 4 and 32 characters.",
         );
     }
@@ -88,11 +138,12 @@ pub async fn do_create_tournament(
         return invalid_tournament(
             user,
             &form,
+            &presets,
             "Tournament abbreviation must be between 2 and 8 characters.",
         );
     }
     if let Err(error) = is_valid_slug(&form.slug) {
-        return invalid_tournament(user, &form, &error.to_string());
+        return invalid_tournament(user, &form, &presets, &error.to_string());
     }
 
     let res = diesel::insert_into(tournaments::table)
@@ -147,11 +198,16 @@ pub async fn do_create_tournament(
             return invalid_tournament(
                 user,
                 &form,
+                &presets,
                 "Tournament already exists.",
             );
         }
         Err(error) => return Err(error.into()),
     }
+
+    let tournament = Tournament::fetch(&tid, &mut *conn)?;
+    let config = parse_tournament_config(&preset.config, &user, &tournament)?;
+    apply_tournament_config(&tournament, config, &mut *conn)?;
 
     let n = diesel::insert_into(tournament_membership::table)
         .values((

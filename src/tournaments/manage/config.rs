@@ -124,7 +124,7 @@ pub struct TournamentPreset {
     pub config: String,
 }
 
-fn parse_tournament_config(
+pub(crate) fn parse_tournament_config(
     raw_config: &str,
     user: &User<true>,
     tournament: &Tournament,
@@ -556,7 +556,7 @@ fn config_update_error_response(
     }
 }
 
-fn apply_tournament_config(
+pub(crate) fn apply_tournament_config(
     tournament: &Tournament,
     new_config: TournamentConfig,
     conn: &mut SqliteConnection,

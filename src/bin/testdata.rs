@@ -2,8 +2,9 @@ use std::{fs::File, path::PathBuf};
 
 use abacus::MIGRATIONS;
 use abacus::schema::{
-    break_categories, institutions, judges, motions_of_round, org, rooms,
-    rounds, speakers, speakers_of_team, teams, tournaments, users,
+    break_categories, institutions, judges, motions_of_round, rooms, rounds,
+    speakers, speakers_of_team, teams, tournament_membership, tournaments,
+    users,
 };
 use abacus::tournaments::config::{
     PullupMetric, RankableTeamMetric, SpeakerMetric,
@@ -137,12 +138,12 @@ fn main() {
         .execute(&mut conn)
         .unwrap();
 
-    diesel::insert_into(org::table)
+    diesel::insert_into(tournament_membership::table)
         .values((
-            org::id.eq(Uuid::now_v7().to_string()),
-            org::user_id.eq(user_id),
-            org::tournament_id.eq(&tournament_id),
-            org::is_superuser.eq(true),
+            tournament_membership::user_id.eq(user_id),
+            tournament_membership::tournament_id.eq(&tournament_id),
+            tournament_membership::role
+                .eq(abacus::permission::Role::Tab.as_str()),
         ))
         .execute(&mut conn)
         .unwrap();

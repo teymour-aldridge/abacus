@@ -197,32 +197,11 @@ create table if not exists action_logs (
     message text
 );
 
-create table if not exists org (
-    id text primary key not null,
+create table if not exists tournament_membership (
     user_id text not null references users (id),
     tournament_id text not null references tournaments (id),
-    is_superuser boolean not null default 0
-);
-
-create table if not exists groups (
-    id text primary key not null,
-    tournament_id text not null references tournaments (id),
-    name text not null
-);
-
-create table if not exists permissions_of_group (
-    id text primary key not null,
-    tournament_id text not null references tournaments (id),
-    group_id text not null references groups (id),
-    permission text not null unique,
-    unique (group_id, permission)
-);
-
-create table if not exists members_of_group (
-    id text primary key not null,
-    member_id text not null references org (id),
-    group_id text not null references groups (id),
-    unique (member_id, group_id)
+    role text not null check (role in ('ca', 'equity', 'tab')),
+    primary key (user_id, tournament_id, role)
 );
 
 create table if not exists institutions (

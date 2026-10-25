@@ -25,7 +25,7 @@ use crate::{
     // },
     auth::User,
     // msg::Msg,
-    schema::{org, tournaments},
+    schema::{tournament_membership, tournaments},
     state::{Conn, DbPool},
     template::Page,
     tournaments::Tournament,
@@ -39,11 +39,14 @@ async fn home(
     if let Some(user) = user {
         let tournaments_list = tournaments::table
             .inner_join(
-                org::table.on(org::tournament_id
-                    .eq(tournaments::id)
-                    .and(org::user_id.eq(&user.id))),
+                tournament_membership::table.on(
+                    tournament_membership::tournament_id
+                        .eq(tournaments::id)
+                        .and(tournament_membership::user_id.eq(&user.id)),
+                ),
             )
             .select(tournaments::all_columns)
+            .distinct()
             .order_by(tournaments::created_at.desc())
             .load::<Tournament>(&mut *conn)?;
 

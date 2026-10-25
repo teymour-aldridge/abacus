@@ -79,13 +79,7 @@ drop table if exists teams;
 
 drop table if exists institutions;
 
-drop table if exists members_of_group;
-
-drop table if exists permissions_of_group;
-
-drop table if exists groups;
-
-drop table if exists org;
+drop table if exists tournament_membership;
 
 drop table if exists snapshots;
 

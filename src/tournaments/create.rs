@@ -6,7 +6,7 @@ use serde::Deserialize;
 
 use crate::util_resp::bad_request;
 
-use crate::schema::{org, tournaments};
+use crate::schema::{tournament_membership, tournaments};
 use crate::state::Conn;
 use crate::template::Page;
 
@@ -153,12 +153,12 @@ pub async fn do_create_tournament(
         Err(error) => return Err(error.into()),
     }
 
-    let n = diesel::insert_into(org::table)
+    let n = diesel::insert_into(tournament_membership::table)
         .values((
-            org::id.eq(uuid::Uuid::now_v7().to_string()),
-            org::user_id.eq(user.id),
-            org::tournament_id.eq(&tid),
-            org::is_superuser.eq(true),
+            tournament_membership::user_id.eq(user.id),
+            tournament_membership::tournament_id.eq(&tid),
+            tournament_membership::role
+                .eq(crate::permission::Role::Tab.as_str()),
         ))
         .execute(&mut *conn)?;
     assert_eq!(n, 1);

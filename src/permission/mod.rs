@@ -29,6 +29,37 @@ pub struct TournamentAccess {
     superuser: bool,
     grants: Vec<Permission>,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Role {
+    Ca,
+    Equity,
+    Tab,
+}
+
+impl Role {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ca => "ca",
+            Self::Equity => "equity",
+            Self::Tab => "tab",
+        }
+    }
+
+    fn permissions(self) -> &'static [Permission] {
+        match self {
+            Self::Ca => {
+                &[Permission::ManageJudgeAlloc, Permission::ViewConflicts]
+            }
+            Self::Equity => &[
+                Permission::ManageParticipantConflicts,
+                Permission::ViewConflicts,
+            ],
+            Self::Tab => &[],
+        }
+    }
+}
 impl TournamentAccess {
     pub fn resolve(
         tournament_id: &str,
@@ -37,9 +68,7 @@ impl TournamentAccess {
             Backend = diesel::sqlite::Sqlite,
         >,
     ) -> Result<Self, crate::util_resp::FailureResponse> {
-        use crate::schema::{
-            groups, members_of_group, org, permissions_of_group,
-        };
+        use crate::schema::tournament_membership;
         use diesel::prelude::*;
         let Some(user_id) = user_id else {
             return Ok(Self {
@@ -48,37 +77,26 @@ impl TournamentAccess {
                 grants: vec![],
             });
         };
-        let superuser = diesel::select(diesel::dsl::exists(
-            org::table
-                .filter(org::user_id.eq(user_id))
-                .filter(org::tournament_id.eq(tournament_id))
-                .filter(org::is_superuser.eq(true)),
-        ))
-        .get_result::<bool>(conn)?;
-        let serialized = org::table
-            .filter(org::user_id.eq(user_id))
-            .filter(org::tournament_id.eq(tournament_id))
-            .inner_join(
-                members_of_group::table
-                    .on(members_of_group::member_id.eq(org::id)),
-            )
-            .inner_join(
-                groups::table.on(groups::id.eq(members_of_group::group_id)),
-            )
-            .inner_join(
-                permissions_of_group::table
-                    .on(permissions_of_group::group_id.eq(groups::id)),
-            )
-            .filter(groups::tournament_id.eq(tournament_id))
-            .filter(permissions_of_group::tournament_id.eq(tournament_id))
-            .select(permissions_of_group::permission)
+        let stored_roles = tournament_membership::table
+            .filter(tournament_membership::user_id.eq(user_id))
+            .filter(tournament_membership::tournament_id.eq(tournament_id))
+            .select(tournament_membership::role)
             .load::<String>(conn)?;
+        let roles = stored_roles
+            .iter()
+            .map(|role| match role.as_str() {
+                "ca" => Ok(Role::Ca),
+                "equity" => Ok(Role::Equity),
+                "tab" => Ok(Role::Tab),
+                _ => Err(crate::util_resp::FailureResponse::ServerError(())),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(Self {
             tournament_id: tournament_id.into(),
-            superuser,
-            grants: serialized
+            superuser: roles.contains(&Role::Tab),
+            grants: roles
                 .iter()
-                .filter_map(|value| serde_json::from_str(value).ok())
+                .flat_map(|role| role.permissions().iter().copied())
                 .collect(),
         })
     }

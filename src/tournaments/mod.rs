@@ -8,7 +8,7 @@ use diesel::{connection::LoadConnection, prelude::*, sqlite::Sqlite};
 
 use crate::{
     permission::Permission,
-    schema::{org, tournaments},
+    schema::{tournament_membership, tournaments},
     tournaments::{
         config::{PullupMetric, RankableTeamMetric},
         rounds::{Round, ballots::aggregate::BallotAggregationMethod},
@@ -264,11 +264,14 @@ impl Tournament {
         conn: &mut impl LoadConnection<Backend = Sqlite>,
     ) -> Result<(), FailureResponse> {
         match diesel::select(diesel::dsl::exists(
-            org::table.filter(
-                org::user_id
+            tournament_membership::table.filter(
+                tournament_membership::user_id
                     .eq(user_id)
-                    .and(org::tournament_id.eq(&self.id))
-                    .and(org::is_superuser.eq(true)),
+                    .and(tournament_membership::tournament_id.eq(&self.id))
+                    .and(
+                        tournament_membership::role
+                            .eq(crate::permission::Role::Tab.as_str()),
+                    ),
             ),
         ))
         .get_result::<bool>(conn)?

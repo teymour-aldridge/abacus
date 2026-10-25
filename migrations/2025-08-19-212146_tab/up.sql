@@ -480,6 +480,7 @@ create table if not exists teams_of_debate (
     team_id text not null references teams(id),
     side integer not null check (side >= 0),
     seq integer not null check (seq >= 0),
+    pulled_up boolean not null default 0,
     unique (debate_id, team_id)
 );
 

@@ -437,6 +437,7 @@ diesel::table! {
         team_id -> Text,
         side -> BigInt,
         seq -> BigInt,
+        pulled_up -> Bool,
     }
 }
 

@@ -34,8 +34,11 @@ use crate::{
         rooms::Room,
         rounds::{
             Round, TournamentRounds,
-            draws::{Debate, DebateRepr, DebateTeam, RoundDrawRepr},
+            draws::{
+                Debate, DebateRepr, DebateTeam, RoundDrawRepr, update_pullups,
+            },
         },
+        standings::compute::refresh_saved_team_standings,
     },
     ui::View as _,
     util_resp::{
@@ -1858,11 +1861,42 @@ pub async fn move_team(
                 .filter(teams_of_debate::id.eq(&team2_debate_team.id)),
         )
         .set((
-            teams_of_debate::debate_id.eq(temp_debate_id),
+            teams_of_debate::debate_id.eq(&temp_debate_id),
             teams_of_debate::side.eq(temp_side),
             teams_of_debate::seq.eq(temp_seq),
         ))
         .execute(conn)?;
+
+        // after switching, we need to update the state (eg pullup flags) of the
+        // debates we just modified
+        if temp_debate_id != team2_debate_team.debate_id {
+            let affected_debates =
+                [&temp_debate_id, &team2_debate_team.debate_id];
+            let affected_rounds = rounds::table
+                .filter(
+                    rounds::id.eq_any(
+                        debates::table
+                            .filter(debates::id.eq_any(affected_debates))
+                            .select(debates::round_id),
+                    ),
+                )
+                .load::<Round>(conn)?;
+
+            let mut refresh_standings = false;
+            for round in affected_rounds {
+                update_pullups(&round.id, conn)?;
+                if round.completed {
+                    refresh_standings = true;
+                }
+            }
+            // todo: should we actually allow swaps that alter team standings
+            //
+            // we might want to allow 'team -> swing' swaps but NOT
+            // 'teamA -> teamB'
+            if refresh_standings {
+                refresh_saved_team_standings(&tournament.id, conn)?;
+            }
+        }
 
         Ok(())
     });

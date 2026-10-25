@@ -211,6 +211,8 @@ impl std::fmt::Display for RankableTeamMetric {
 
 #[derive(Serialize, Deserialize, Hash, Eq, PartialEq)]
 pub enum UnrankableTeamMetric {
+    #[serde(rename = "previous_pullups")]
+    PreviousPullups,
     #[serde(rename = "draw_strength_by_rank")]
     DrawStrengthByRank,
 }

@@ -11,6 +11,7 @@ use crate::schema::speakers;
 use crate::schema::speakers_of_team;
 use crate::schema::teams;
 use crate::schema::teams_of_debate;
+use crate::schema::{agg_team_results_of_debate, rounds};
 use crate::tournaments::participants::DebateJudge;
 use crate::tournaments::participants::Judge;
 use crate::tournaments::participants::Speaker;
@@ -28,6 +29,53 @@ use serde::{Deserialize, Serialize};
 
 pub mod manage;
 pub mod public;
+
+/// A team is pulled up when another team in its debate had more points
+/// before this round. Call after saving or editing the draw, in the same transaction.
+pub(crate) fn update_pullups(
+    round_id: &str,
+    conn: &mut impl LoadConnection<Backend = Sqlite>,
+) -> QueryResult<()> {
+    let round = rounds::table.find(round_id).first::<Round>(conn)?;
+    let results = agg_team_results_of_debate::table
+        .inner_join(debates::table)
+        .inner_join(rounds::table.on(rounds::id.eq(debates::round_id)))
+        .filter(rounds::tournament_id.eq(&round.tournament_id))
+        .filter(rounds::kind.eq("P"))
+        .filter(rounds::completed.eq(true))
+        .filter(rounds::seq.lt(round.seq))
+        .select((
+            agg_team_results_of_debate::team_id,
+            agg_team_results_of_debate::points,
+        ))
+        .load::<(String, Option<i64>)>(conn)?;
+    let mut points = HashMap::new();
+    for (team, score) in results {
+        *points.entry(team).or_insert(0i64) += score.unwrap_or(0);
+    }
+
+    let allocations = teams_of_debate::table
+        .inner_join(debates::table)
+        .filter(debates::round_id.eq(round_id))
+        .select(teams_of_debate::all_columns)
+        .load::<DebateTeam>(conn)?
+        .into_iter()
+        .into_group_map_by(|team| team.debate_id.clone());
+    for allocations in allocations.values() {
+        let points_of =
+            |team: &DebateTeam| points.get(&team.team_id).copied().unwrap_or(0);
+        let max_points = allocations.iter().map(points_of).max().unwrap_or(0);
+        for team in allocations {
+            diesel::update(teams_of_debate::table.find(&team.id))
+                .set(
+                    teams_of_debate::pulled_up
+                        .eq(round.is_prelim() && points_of(team) < max_points),
+                )
+                .execute(conn)?;
+        }
+    }
+    Ok(())
+}
 
 #[derive(Queryable, Serialize, Deserialize, Debug, Clone)]
 pub struct Room {
@@ -300,6 +348,7 @@ pub struct DebateTeam {
     pub team_id: String,
     pub side: i64,
     pub seq: i64,
+    pub pulled_up: bool,
 }
 
 #[cfg(test)]

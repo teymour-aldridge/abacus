@@ -327,7 +327,16 @@ pub fn make_draw(
                                         as f64)
                             }
                             PullupMetric::Random => (),
-                            PullupMetric::FewerPreviousPullups => todo!(),
+                            PullupMetric::FewerPreviousPullups => {
+                                if score > team_score {
+                                    penalty += standings.pullup_metrics[&(
+                                        team.id.clone(),
+                                        UnrankableTeamMetric::PreviousPullups,
+                                    )]
+                                        .to_f64()
+                                        .unwrap();
+                                }
+                            }
                             PullupMetric::LowestDsRank => {
                                 let ds_rank = standings.pullup_metrics.get(&(
                                     team.id.clone(),
@@ -417,8 +426,6 @@ pub fn make_draw(
         highs_prob.set_mip_rel_gap(0.012).unwrap().solve().unwrap()
     };
 
-    // todo: annotations (so that we can record which teams were pulled-up,
-    // room brackets, etc)
     let mut drawn_rooms = Vec::with_capacity(rooms);
 
     for room in 0..rooms {

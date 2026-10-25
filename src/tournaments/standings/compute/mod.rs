@@ -7,7 +7,10 @@ use rust_decimal::prelude::ToPrimitive;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::schema::{team_metrics, team_standings, teams, tournaments};
+use crate::schema::{
+    debates, rounds, team_metrics, team_standings, teams, teams_of_debate,
+    tournaments,
+};
 use crate::tournaments::Tournament;
 use crate::tournaments::config::{
     PullupMetric, RankableTeamMetric, UnrankableTeamMetric,
@@ -212,11 +215,45 @@ impl TeamStandings {
             .collect::<Vec<_>>();
 
         let pullup_metrics = {
-            let map = HashMap::new();
+            let mut map = HashMap::new();
+            let previous_pullups = OnceCell::new();
 
             for metric in pullup_metrics_to_compute_and_save {
                 match metric {
-                    PullupMetric::FewerPreviousPullups => todo!(),
+                    PullupMetric::FewerPreviousPullups => {
+                        let counts = previous_pullups.get_or_init(|| {
+                            teams_of_debate::table
+                                .inner_join(debates::table)
+                                .inner_join(
+                                    rounds::table
+                                        .on(rounds::id.eq(debates::round_id)),
+                                )
+                                .filter(rounds::tournament_id.eq(tid))
+                                .filter(rounds::kind.eq("P"))
+                                .filter(rounds::completed.eq(true))
+                                .filter(teams_of_debate::pulled_up.eq(true))
+                                .group_by(teams_of_debate::team_id)
+                                .select((
+                                    teams_of_debate::team_id,
+                                    diesel::dsl::count_star(),
+                                ))
+                                .load::<(String, i64)>(conn)
+                                .unwrap()
+                                .into_iter()
+                                .collect::<HashMap<_, _>>()
+                        });
+                        for team in &teams {
+                            map.insert(
+                                (
+                                    team.id.clone(),
+                                    UnrankableTeamMetric::PreviousPullups,
+                                ),
+                                Decimal::from(
+                                    counts.get(&team.id).copied().unwrap_or(0),
+                                ),
+                            );
+                        }
+                    }
                     PullupMetric::LowestDsRank => todo!(),
                     // todo: need to first implement ATSS metric
                     PullupMetric::LowestDsSpeaks => todo!(),

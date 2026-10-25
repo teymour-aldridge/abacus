@@ -13,6 +13,7 @@ use crate::schema::{
     tickets_of_round,
 };
 use crate::tournaments::rounds::draws::manage::drawalgs::general::TeamsOfRoom;
+use crate::tournaments::rounds::draws::update_pullups;
 use crate::tournaments::snapshots::take_snapshot;
 use crate::tournaments::standings::compute::TeamStandings;
 use crate::tournaments::standings::compute::history::TeamHistory;
@@ -336,6 +337,7 @@ pub fn do_draw(
                     .execute(conn)
                     .unwrap();
                 assert_eq!(n, debate_teams.len());
+                update_pullups(&round.id, conn)?;
 
                 diesel::update(
                     tickets_of_round::table

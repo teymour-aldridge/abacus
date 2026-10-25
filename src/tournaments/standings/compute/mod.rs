@@ -141,9 +141,6 @@ impl TeamStandings {
                         })
                         .collect();
                     draw_strength_of_teams((tid, team_points), conn)
-                        .into_iter()
-                        .map(|(k, v)| (k, rust_decimal::Decimal::from(v)))
-                        .collect()
                 }
                 RankableTeamMetric::AverageTotalSpeakerScore => {
                     let tss = ranked_metrics_of_team
@@ -172,7 +169,18 @@ impl TeamStandings {
                         .map(|(k, v)| (k, rust_decimal::Decimal::from(v)))
                         .collect()
                 }
-                RankableTeamMetric::DrawStrengthBySpeaks => todo!(),
+                RankableTeamMetric::DrawStrengthBySpeaks => {
+                    let mut totals = total_speaker_score_of_team((tid,), conn);
+                    for team_id in teams::table
+                        .filter(teams::tournament_id.eq(tid))
+                        .select(teams::id)
+                        .load::<String>(conn)
+                        .unwrap()
+                    {
+                        totals.entry(team_id).or_insert(Decimal::ZERO);
+                    }
+                    draw_strength_of_teams((tid, totals), conn)
+                }
             };
 
             for (k, v) in val2merge {

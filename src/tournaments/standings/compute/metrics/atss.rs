@@ -9,7 +9,7 @@ use diesel::prelude::*;
 use rust_decimal::Decimal;
 
 pub fn atss(
-    (tid, tss): (&str, HashMap<String, rust_decimal::Decimal>),
+    (tid, tss): (&str, &HashMap<String, rust_decimal::Decimal>),
     conn: &mut impl diesel::connection::LoadConnection<
         Backend = diesel::sqlite::Sqlite,
     >,
@@ -37,18 +37,19 @@ pub fn atss(
             .into_iter()
             .collect();
 
-    tss.into_iter()
+    tss.iter()
         .map(|(k, v)| {
             let decimal = {
-                let n_rounds_debated = debates_team_appears_in.get(&k).unwrap();
-                if *n_rounds_debated == 0 {
-                    assert!(v == Decimal::ZERO);
+                let n_rounds_debated =
+                    debates_team_appears_in.get(k).copied().unwrap_or(0);
+                if n_rounds_debated == 0 {
+                    assert!(*v == Decimal::ZERO);
                     Decimal::ZERO
                 } else {
-                    v / Decimal::from(*n_rounds_debated)
+                    *v / Decimal::from(n_rounds_debated)
                 }
             };
-            (k, decimal)
+            (k.clone(), decimal)
         })
         .collect()
 }

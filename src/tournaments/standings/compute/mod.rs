@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{cell::OnceCell, collections::HashMap};
 
 use diesel::prelude::*;
 use diesel::{connection::LoadConnection, sqlite::Sqlite};
@@ -14,7 +14,9 @@ use crate::tournaments::config::{
 };
 use crate::tournaments::standings::compute::metrics::atss;
 use crate::tournaments::standings::compute::metrics::ballots::ballot_points_of_team;
-use crate::tournaments::standings::compute::metrics::draw_strength::draw_strength_of_teams;
+use crate::tournaments::standings::compute::metrics::draw_strength::{
+    draw_strength_of_teams, teams_of_completed_debates,
+};
 use crate::tournaments::standings::compute::metrics::n_times_specific_result::times_team_achieved_p_points;
 use crate::tournaments::standings::compute::metrics::points::points_of_team;
 use crate::tournaments::standings::compute::metrics::tss::total_speaker_score_of_team;
@@ -66,9 +68,9 @@ impl TeamStandings {
             .unwrap()
     }
 
-    pub fn recompute(
+    pub fn recompute<C: LoadConnection<Backend = Sqlite>>(
         tid: &str,
-        conn: &mut impl LoadConnection<Backend = Sqlite>,
+        conn: &mut C,
     ) -> Self {
         let tournament = tournaments::table
             .filter(tournaments::id.eq(tid))
@@ -96,116 +98,95 @@ impl TeamStandings {
                 })
         };
 
+        let mut teams = teams::table
+            .filter(teams::tournament_id.eq(tid))
+            .load::<Team>(conn)
+            .unwrap();
+
+        // These cells live for this computation only. Dependencies can be used
+        // without adding them to the tournament's ranking criteria.
+        let points = OnceCell::new();
+        let totals = OnceCell::new();
+        let averages = OnceCell::new();
+        let ballots = OnceCell::new();
+        let opponents = OnceCell::new();
+        let ds_wins = OnceCell::new();
+        let ds_speaks = OnceCell::new();
+        let mut position_counts = HashMap::<u8, OnceCell<_>>::new();
+
+        let points = |conn: &mut C| {
+            points.get_or_init(|| {
+                points_of_team((tid,), conn)
+                    .into_iter()
+                    .map(|(team, points)| (team, Decimal::from(points)))
+                    .collect::<HashMap<_, _>>()
+            })
+        };
+        let totals = |conn: &mut C| {
+            totals.get_or_init(|| {
+                let mut values = total_speaker_score_of_team((tid,), conn);
+                for team in &teams {
+                    values.entry(team.id.clone()).or_insert(Decimal::ZERO);
+                }
+                values
+            })
+        };
+
         let mut ranked_metrics_of_team: HashMap<
             String,
             Vec<(RankableTeamMetric, Decimal)>,
         > = HashMap::new();
 
-        for metric in metrics
-            .iter()
-            .sorted_by_key(|metric| metric.sort_order_for_comp())
-        {
-            let val2merge: HashMap<String, rust_decimal::Decimal> = match metric
-            {
-                RankableTeamMetric::Wins => points_of_team((tid,), conn)
-                    .into_iter()
-                    .map(|(k, v)| (k, rust_decimal::Decimal::from(v)))
-                    .collect(),
-                RankableTeamMetric::NTimesAchieved(t) => {
-                    times_team_achieved_p_points((*t, tid), conn)
-                        .into_iter()
-                        .map(|(k, v)| (k, rust_decimal::Decimal::from(v)))
-                        .collect()
+        // Compute on demand, but append values in configured tie-break order.
+        for metric in &metrics {
+            let values = match metric {
+                RankableTeamMetric::Wins => points(conn),
+                RankableTeamMetric::NTimesAchieved(n) => {
+                    position_counts.entry(*n).or_default().get_or_init(|| {
+                        times_team_achieved_p_points((*n, tid), conn)
+                            .into_iter()
+                            .map(|(team, count)| (team, Decimal::from(count)))
+                            .collect()
+                    })
                 }
-                RankableTeamMetric::TotalSpeakerScore => {
-                    total_speaker_score_of_team((tid,), conn)
-                }
+                RankableTeamMetric::TotalSpeakerScore => totals(conn),
+                RankableTeamMetric::AverageTotalSpeakerScore => averages
+                    .get_or_init(|| {
+                        let totals = totals(conn);
+                        atss::atss((tid, totals), conn)
+                    }),
                 RankableTeamMetric::DrawStrengthByWins => {
-                    // todo: store metrics separately
-                    let team_points = ranked_metrics_of_team
-                        .iter()
-                        .map(|(team, metrics)| {
-                            (
-                                team.clone(),
-                                metrics
-                                    .iter()
-                                    .find_map(|(metric, value)| match metric {
-                                        RankableTeamMetric::Wins => {
-                                            Some(value.clone())
-                                        }
-                                        _ => None,
-                                    })
-                                    // todo: unwrap_or(Zero) (?)
-                                    .unwrap(),
-                            )
-                        })
-                        .collect();
-                    draw_strength_of_teams((tid, team_points), conn)
+                    ds_wins.get_or_init(|| {
+                        let points = points(conn);
+                        let opponents = opponents.get_or_init(|| {
+                            teams_of_completed_debates(tid, conn)
+                        });
+                        draw_strength_of_teams(opponents, points)
+                    })
                 }
-                RankableTeamMetric::AverageTotalSpeakerScore => {
-                    let tss = ranked_metrics_of_team
-                        .iter()
-                        .map(|(team, metrics)| {
-                            (
-                                team.clone(),
-                                metrics
-                                    .iter()
-                                    .find_map(|(metric, value)| match metric {
-                                        RankableTeamMetric::TotalSpeakerScore => {
-                                            Some(value.clone())
-                                        }
-                                        _ => None,
-                                    })
-                                    // todo: unwrap_or(Zero) (?)
-                                    .unwrap(),
-                            )
-                        })
-                        .collect();
-                    atss::atss((tid, tss), conn)
-                }
-                RankableTeamMetric::Ballots => {
+                RankableTeamMetric::DrawStrengthBySpeaks => ds_speaks
+                    .get_or_init(|| {
+                        let totals = totals(conn);
+                        let opponents = opponents.get_or_init(|| {
+                            teams_of_completed_debates(tid, conn)
+                        });
+                        draw_strength_of_teams(opponents, totals)
+                    }),
+                RankableTeamMetric::Ballots => ballots.get_or_init(|| {
                     ballot_points_of_team((tid,), conn)
                         .into_iter()
-                        .map(|(k, v)| (k, rust_decimal::Decimal::from(v)))
+                        .map(|(team, points)| (team, Decimal::from(points)))
                         .collect()
-                }
-                RankableTeamMetric::DrawStrengthBySpeaks => {
-                    let mut totals = total_speaker_score_of_team((tid,), conn);
-                    for team_id in teams::table
-                        .filter(teams::tournament_id.eq(tid))
-                        .select(teams::id)
-                        .load::<String>(conn)
-                        .unwrap()
-                    {
-                        totals.entry(team_id).or_insert(Decimal::ZERO);
-                    }
-                    draw_strength_of_teams((tid, totals), conn)
-                }
+                }),
             };
 
-            for (k, v) in val2merge {
+            for (team, value) in values {
                 ranked_metrics_of_team
-                    .entry(k)
-                    .and_modify(
-                        |vals: &mut Vec<(RankableTeamMetric, Decimal)>| {
-                            vals.push((*metric, v))
-                        },
-                    )
-                    .or_insert(vec![(*metric, v)]);
+                    .entry(team.clone())
+                    .or_default()
+                    .push((*metric, *value));
             }
         }
-
-        // Compare and expose metric values in the tournament's configured order.
-        for values in ranked_metrics_of_team.values_mut() {
-            values.sort_by_key(|(kind, _)| {
-                metrics.iter().position(|metric| metric == kind).unwrap()
-            });
-        }
-
-        let mut teams = teams::table
-            .filter(teams::tournament_id.eq(tid))
-            .load::<Team>(conn)
-            .unwrap();
 
         #[cfg(debug_assertions)]
         {

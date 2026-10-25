@@ -5,12 +5,12 @@ use rust_decimal::Decimal;
 
 use crate::schema::{debates, rounds, teams_of_debate};
 
-pub fn draw_strength_of_teams(
-    (tid, team_points): (&str, HashMap<String, rust_decimal::Decimal>),
+pub fn teams_of_completed_debates(
+    tid: &str,
     conn: &mut impl diesel::connection::LoadConnection<
         Backend = diesel::sqlite::Sqlite,
     >,
-) -> HashMap<String, Decimal> {
+) -> HashMap<String, Vec<String>> {
     let teams_of_debate: Vec<(String, String)> = debates::table
         .inner_join(rounds::table.on(rounds::id.eq(debates::round_id)))
         .filter(rounds::completed.eq(true).and(rounds::kind.eq("P")))
@@ -22,7 +22,7 @@ pub fn draw_strength_of_teams(
         .select((debates::id, teams_of_debate::team_id))
         .load::<(String, String)>(conn)
         .unwrap();
-    let teams_of_debate = teams_of_debate.into_iter().fold(
+    teams_of_debate.into_iter().fold(
         HashMap::new(),
         |mut map, (debate, team)| {
             map.entry(debate)
@@ -33,16 +33,21 @@ pub fn draw_strength_of_teams(
 
             map
         },
-    );
+    )
+}
 
+pub fn draw_strength_of_teams(
+    teams_of_debate: &HashMap<String, Vec<String>>,
+    team_points: &HashMap<String, Decimal>,
+) -> HashMap<String, Decimal> {
     let mut ds: HashMap<String, Decimal> = team_points
         .keys()
         .map(|team| (team.clone(), Decimal::ZERO))
         .collect();
 
-    for (_, teams) in teams_of_debate {
-        for team_a in &teams {
-            for team_b in &teams {
+    for teams in teams_of_debate.values() {
+        for team_a in teams {
+            for team_b in teams {
                 if team_a == team_b {
                     continue;
                 }

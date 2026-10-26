@@ -214,6 +214,22 @@ impl TeamStandings {
             .map(|(_key, chunk)| chunk.into_iter().collect::<Vec<_>>())
             .collect::<Vec<_>>();
 
+        let rank_of_team = {
+            let mut map = HashMap::new();
+
+            let mut n = 1;
+
+            for teams_of_rank in &teams_grouped_by_rank {
+                for team in teams_of_rank {
+                    map.insert(team.id.clone(), n as i64);
+                }
+
+                n += teams_of_rank.len();
+            }
+
+            map
+        };
+
         let pullup_metrics = {
             let mut map = HashMap::new();
             let previous_pullups = OnceCell::new();
@@ -254,38 +270,32 @@ impl TeamStandings {
                             );
                         }
                     }
-                    PullupMetric::LowestDsRank => todo!(),
+                    PullupMetric::LowestDsRank => {
+                        let ranks = rank_of_team
+                            .iter()
+                            .map(|(team, rank)| {
+                                (team.clone(), Decimal::from(*rank))
+                            })
+                            .collect();
+                        let opponents = opponents.get_or_init(|| {
+                            teams_of_completed_debates(tid, conn)
+                        });
+                        for (team, strength) in
+                            draw_strength_of_teams(opponents, &ranks)
+                        {
+                            map.insert(
+                                (
+                                    team,
+                                    UnrankableTeamMetric::DrawStrengthByRank,
+                                ),
+                                strength,
+                            );
+                        }
+                    }
                     // todo: need to first implement ATSS metric
                     PullupMetric::LowestDsSpeaks => todo!(),
                     _ => unreachable!(),
                 };
-            }
-
-            map
-        };
-
-        let rank_of_team = {
-            let mut map = HashMap::new();
-
-            let mut n = 1;
-
-            for teams_of_rank in &teams_grouped_by_rank {
-                for team in teams_of_rank {
-                    map.insert(team.id.clone(), n as i64);
-                }
-
-                // we increase in line with the number of teams we just handled,
-                // i.e. if the brackets are
-                //
-                // [t1, t2]
-                // [t3, t4]
-                // [t5, t6, t7]
-                //
-                // then the ranks are
-                // =1 : t1, t2
-                // =3 : t3, t4
-                // =5 : t5, t6, t7
-                n += teams_of_rank.len();
             }
 
             map
@@ -512,4 +522,109 @@ pub fn refresh_saved_team_standings(
     conn: &mut impl LoadConnection<Backend = Sqlite>,
 ) -> Result<(), diesel::result::Error> {
     TeamStandings::recompute(tid, conn).save(tid, conn)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use diesel::connection::SimpleConnection;
+    use diesel_migrations::MigrationHarness;
+
+    #[test]
+    fn lowest_ds_rank_sums_current_opponent_ranks_and_survives_save() {
+        let mut conn = SqliteConnection::establish(":memory:").unwrap();
+        conn.run_pending_migrations(crate::MIGRATIONS).unwrap();
+        conn.batch_execute(r#"
+            INSERT INTO tournaments (
+                id, name, abbrv, slug, created_at, teams_per_side,
+                substantive_speakers, pool_ballot_setup, elim_ballot_setup,
+                institution_penalty, history_penalty, pullup_metrics,
+                repeat_pullup_penalty, team_standings_metrics, speaker_standings_metrics
+            ) VALUES ('t', 'Test', 'T', 'test', CURRENT_TIMESTAMP, 1, 3,
+                'consensus', 'consensus', 0, 0, '["lowest_ds_rank"]',
+                0, '["wins"]', '[]');
+            INSERT INTO teams (id, tournament_id, name, number) VALUES
+                ('a', 't', 'A', 1), ('b', 't', 'B', 2),
+                ('c', 't', 'C', 3), ('d', 't', 'D', 4);
+            INSERT INTO rounds (id, tournament_id, seq, name, kind, completed) VALUES
+                ('r1', 't', 1, 'R1', 'P', 1),
+                ('r2', 't', 2, 'R2', 'P', 1),
+                ('r3', 't', 3, 'R3', 'P', 0),
+                ('elim', 't', 4, 'Final', 'E', 1);
+            INSERT INTO debates (id, tournament_id, round_id, number, status) VALUES
+                ('d1', 't', 'r1', 1, 'confirmed'),
+                ('d2', 't', 'r2', 1, 'confirmed'),
+                ('d3', 't', 'r3', 1, 'draft'),
+                ('de', 't', 'elim', 1, 'confirmed');
+            INSERT INTO teams_of_debate
+                (id, tournament_id, debate_id, team_id, side, seq) VALUES
+                ('1a', 't', 'd1', 'a', 0, 0), ('1b', 't', 'd1', 'b', 1, 0),
+                ('2a', 't', 'd2', 'a', 0, 0), ('2b', 't', 'd2', 'b', 1, 0),
+                ('3a', 't', 'd3', 'a', 0, 0), ('3c', 't', 'd3', 'c', 1, 0),
+                ('ea', 't', 'de', 'a', 0, 0), ('ec', 't', 'de', 'c', 1, 0);
+            INSERT INTO agg_team_results_of_debate
+                (id, tournament_id, debate_id, team_id, points) VALUES
+                ('a', 't', 'd1', 'a', 2), ('b', 't', 'd1', 'b', 1),
+                ('c', 't', 'd2', 'c', 1);
+        "#).unwrap();
+
+        let standings = TeamStandings::recompute("t", &mut conn);
+        assert_eq!(standings.rank_of_team["a"], 1);
+        assert_eq!(standings.rank_of_team["b"], 2);
+        assert_eq!(standings.rank_of_team["c"], 2);
+        assert_eq!(standings.rank_of_team["d"], 4);
+        for (team, expected) in [("a", 4), ("b", 2), ("c", 0), ("d", 0)] {
+            assert_eq!(
+                standings.pullup_metrics
+                    [&(team.into(), UnrankableTeamMetric::DrawStrengthByRank)],
+                Decimal::from(expected),
+            );
+        }
+        standings.save("t", &mut conn).unwrap();
+        let saved = TeamStandings::fetch("t", &mut conn);
+        assert!(saved.pullup_metrics == standings.pullup_metrics);
+
+        // Force exactly one pull-up from three candidates. A larger rank sum
+        // must win, without encouraging all three candidates to move up.
+        use crate::tournaments::rounds::draws::manage::drawalgs::{
+            DrawInput, general,
+        };
+        use rand::SeedableRng;
+        let mut standings = saved;
+        for (team, points, strength) in
+            [("a", 1, 0), ("b", 0, 10), ("c", 0, 3), ("d", 0, 1)]
+        {
+            standings.ranked_metrics_of_team.insert(
+                team.into(),
+                vec![(RankableTeamMetric::Wins, Decimal::from(points))],
+            );
+            standings.pullup_metrics.insert(
+                (team.into(), UnrankableTeamMetric::DrawStrengthByRank),
+                Decimal::from(strength),
+            );
+        }
+        let draw = general::make_draw(DrawInput {
+            tournament: tournaments::table.find("t").first(&mut conn).unwrap(),
+            round: rounds::table.find("r3").first(&mut conn).unwrap(),
+            metrics: HashMap::new(),
+            teams: teams::table.load(&mut conn).unwrap(),
+            standings,
+            history: history::TeamHistory(HashMap::new()),
+            rng: rand_chacha::ChaCha20Rng::seed_from_u64(42),
+        })
+        .unwrap();
+        let top_room = draw
+            .iter()
+            .find(|(prop, opp)| {
+                prop.iter().chain(opp).any(|team| team.id == "a")
+            })
+            .unwrap();
+        assert!(
+            top_room
+                .0
+                .iter()
+                .chain(&top_room.1)
+                .any(|team| team.id == "b")
+        );
+    }
 }

@@ -15,6 +15,7 @@ pub enum PullupMetric {
     Random,
     #[serde(rename = "fewer_previous_pullups")]
     FewerPreviousPullups,
+    /// Prefer weaker past opposition: a larger sum of opponents' current ranks.
     #[serde(rename = "lowest_ds_rank")]
     LowestDsRank,
     #[serde(rename = "lowest_ds_speaks")]

@@ -337,16 +337,26 @@ pub fn make_draw(
                                         .unwrap();
                                 }
                             }
-                            PullupMetric::LowestDsRank => {
+                            PullupMetric::LowestDsRank
+                                if score > team_score =>
+                            {
                                 let ds_rank = standings.pullup_metrics.get(&(
                                     team.id.clone(),
                                     UnrankableTeamMetric::DrawStrengthByRank,
                                 )).unwrap();
-                                penalty += -({
-                                    assert!(ds_rank.is_integer());
-                                    ds_rank.to_f64().unwrap()
-                                });
+                                // Keep costs nonnegative so this preference
+                                // does not reward unnecessary extra pull-ups.
+                                let weakest = input.teams.iter().map(|team| {
+                                    standings.pullup_metrics[&(
+                                        team.id.clone(),
+                                        UnrankableTeamMetric::DrawStrengthByRank,
+                                    )]
+                                }).max().unwrap();
+                                assert!(ds_rank.is_integer());
+                                penalty +=
+                                    (weakest - *ds_rank).to_f64().unwrap();
                             }
+                            PullupMetric::LowestDsRank => (),
                             PullupMetric::LowestDsSpeaks => {
                                 let sub_penalty = -standings
                                     .get_ranked_metric_of_team(

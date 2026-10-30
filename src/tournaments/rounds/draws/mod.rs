@@ -287,7 +287,6 @@ impl DebateRepr {
         let mut latest = HashMap::new();
         for ballot in all_ballots {
             let judge_id = &ballot.metadata.judge_id;
-            // Since they are ordered by submitted_at desc, the first one we see is the latest
             if !latest.contains_key(judge_id) {
                 latest.insert(judge_id.clone(), ballot);
             }
@@ -296,7 +295,6 @@ impl DebateRepr {
     }
 
     /// Retrieve all the ballots that have been submitted for this debate, including history.
-    /// Ordered by submitted_at descending (newest first).
     #[tracing::instrument(skip(conn))]
     pub fn ballot_history(
         &self,
@@ -305,7 +303,11 @@ impl DebateRepr {
         ballots::table
             .filter(ballots::debate_id.eq(&self.debate.id))
             .select(ballots::id)
-            .order_by(ballots::submitted_at.desc())
+            .order_by((
+                ballots::submitted_at.desc(),
+                ballots::version.desc(),
+                ballots::id.desc(),
+            ))
             .load::<String>(conn)
             .unwrap()
             .into_iter()

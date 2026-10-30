@@ -126,6 +126,38 @@ pub fn do_draw(
 
     tracing::info!("Obtained ticket {} for draw", ticket_id);
 
+    let result = draw_with_ticket(
+        tournament,
+        round,
+        draw_generator,
+        conn,
+        force,
+        &ticket_id,
+    );
+
+    diesel::update(
+        tickets_of_round::table.filter(tickets_of_round::id.eq(&ticket_id)),
+    )
+    .set(tickets_of_round::released.eq(true))
+    .execute(conn)
+    .unwrap();
+
+    tracing::info!("Released ticket {} for draw", ticket_id);
+
+    result
+}
+
+fn draw_with_ticket(
+    tournament: Tournament,
+    round: &Round,
+    draw_generator: Box<
+        dyn Fn(DrawInput) -> Result<Vec<TeamsOfRoom>, MakeDrawError>
+            + UnwindSafe,
+    >,
+    conn: &mut impl LoadConnection<Backend = Sqlite>,
+    force: bool,
+    ticket_id: &str,
+) -> Result<(), MakeDrawError> {
     let standings = TeamStandings::fetch(&tournament.id, conn);
     let history = TeamHistory::fetch(&tournament.id, conn);
 
@@ -169,13 +201,6 @@ pub fn do_draw(
         Ok(generated) => generated,
         Err(e) => {
             tracing::error!("Draw generator panicked: {e:?}");
-            diesel::update(
-                tickets_of_round::table
-                    .filter(tickets_of_round::id.eq(&ticket_id)),
-            )
-            .set(tickets_of_round::released.eq(true))
-            .execute(conn)
-            .unwrap();
             return Err(MakeDrawError::Panic);
         }
     };
@@ -184,14 +209,6 @@ pub fn do_draw(
         Ok(generated) => generated,
         Err(failed) => {
             tracing::error!("Draw generator failed: {failed:?}");
-            diesel::update(
-                tickets_of_round::table
-                    .filter(tickets_of_round::id.eq(&ticket_id)),
-            )
-            .set(tickets_of_round::released.eq(true))
-            .execute(conn)
-            .unwrap();
-
             return Err(failed);
         }
     };
@@ -231,7 +248,7 @@ pub fn do_draw(
                                     .filter(
                                         tickets2
                                             .field(tickets_of_round::id)
-                                            .eq(&ticket_id),
+                                            .eq(ticket_id),
                                     )
                                     .into_boxed()
                                     .single_value()
@@ -241,7 +258,7 @@ pub fn do_draw(
                         .filter(
                             tickets1
                                 .field(tickets_of_round::id)
-                                .ne(&ticket_id),
+                                .ne(ticket_id),
                         ),
                 ))
                 .get_result::<bool>(conn)
@@ -357,28 +374,10 @@ pub fn do_draw(
                 assert_eq!(n, debate_teams.len());
                 update_pullups(&round.id, conn)?;
 
-                diesel::update(
-                    tickets_of_round::table
-                        .filter(tickets_of_round::id.eq(&ticket_id)),
-                )
-                .set(tickets_of_round::released.eq(true))
-                .execute(conn)
-                .unwrap();
-
                 Ok(Ok(()))
             } else {
                 Ok(Err(MakeDrawError::TicketExpired))
             };
-
-            diesel::update(
-                tickets_of_round::table
-                    .filter(tickets_of_round::id.eq(&ticket_id)),
-            )
-            .set(tickets_of_round::released.eq(true))
-            .execute(conn)
-            .unwrap();
-
-            tracing::info!("Released ticket {} for draw", ticket_id);
 
             take_snapshot(&tournament.id, conn);
 

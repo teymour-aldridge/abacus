@@ -216,6 +216,8 @@ pub enum UnrankableTeamMetric {
     PreviousPullups,
     #[serde(rename = "draw_strength_by_rank")]
     DrawStrengthByRank,
+    #[serde(rename = "pullup_draw_strength_by_speaks")]
+    DrawStrengthBySpeaks,
 }
 
 #[derive(Serialize, Deserialize)]

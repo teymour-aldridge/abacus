@@ -9,7 +9,7 @@ use rand::Rng;
 use rust_decimal::prelude::ToPrimitive;
 
 use crate::tournaments::{
-    config::{PullupMetric, RankableTeamMetric, UnrankableTeamMetric},
+    config::{PullupMetric, UnrankableTeamMetric},
     rounds::draws::manage::drawalgs::{DrawInput, MakeDrawError},
     standings::compute::history::TeamHistory,
     teams::Team,
@@ -357,16 +357,17 @@ pub fn make_draw(
                                     (weakest - *ds_rank).to_f64().unwrap();
                             }
                             PullupMetric::LowestDsRank => (),
-                            PullupMetric::LowestDsSpeaks => {
-                                let sub_penalty = -standings
-                                    .get_ranked_metric_of_team(
-                                        &team.id,
-                                        RankableTeamMetric::AverageTotalSpeakerScore
-                                    )
+                            PullupMetric::LowestDsSpeaks
+                                if score > team_score =>
+                            {
+                                penalty += standings.pullup_metrics[&(
+                                    team.id.clone(),
+                                    UnrankableTeamMetric::DrawStrengthBySpeaks,
+                                )]
                                     .to_f64()
                                     .unwrap();
-                                penalty += sub_penalty;
                             }
+                            PullupMetric::LowestDsSpeaks => (),
                         }
                     }
 

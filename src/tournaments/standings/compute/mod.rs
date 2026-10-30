@@ -94,14 +94,12 @@ impl TeamStandings {
                     | PullupMetric::Random => false,
                     // these always need to be manually computed
                     PullupMetric::FewerPreviousPullups
-                    | PullupMetric::LowestDsRank => true,
-                    PullupMetric::LowestDsSpeaks => metrics.iter().any(|m| {
-                        matches!(m, RankableTeamMetric::DrawStrengthBySpeaks)
-                    }),
+                    | PullupMetric::LowestDsRank
+                    | PullupMetric::LowestDsSpeaks => true,
                 })
         };
 
-        let mut teams = teams::table
+        let teams = teams::table
             .filter(teams::tournament_id.eq(tid))
             .load::<Team>(conn)
             .unwrap();
@@ -206,9 +204,10 @@ impl TeamStandings {
             std::cmp::Reverse(map)
         };
 
-        teams.sort_by_cached_key(f);
+        let mut ranked_teams = teams.clone();
+        ranked_teams.sort_by_cached_key(f);
 
-        let binding = teams.clone().into_iter().chunk_by(f);
+        let binding = ranked_teams.into_iter().chunk_by(f);
         let teams_grouped_by_rank = binding
             .into_iter()
             .map(|(_key, chunk)| chunk.into_iter().collect::<Vec<_>>())
@@ -292,8 +291,24 @@ impl TeamStandings {
                             );
                         }
                     }
-                    // todo: need to first implement ATSS metric
-                    PullupMetric::LowestDsSpeaks => todo!(),
+                    PullupMetric::LowestDsSpeaks => {
+                        let strengths = ds_speaks.get_or_init(|| {
+                            let totals = totals(conn);
+                            let opponents = opponents.get_or_init(|| {
+                                teams_of_completed_debates(tid, conn)
+                            });
+                            draw_strength_of_teams(opponents, totals)
+                        });
+                        for (team, strength) in strengths {
+                            map.insert(
+                                (
+                                    team.clone(),
+                                    UnrankableTeamMetric::DrawStrengthBySpeaks,
+                                ),
+                                *strength,
+                            );
+                        }
+                    }
                     _ => unreachable!(),
                 };
             }
@@ -530,8 +545,7 @@ mod tests {
     use diesel::connection::SimpleConnection;
     use diesel_migrations::MigrationHarness;
 
-    #[test]
-    fn lowest_ds_rank_sums_current_opponent_ranks_and_survives_save() {
+    fn fixture() -> SqliteConnection {
         let mut conn = SqliteConnection::establish(":memory:").unwrap();
         conn.run_pending_migrations(crate::MIGRATIONS).unwrap();
         conn.batch_execute(r#"
@@ -568,6 +582,12 @@ mod tests {
                 ('c', 't', 'd2', 'c', 1);
         "#).unwrap();
 
+        conn
+    }
+
+    #[test]
+    fn lowest_ds_rank_sums_current_opponent_ranks_and_survives_save() {
+        let mut conn = fixture();
         let standings = TeamStandings::recompute("t", &mut conn);
         assert_eq!(standings.rank_of_team["a"], 1);
         assert_eq!(standings.rank_of_team["b"], 2);
@@ -626,5 +646,106 @@ mod tests {
                 .chain(&top_room.1)
                 .any(|team| team.id == "b")
         );
+    }
+    #[test]
+    fn lowest_ds_speaks_uses_opponent_totals_without_ranking_dependencies() {
+        let mut conn = fixture();
+        conn.batch_execute(r#"
+            UPDATE tournaments SET pullup_metrics = '["lowest_ds_speaks"]';
+            UPDATE rounds SET draw_status = 'released_full';
+            INSERT INTO speakers (id, tournament_id, name, email, private_url) VALUES
+                ('sa', 't', 'A', '', 'sa'), ('sb', 't', 'B', '', 'sb');
+            INSERT INTO agg_speaker_results_of_debate
+                (id, tournament_id, debate_id, speaker_id, team_id, position, score) VALUES
+                ('sa1', 't', 'd1', 'sa', 'a', 0, 75.5),
+                ('sb1', 't', 'd1', 'sb', 'b', 0, 80.25),
+                ('sa2', 't', 'd2', 'sa', 'a', 0, 76),
+                ('sb2', 't', 'd2', 'sb', 'b', 0, 81),
+                ('sa3', 't', 'd3', 'sa', 'a', 0, 100),
+                ('sae', 't', 'de', 'sa', 'a', 0, 100);
+        "#).unwrap();
+        for ranked_ds in [false, true] {
+            if ranked_ds {
+                conn.batch_execute(
+                    r#"UPDATE tournaments SET team_standings_metrics =
+                    '["wins", "draw_strength_by_speaks"]';"#,
+                )
+                .unwrap();
+            }
+            let standings = TeamStandings::recompute("t", &mut conn);
+            for (team, expected) in [
+                ("a", Decimal::new(32250, 2)),
+                ("b", Decimal::from(303)),
+                ("c", Decimal::ZERO),
+                ("d", Decimal::ZERO),
+            ] {
+                assert_eq!(
+                    standings.pullup_metrics[&(
+                        team.into(),
+                        UnrankableTeamMetric::DrawStrengthBySpeaks
+                    )],
+                    expected
+                );
+                if ranked_ds {
+                    assert_eq!(
+                        standings.get_ranked_metric_of_team(
+                            team,
+                            RankableTeamMetric::DrawStrengthBySpeaks
+                        ),
+                        expected
+                    );
+                }
+            }
+            standings.save("t", &mut conn).unwrap();
+            let saved = TeamStandings::fetch("t", &mut conn);
+            assert!(saved.pullup_metrics == standings.pullup_metrics);
+            assert_eq!(
+                saved.ranked_metrics_of_team,
+                standings.ranked_metrics_of_team
+            );
+            use crate::tournaments::rounds::draws::manage::drawalgs::{
+                DrawInput, general,
+            };
+            use rand::SeedableRng;
+            let mut saved = saved;
+            for (team, points, strength) in
+                [("a", 1, 0), ("b", 0, 1), ("c", 0, 10), ("d", 0, 20)]
+            {
+                saved.ranked_metrics_of_team.insert(
+                    team.into(),
+                    vec![(RankableTeamMetric::Wins, Decimal::from(points))],
+                );
+                saved.pullup_metrics.insert(
+                    (team.into(), UnrankableTeamMetric::DrawStrengthBySpeaks),
+                    Decimal::from(strength),
+                );
+            }
+            let draw = general::make_draw(DrawInput {
+                tournament: tournaments::table
+                    .find("t")
+                    .first(&mut conn)
+                    .unwrap(),
+                round: rounds::table.find("r3").first(&mut conn).unwrap(),
+                metrics: HashMap::new(),
+                teams: teams::table.load(&mut conn).unwrap(),
+                standings: saved,
+                history: history::TeamHistory(HashMap::new()),
+                rng: rand_chacha::ChaCha20Rng::seed_from_u64(42),
+            })
+            .unwrap();
+            let top_room = draw
+                .iter()
+                .find(|(prop, opp)| {
+                    prop.iter().chain(opp).any(|team| team.id == "a")
+                })
+                .unwrap();
+            assert!(
+                top_room
+                    .0
+                    .iter()
+                    .chain(&top_room.1)
+                    .any(|team| team.id == "b")
+            );
+        }
     }
 }

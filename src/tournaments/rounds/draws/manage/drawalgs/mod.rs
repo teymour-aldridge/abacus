@@ -1,3 +1,6 @@
+//! Note: we probably shouldn't store the ticket state in the database, provided
+//! we are only going to run one application instance at a time.
+
 use std::collections::{HashMap, HashSet};
 use std::panic::{UnwindSafe, catch_unwind};
 
@@ -202,6 +205,21 @@ pub fn do_draw(
             let exists_active_ticket_with_higher_seq =
                 diesel::dsl::select(diesel::dsl::exists(
                     tickets1
+                        .filter(
+                            tickets1
+                                .field(tickets_of_round::round_id)
+                                .eq(&round.id),
+                        )
+                        .filter(
+                            tickets1
+                                .field(tickets_of_round::kind)
+                                .eq("draw"),
+                        )
+                        .filter(
+                            tickets1
+                                .field(tickets_of_round::released)
+                                .eq(false),
+                        )
                         .filter(
                             tickets1.field(tickets_of_round::seq).gt(
                                 tickets2

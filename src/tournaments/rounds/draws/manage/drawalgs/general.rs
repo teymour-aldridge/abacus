@@ -292,6 +292,8 @@ pub fn make_draw(
             &input.tournament.pullup_metrics,
         )
         .expect("invalid pullup metric list");
+        let lowest_rank =
+            standings.rank_of_team.values().copied().max().unwrap_or(0);
 
         // todo: option to customise this (e.g. for pull-ups)
 
@@ -310,22 +312,23 @@ pub fn make_draw(
                         // multipliers accordingly)
                         match metric {
                             PullupMetric::LowestRank
-                            | PullupMetric::HighestRank => {
-                                let sign = if matches!(
+                            | PullupMetric::HighestRank
+                                if score > team_score =>
+                            {
+                                let rank = standings.rank_of_team[&team.id];
+                                // Keep costs nonnegative so this preference
+                                // does not reward unnecessary extra pull-ups.
+                                penalty += if matches!(
                                     metric,
                                     PullupMetric::LowestRank
                                 ) {
-                                    -1.0
+                                    (lowest_rank - rank) as f64
                                 } else {
-                                    1.0
+                                    rank as f64
                                 };
-                                penalty += sign
-                                    * (*standings
-                                        .rank_of_team
-                                        .get(&team.id)
-                                        .unwrap()
-                                        as f64)
                             }
+                            PullupMetric::LowestRank
+                            | PullupMetric::HighestRank => (),
                             PullupMetric::Random => (),
                             PullupMetric::FewerPreviousPullups => {
                                 if score > team_score {

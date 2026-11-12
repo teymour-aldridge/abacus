@@ -5,6 +5,55 @@ use serde::{
     de::{self, Visitor},
 };
 
+/// The algorithm used to allocate teams in the initial elimination draw.
+#[derive(
+    Copy, Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum EliminationDrawAlgorithm {
+    #[default]
+    Fold,
+    Slide,
+    Adjacent,
+    Random,
+}
+
+impl EliminationDrawAlgorithm {
+    pub const ALL: [Self; 4] =
+        [Self::Fold, Self::Slide, Self::Adjacent, Self::Random];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Fold => "fold",
+            Self::Slide => "slide",
+            Self::Adjacent => "adjacent",
+            Self::Random => "random",
+        }
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Fold => "Fold",
+            Self::Slide => "Slide",
+            Self::Adjacent => "Adjacent",
+            Self::Random => "Random",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "fold" => Ok(Self::Fold),
+            "slide" => Ok(Self::Slide),
+            "adjacent" => Ok(Self::Adjacent),
+            "random" => Ok(Self::Random),
+            _ => Err(format!(
+                "Invalid elimination draw algorithm {value:?}; expected \
+                 fold, slide, adjacent, or random"
+            )),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 pub enum PullupMetric {
     #[serde(rename = "lowest_rank")]

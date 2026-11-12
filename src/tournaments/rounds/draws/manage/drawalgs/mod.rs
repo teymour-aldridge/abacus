@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::schema::{
     agg_team_results_of_debate, break_categories, debates, judges_of_debate,
     rounds, team_availability, team_break_eligibility, teams_of_debate,
-    tickets_of_round,
+    tickets_of_round, tournaments,
 };
 use crate::tournaments::rounds::draws::manage::drawalgs::general::TeamsOfRoom;
 use crate::tournaments::rounds::draws::update_pullups;
@@ -23,11 +23,15 @@ use crate::tournaments::standings::compute::history::TeamHistory;
 use crate::{
     schema::teams,
     tournaments::{
-        Tournament, categories::team::BreakCategory,
-        config::RankableTeamMetric, rounds::Round, teams::Team,
+        Tournament,
+        categories::team::BreakCategory,
+        config::{EliminationDrawAlgorithm, RankableTeamMetric},
+        rounds::Round,
+        teams::Team,
     },
 };
 
+pub mod elimination;
 pub mod general;
 pub mod random;
 
@@ -53,7 +57,8 @@ pub struct DrawInput {
     pub rng: rand_chacha::ChaCha20Rng,
 }
 
-/// Draws a round using the provided draw generation function.
+/// Draws a preliminary round using the provided draw generation function,
+/// or an elimination round using the seeded bracket allocator.
 ///
 /// **Important**: this function is long-running and should always be executed
 /// on a background thread (i.e. not the async executor).
@@ -183,20 +188,45 @@ fn draw_with_ticket(
 
     tracing::info!("Found {} available and eligible teams", teams.len());
 
+    let mut rng = rand_chacha::ChaCha20Rng::from_os_rng();
+    let opening_elimination = round.is_elim()
+        && previous_elimination_round_in_break_category(round, conn).is_none();
+    let brackets = if round.is_elim() {
+        let algorithm = EliminationDrawAlgorithm::parse(
+            &tournament.elimination_draw_algorithm,
+        )
+        .map_err(MakeDrawError::InvalidConfiguration)?;
+        Some(elimination::prepare_brackets(
+            round,
+            &standings,
+            &eligible_team_ids,
+            tournament.teams_per_side,
+            algorithm,
+            &mut rng,
+            conn,
+        )?)
+    } else {
+        None
+    };
+
     let input = DrawInput {
         tournament: tournament.clone(),
         round: round.clone(),
         // todo: compute the metrics
         metrics: HashMap::new(),
         teams,
-        rng: rand_chacha::ChaCha20Rng::from_os_rng(),
+        rng,
         standings,
         history,
     };
 
     let generated = match catch_unwind(move || {
         tracing::trace!("Now invoking draw generator.");
-        (draw_generator)(input)
+        if let Some(brackets) = brackets {
+            elimination::make_outround_draw(input, brackets)
+        } else {
+            (draw_generator)(input)
+        }
     }) {
         Ok(generated) => generated,
         Err(e) => {
@@ -265,6 +295,15 @@ fn draw_with_ticket(
                 .unwrap();
 
             let response = if !exists_active_ticket_with_higher_seq {
+                // Remember the opening choice only when the draw succeeds.
+                // Existing brackets never depend on subsequent setting changes.
+                if opening_elimination {
+                    diesel::update(tournaments::table.find(&tournament.id))
+                        .set(tournaments::elimination_draw_algorithm
+                            .eq(&tournament.elimination_draw_algorithm))
+                        .execute(conn)
+                        .unwrap();
+                }
                 if force {
                     tracing::info!("Force flag set, deleting existing debates for round: {}", round.id);
                     diesel::delete(
@@ -436,8 +475,13 @@ fn teams_eligible_for_round(
         .into_iter()
         .collect::<HashSet<_>>();
 
+    if break_category.break_size <= 0 {
+        return Err(MakeDrawError::InvalidTeamCount(
+            "The break size must be positive.".to_string(),
+        ));
+    }
     let mut broke = HashSet::new();
-    for team in standings.teams_in_rank_order.iter().flatten() {
+    for team in elimination::seed_order(standings) {
         if broke.len() >= break_category.break_size as usize {
             break;
         }
@@ -446,10 +490,18 @@ fn teams_eligible_for_round(
         }
     }
 
+    if broke.len() != break_category.break_size as usize {
+        return Err(MakeDrawError::InvalidTeamCount(format!(
+            "The break requires {} teams, but only {} ranked teams are eligible.",
+            break_category.break_size,
+            broke.len()
+        )));
+    }
+
     Ok(broke)
 }
 
-fn previous_elimination_round_in_break_category(
+pub(super) fn previous_elimination_round_in_break_category(
     round: &Round,
     conn: &mut impl LoadConnection<Backend = Sqlite>,
 ) -> Option<Round> {

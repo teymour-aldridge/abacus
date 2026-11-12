@@ -633,7 +633,7 @@ mod tests {
                 Decimal::from(strength),
             );
         }
-        let draw = general::make_draw(DrawInput {
+        let draw = general::make_inround_draw(DrawInput {
             tournament: tournaments::table.find("t").first(&mut conn).unwrap(),
             round: rounds::table.find("r3").first(&mut conn).unwrap(),
             metrics: HashMap::new(),
@@ -730,7 +730,7 @@ mod tests {
                     Decimal::from(strength),
                 );
             }
-            let draw = general::make_draw(DrawInput {
+            let draw = general::make_inround_draw(DrawInput {
                 tournament: tournaments::table
                     .find("t")
                     .first(&mut conn)

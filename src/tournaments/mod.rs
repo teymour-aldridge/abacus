@@ -67,6 +67,7 @@ pub struct Tournament {
     pub team_standings_metrics: String,
     pub speaker_standings_metrics: String,
     pub exclude_from_speaker_standings_after: Option<i64>,
+    pub elimination_draw_algorithm: String,
 }
 
 pub enum UserRole {

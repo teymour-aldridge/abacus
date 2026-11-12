@@ -162,7 +162,7 @@ fn simulate_concurrent_in_rounds(
         do_draw(
             tournament.clone(),
             &round,
-            Box::new(drawalgs::general::make_draw),
+            Box::new(drawalgs::general::make_inround_draw),
             conn,
             true,
         )

@@ -498,6 +498,7 @@ diesel::table! {
         team_standings_metrics -> Text,
         speaker_standings_metrics -> Text,
         exclude_from_speaker_standings_after -> Nullable<BigInt>,
+        elimination_draw_algorithm -> Text,
     }
 }
 

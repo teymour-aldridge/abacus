@@ -17,6 +17,8 @@ use axum::extract::Path;
 use hypertext::prelude::*;
 use rust_decimal::prelude::ToPrimitive;
 
+pub mod speaker;
+
 struct StandingRow {
     rank: usize,
     tied: bool,
@@ -108,6 +110,7 @@ pub async fn public_team_tab_page(
     let rows = &rows;
     let public = tournament.team_tab_public;
     let standings_public = tournament.standings_public || public;
+    let tid = tid.as_str();
     let view = ui::html(|ctx: &TournamentAccess, out| {
         let content = ui::protected(
             |_: &TournamentAccess| visible,
@@ -129,6 +132,10 @@ pub async fn public_team_tab_page(
         );
         maud! {div class="container py-4" {
             h1 { "Team standings" }
+            nav class="d-flex gap-3 mb-3" aria-label="Standings navigation" {
+                a href=(format!("/tournaments/{tid}/tab/team")) aria-current="page" { "Teams" }
+                a href=(format!("/tournaments/{tid}/tab/speaker")) { "Speakers" }
+            }
             @if ctx.is_superuser() {
                 (publication::<TournamentAccess>("Standings",if standings_public {Publication::Public}else{Publication::Unpublished}).bind(ctx))
                 (publication::<TournamentAccess>("Full tab",if public {Publication::Public}else{Publication::Unpublished}).bind(ctx))

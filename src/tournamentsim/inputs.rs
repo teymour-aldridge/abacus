@@ -1583,7 +1583,7 @@ impl Action {
                             "/tournaments/{}/tab/team",
                             tid
                         )),
-                        12 => Some(format!("/tournaments/{}/tab/speaker", tid)),
+                        12 => Some(format!("/tournaments/{}/tab/team", tid)),
                         13 => Some(format!("/tournaments/{}/motions", tid)),
                         14 => round_path(""),
                         15 => round_path(""),

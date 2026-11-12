@@ -96,7 +96,11 @@ create table if not exists tournaments (
             and json_type(speaker_standings_metrics) = 'array'),
     -- number of rounds that can be missed before a speaker is omitted from the
     -- tab
-    exclude_from_speaker_standings_after integer
+    exclude_from_speaker_standings_after integer,
+
+    -- Pairing algorithm for the first elimination round in each break category.
+    elimination_draw_algorithm text not null default 'fold'
+        check (elimination_draw_algorithm in ('fold', 'slide', 'adjacent', 'random'))
 );
 
 create table if not exists tournament_presets (

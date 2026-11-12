@@ -22,6 +22,7 @@ use crate::{
     template::Page,
     tournaments::{
         Tournament,
+        config::EliminationDrawAlgorithm,
         participants::TournamentParticipants,
         rounds::{
             TournamentRounds,
@@ -72,6 +73,8 @@ pub struct TournamentConfig {
     pub team_standings_metrics: String,
     pub speaker_standings_metrics: String,
     pub exclude_from_speaker_standings_after: Option<i64>,
+    #[serde(default)]
+    pub elimination_draw_algorithm: EliminationDrawAlgorithm,
 }
 
 pub fn config_of_tournament(tournament: &Tournament) -> TournamentConfig {
@@ -113,6 +116,12 @@ pub fn config_of_tournament(tournament: &Tournament) -> TournamentConfig {
         require_elim_substantive_speaks: tournament
             .require_elim_substantive_speaks,
         require_elim_speaker_order: tournament.require_elim_speaker_order,
+        // The database constraint guarantees a recognized value; default
+        // defensively for tournaments constructed outside the database.
+        elimination_draw_algorithm: EliminationDrawAlgorithm::parse(
+            &tournament.elimination_draw_algorithm,
+        )
+        .unwrap_or_default(),
     }
 }
 
@@ -201,6 +210,8 @@ fn tournament_with_config(
     candidate.require_elim_substantive_speaks =
         config.require_elim_substantive_speaks;
     candidate.require_elim_speaker_order = config.require_elim_speaker_order;
+    candidate.elimination_draw_algorithm =
+        config.elimination_draw_algorithm.as_str().to_string();
     candidate
 }
 
@@ -610,6 +621,8 @@ pub(crate) fn apply_tournament_config(
             .eq(new_config.require_elim_substantive_speaks),
         tournaments::require_elim_speaker_order
             .eq(new_config.require_elim_speaker_order),
+        tournaments::elimination_draw_algorithm
+            .eq(new_config.elimination_draw_algorithm.as_str()),
     ))
     .execute(conn)?;
     assert_eq!(n, 1);

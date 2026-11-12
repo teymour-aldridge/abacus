@@ -52,7 +52,7 @@ pub type TeamsOfRoom = (Vec<Team>, Vec<Team>);
 ///
 /// Additional description can be found here:
 /// https://www.overleaf.com/read/sstwcyfjbrhx#1c6d64
-pub fn make_draw(
+pub fn make_inround_draw(
     mut input: DrawInput,
 ) -> Result<Vec<TeamsOfRoom>, MakeDrawError> {
     if input.teams.is_empty() {

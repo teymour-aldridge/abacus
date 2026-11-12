@@ -78,8 +78,8 @@ impl TeamHistory {
                     )),
                     diesel::dsl::count(diesel::dsl::case_when(
                         teams_of_debate::side
-                            .eq(0)
-                            .and(teams_of_debate::seq.eq(0)),
+                            .eq(1)
+                            .and(teams_of_debate::seq.eq(1)),
                         1.as_sql::<BigInt>(),
                     )),
                 ))

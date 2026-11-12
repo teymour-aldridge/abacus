@@ -533,6 +533,15 @@ impl TeamStandings {
     }
 }
 
+/// Recompute both cached tabs after standings inputs change.
+pub fn refresh_saved_standings(
+    tid: &str,
+    conn: &mut impl LoadConnection<Backend = Sqlite>,
+) -> Result<(), diesel::result::Error> {
+    refresh_saved_team_standings(tid, conn)?;
+    speaker::refresh_saved_speaker_standings(tid, conn)
+}
+
 pub fn refresh_saved_team_standings(
     tid: &str,
     conn: &mut impl LoadConnection<Backend = Sqlite>,

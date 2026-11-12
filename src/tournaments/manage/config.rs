@@ -28,7 +28,7 @@ use crate::{
             ballots::{BallotBuilder, BallotMetadata, BallotRepr},
             draws::{DebateRepr, RoundDrawRepr},
         },
-        standings::compute::refresh_saved_team_standings,
+        standings::compute::refresh_saved_standings,
     },
     util_resp::{FailureResponse, StandardResponse, bad_request},
 };
@@ -765,7 +765,7 @@ pub async fn update_tournament_configuration(
 
     apply_tournament_config(&tournament, new_config, &mut *conn)
         .map_err(|err| config_update_error_response(&user, &tournament, err))?;
-    refresh_saved_team_standings(&tournament.id, &mut *conn)?;
+    refresh_saved_standings(&tournament.id, &mut *conn)?;
 
     crate::ui::response::after_edit(
         query,
@@ -806,7 +806,7 @@ pub async fn apply_tournament_preset(
     }
     apply_tournament_config(&tournament, new_config, &mut *conn)
         .map_err(|err| config_update_error_response(&user, &tournament, err))?;
-    refresh_saved_team_standings(&tournament.id, &mut *conn)?;
+    refresh_saved_standings(&tournament.id, &mut *conn)?;
 
     crate::ui::response::after_edit(
         query,

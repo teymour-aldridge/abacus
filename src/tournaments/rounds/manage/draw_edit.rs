@@ -38,7 +38,7 @@ use crate::{
                 Debate, DebateRepr, DebateTeam, RoundDrawRepr, update_pullups,
             },
         },
-        standings::compute::refresh_saved_team_standings,
+        standings::compute::refresh_saved_standings,
     },
     ui::View as _,
     util_resp::{
@@ -1894,7 +1894,7 @@ pub async fn move_team(
             // we might want to allow 'team -> swing' swaps but NOT
             // 'teamA -> teamB'
             if refresh_standings {
-                refresh_saved_team_standings(&tournament.id, conn)?;
+                refresh_saved_standings(&tournament.id, conn)?;
             }
         }
 

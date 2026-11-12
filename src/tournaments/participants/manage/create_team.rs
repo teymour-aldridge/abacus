@@ -5,8 +5,7 @@ use crate::{
     schema::teams,
     state::Conn,
     tournaments::{
-        snapshots::take_snapshot,
-        standings::compute::refresh_saved_team_standings,
+        snapshots::take_snapshot, standings::compute::refresh_saved_standings,
     },
     ui::response::{ModalQuery, after_edit},
     util_resp::StandardResponse,
@@ -92,7 +91,7 @@ pub async fn do_create_team(
             teams::number.eq(number),
         ))
         .execute(&mut *conn)?;
-    refresh_saved_team_standings(&tid, &mut *conn)?;
+    refresh_saved_standings(&tid, &mut *conn)?;
     take_snapshot(&tid, &mut *conn);
     let _ = tx.send(Msg {
         tournament: t,

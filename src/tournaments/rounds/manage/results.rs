@@ -21,7 +21,7 @@ use crate::{
             ballots::{BallotRepr, aggregate::aggregate_ballot_set},
             draws::{DebateRepr, RoundDrawRepr},
         },
-        standings::compute::refresh_saved_team_standings,
+        standings::compute::refresh_saved_standings,
     },
     ui::response::{ModalQuery, after_edit, form_page},
     util_resp::{StandardResponse, err_not_found},
@@ -305,7 +305,7 @@ pub async fn set_round_completed(
         }
     }
 
-    refresh_saved_team_standings(&tournament_id, &mut *conn)?;
+    refresh_saved_standings(&tournament_id, &mut *conn)?;
 
     after_edit(
         query,

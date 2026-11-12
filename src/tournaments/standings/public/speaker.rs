@@ -29,13 +29,57 @@ pub async fn public_speaker_tab_page(
     let public = tournament.speaker_tab_public;
     let visible = public || access.is_superuser();
     let standings = if visible {
-        Some(SpeakerStandings::compute(&tournament, &mut *conn)?)
+        Some(SpeakerStandings::fetch(&tid, &mut *conn)?)
     } else {
         None
     };
     let standings = standings.as_ref();
     let tid = tid.as_str();
     let view = ui::html(|ctx: &TournamentAccess, out| {
+        let content = ui::protected(
+            |_: &TournamentAccess| visible,
+            || {
+                ui::html(|_: &TournamentAccess, out| {
+                    maud! {
+                        @if let Some(standings) = standings {
+                            @if standings.rows.is_empty() {
+                                p role="status" { "No speaker standings are available yet." }
+                            } @else {
+                                div class="table-responsive" {
+                                    table class="table" {
+                                        thead { tr {
+                                            th scope="col" { "Rank" }
+                                            th scope="col" { "Speaker name" }
+                                            @for metric in &standings.metrics {
+                                                th scope="col" { (metric.to_string()) }
+                                            }
+                                        } }
+                                        tbody {
+                                            @for row in &standings.rows {
+                                                tr {
+                                                    th scope="row" { @if row.tied { "=" } (row.rank) }
+                                                    td { (row.name) }
+                                                    @for value in &row.metrics {
+                                                        td { (format!("{value:.2}")) }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }.render_to(out)
+                })
+            },
+            || {
+                ui::html(|_: &TournamentAccess, out| {
+                    maud! {
+                        p role="status" { "Speaker standings are not yet public." }
+                    }.render_to(out)
+                })
+            },
+        );
         maud! {
             div class="container py-4" {
                 h1 { "Speaker standings" }
@@ -49,36 +93,7 @@ pub async fn public_speaker_tab_page(
                         if public { Publication::Public } else { Publication::Unpublished },
                     ).bind(ctx))
                 }
-                @if let Some(standings) = standings {
-                    @if standings.rows.is_empty() {
-                        p role="status" { "No speaker standings are available yet." }
-                    } @else {
-                        div class="table-responsive" {
-                            table class="table" {
-                                thead { tr {
-                                    th scope="col" { "Rank" }
-                                    th scope="col" { "Speaker name" }
-                                    @for metric in &standings.metrics {
-                                        th scope="col" { (metric.to_string()) }
-                                    }
-                                } }
-                                tbody {
-                                    @for row in &standings.rows {
-                                        tr {
-                                            th scope="row" { @if row.tied { "=" } (row.rank) }
-                                            td { (row.name) }
-                                            @for value in &row.metrics {
-                                                td { (format!("{value:.2}")) }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } @else {
-                    p role="status" { "Speaker standings are not yet public." }
-                }
+                (content.bind(ctx))
             }
         }.render_to(out)
     });

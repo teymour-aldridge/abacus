@@ -18,6 +18,7 @@ use abacus::{
                 manage::drawalgs::{self, do_draw},
             },
         },
+        standings::compute::refresh_saved_standings,
         teams::Team,
     },
 };
@@ -336,5 +337,6 @@ fn simulate_concurrent_in_rounds(
             ))
             .execute(&mut *conn)
             .unwrap();
+        refresh_saved_standings(&tournament.id, conn).unwrap();
     }
 }

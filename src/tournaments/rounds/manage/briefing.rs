@@ -18,6 +18,7 @@ use crate::{
         Tournament,
         manage::sidebar::SidebarWrapper,
         rounds::{Round, TournamentRounds},
+        standings::compute::refresh_saved_standings,
     },
     util_resp::{StandardResponse, bad_request, see_other_ok, success},
 };
@@ -294,6 +295,16 @@ pub async fn set_draw_published(
             ),
         ))
         .execute(&mut *conn)?;
+
+    // Completed preliminary rounds contribute scores only while their full
+    // draw is released. Hiding or restoring it must also update both tabs.
+    if round.completed
+        && round.kind == "P"
+        && (round.draw_status == "released_full")
+            != (form.status == "released_full")
+    {
+        refresh_saved_standings(&tournament_id, &mut *conn)?;
+    }
 
     let path =
         format!("/tournaments/{tournament_id}/rounds/{}/draw", round.seq);

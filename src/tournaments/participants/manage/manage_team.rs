@@ -6,8 +6,8 @@ use crate::{
     schema::teams,
     state::Conn,
     tournaments::{
-        snapshots::take_snapshot,
-        standings::compute::refresh_saved_team_standings, teams::Team,
+        snapshots::take_snapshot, standings::compute::refresh_saved_standings,
+        teams::Team,
     },
     ui::response::{ModalQuery, after_edit},
     util_resp::StandardResponse,
@@ -81,7 +81,7 @@ pub async fn do_edit_team_details(
     )
     .set((teams::name.eq(&form.name), teams::institution_id.eq(inst)))
     .execute(&mut *conn)?;
-    refresh_saved_team_standings(&tid, &mut *conn)?;
+    refresh_saved_standings(&tid, &mut *conn)?;
     take_snapshot(&tid, &mut *conn);
     let _ = tx.send(Msg {
         tournament: t,

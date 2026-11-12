@@ -86,8 +86,8 @@ impl BallotForm {
         tournament: &Tournament,
     ) -> Self {
         let mut teams = Vec::new();
-        for side in 0..2 {
-            for seq in 0..tournament.teams_per_side {
+        for seq in 0..tournament.teams_per_side {
+            for side in 0..2 {
                 let debate_team = debate.team_of_side_and_seq(side, seq);
                 let team_id = &debate_team.team_id;
 

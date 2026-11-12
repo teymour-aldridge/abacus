@@ -376,7 +376,7 @@ pub async fn move_constraint(
                     if new_pos != pos {
                         let pref_a = constraints[pos].pref;
                         let pref_b = constraints[new_pos].pref;
-                        let temp = constraints.len() as i64 + 1;
+                        let temp = constraints.last().unwrap().pref + 1;
 
                         diesel::update(speaker_room_constraints::table)
                             .filter(
@@ -425,7 +425,7 @@ pub async fn move_constraint(
                     if new_pos != pos {
                         let pref_a = constraints[pos].pref;
                         let pref_b = constraints[new_pos].pref;
-                        let temp = constraints.len() as i64 + 1;
+                        let temp = constraints.last().unwrap().pref + 1;
 
                         diesel::update(judge_room_constraints::table)
                             .filter(

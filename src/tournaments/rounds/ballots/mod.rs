@@ -153,9 +153,11 @@ impl BallotRepr {
         // Compare speaker positions and scores (only when both ballots have
         // speaker data).
         if !self.scores.is_empty() && !other.scores.is_empty() {
+            let speaker_count = tournament.substantive_speakers
+                + i64::from(tournament.reply_speakers);
             for side in 0..=1 {
                 for team in 0..tournament.teams_per_side {
-                    for speaker in 0..tournament.substantive_speakers {
+                    for speaker in 0..speaker_count {
                         let team_in_this_pos =
                             debate.team_of_side_and_seq(side, team);
                         let score_of_ballot_a = self

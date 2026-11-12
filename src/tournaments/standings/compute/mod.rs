@@ -28,6 +28,7 @@ use rust_decimal::Decimal;
 
 pub mod history;
 pub mod metrics;
+pub mod speaker;
 
 #[derive(Serialize, Deserialize)]
 #[serde(untagged)]

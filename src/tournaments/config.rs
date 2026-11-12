@@ -220,10 +220,20 @@ pub enum UnrankableTeamMetric {
     DrawStrengthBySpeaks,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SpeakerMetric {
     StdDev,
     /// Average
     Avg,
     Total,
+}
+
+impl fmt::Display for SpeakerMetric {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::StdDev => "Standard deviation",
+            Self::Avg => "Average",
+            Self::Total => "Total",
+        })
+    }
 }

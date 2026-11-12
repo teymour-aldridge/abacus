@@ -342,6 +342,7 @@ pub fn create_app(pool: DbPool) -> Router {
 
         // Standings
         .route("/tournaments/:id/tab/team", get(crate::tournaments::standings::public::public_team_tab_page))
+        .route("/tournaments/:id/tab/speaker", get(crate::tournaments::standings::public::speaker::public_speaker_tab_page))
 
         // Public Draw
 

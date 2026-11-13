@@ -6,7 +6,8 @@ use super::access::{DrawAccess, RoundDrawAccess};
 use crate::{
     auth::User,
     schema::{
-        debates, institutions, judges, judges_of_debate, teams, teams_of_debate,
+        debates, institutions, judges, judges_of_debate, rooms, teams,
+        teams_of_debate,
     },
     state::Conn,
     template::Page,
@@ -16,6 +17,7 @@ use crate::{
 };
 
 struct DrawRow {
+    room: Option<String>,
     teams: Vec<Option<(String, String)>>,
     panel: Vec<(String, String)>,
 }
@@ -31,13 +33,19 @@ fn load_draw<'a>(
 ) -> Result<DrawDisplay<'a>, crate::util_resp::FailureResponse> {
     let mut rows = Vec::new();
     if access.can_see_draw() {
-        let debate_ids = debates::table
+        let debate_rooms = debates::table
+            .left_join(
+                rooms::table.on(rooms::id
+                    .nullable()
+                    .eq(debates::room_id)
+                    .and(rooms::tournament_id.eq(&round.tournament_id))),
+            )
             .filter(debates::round_id.eq(&round.id))
             .filter(debates::tournament_id.eq(&round.tournament_id))
             .order(debates::id.asc())
-            .select(debates::id)
-            .load::<String>(conn)?;
-        for id in debate_ids {
+            .select((debates::id, rooms::name.nullable()))
+            .load::<(String, Option<String>)>(conn)?;
+        for (id, room) in debate_rooms {
             let teams = if access.can_see_teams() {
                 let assigned = teams_of_debate::table
                     .inner_join(
@@ -107,7 +115,7 @@ fn load_draw<'a>(
             } else {
                 Vec::new()
             };
-            rows.push(DrawRow { teams, panel });
+            rows.push(DrawRow { room, teams, panel });
         }
     }
     Ok(DrawDisplay { round, rows })
@@ -185,6 +193,7 @@ fn draw_view<'a>(
                                 thead class="table-light" {
                                     tr {
                                         th scope="col" class="ps-3" { "#" }
+                                        th scope="col" { "Room" }
                                         (team_columns.bind(ctx))
                                         (panel_column.bind(ctx))
                                     }
@@ -216,6 +225,7 @@ fn draw_view<'a>(
                                             }.render_to(out)));
                                         tr {
                                             th scope="row" class="ps-3 text-secondary fw-normal" { (i + 1) }
+                                            td class="fw-semibold" { (row.room.as_deref().unwrap_or("Unassigned")) }
                                             (team_cells.bind(ctx))
                                             (panel_cells.bind(ctx))
                                         }

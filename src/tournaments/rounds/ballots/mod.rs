@@ -490,6 +490,7 @@ impl<'a> BallotTeamSpeakersBuilder<'a> {
         }
 
         let score = if self.records_scores {
+            score.ok_or("Error: missing speaker score")?;
             if let Some(score_val) = score {
                 let speaker_name = self
                     .participants

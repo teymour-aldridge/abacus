@@ -2,6 +2,8 @@
 
 use std::{collections::HashSet, fmt::Write};
 
+use super::clashes::AllocationClashes;
+
 use axum::{
     Extension,
     extract::{Path, Query, WebSocketUpgrade, ws},
@@ -101,6 +103,7 @@ pub async fn edit_draws_page(
         reprs: draw_reprs,
         participants,
         unallocated_rooms,
+        clashes,
     } = draw;
 
     let current_rounds = crate::tournaments::rounds::Round::current_rounds(
@@ -127,6 +130,7 @@ pub async fn edit_draws_page(
 
         let content = DrawAllocatorPage {
             access: &access,
+            clashes: &clashes,
             tournament: &tournament,
             reprs: &draw_reprs,
             participants: &participants,
@@ -164,6 +168,7 @@ pub async fn edit_draws_page(
                 SidebarWrapper rounds=(&_all_rounds) tournament=(&tournament) active_page=(Some(crate::tournaments::manage::sidebar::SidebarPage::Draw)) selected_seq=(Some(rounds2edit[0].seq)) {
                     (DrawAllocatorPage {
                         access: &access,
+                        clashes: &clashes,
                         tournament: &tournament,
                         reprs: &draw_reprs,
                         participants: &participants,
@@ -194,6 +199,7 @@ fn can_allocate(access: &TournamentAccess) -> bool {
 
 struct DrawAllocatorPage<'a> {
     access: &'a TournamentAccess,
+    clashes: &'a AllocationClashes,
     tournament: &'a Tournament,
     reprs: &'a [RoundDrawRepr],
     participants: &'a TournamentParticipants,
@@ -210,6 +216,7 @@ struct DrawAllocatorContext {
     reprs: Vec<RoundDrawRepr>,
     participants: TournamentParticipants,
     unallocated_rooms: Vec<Room>,
+    clashes: AllocationClashes,
 }
 
 #[derive(Clone)]
@@ -345,6 +352,11 @@ impl Renderable for DrawAllocatorPage<'_> {
                 }
 
                 (crate::ui::presentation::restricted::<TournamentAccess>("Draw allocators").bind(self.access))
+                @if self.access.allows(Permission::ViewConflicts) {
+                    p class="draw-clash-help" {
+                        "Allocation warnings are advisory, not blocking. Personal: declared clashes. Institutional: shared affiliation. History: earlier-round encounters (including trainees)."
+                    }
+                }
                 @if self.access.is_superuser() {
                     details class="my-3" {
                         summary { "Swap teams" }
@@ -464,18 +476,38 @@ impl Renderable for DrawAllocatorPage<'_> {
                                 @for debate in &repr.debates {
                                     tr {
                                         th scope="row" { (debate.debate.number) }
-                                        td class="draw-room-cell" {
+                                        td class="draw-room-cell" data-label="Room" {
                                             (render::room_cell(self.tournament, self.round_ids, debate, &self.state, self.access.allows(Permission::ManageRoomAlloc)))
                                         }
                                         @for debate_team in &debate.teams_of_debate {
-                                            td class="draw-team-cell" {
+                                            td class="draw-team-cell" data-label=(crate::tournaments::rounds::side_names::name_of_side(self.tournament, debate_team.side, debate_team.seq, true)) {
                                                 @let team = self.participants.teams.get(&debate_team.team_id).unwrap();
                                                 a href=(format!("/tournaments/{}/teams/{}", self.tournament.id, debate_team.team_id)) {
                                                     (self.participants.canonical_name_of_team(team))
                                                 }
                                             }
                                         }
-                                        td class="draw-panel-cell" {
+                                        td class="draw-panel-cell" data-label="Judges" {
+                                            @if self.access.allows(Permission::ViewConflicts) {
+                                                @if let Some(judge) = self.state.selected_judge() {
+                                                    @if !debate.judges_of_debate.iter().any(|assigned| assigned.judge_id == judge.id) {
+                                                        (render::clash_warnings(
+                                                            &format!("If allocating {} here", judge.name),
+                                                            self.clashes.warnings(self.participants, debate, judge, repr.round.seq),
+                                                            true,
+                                                        ))
+                                                    }
+                                                }
+                                                @for assigned in &debate.judges_of_debate {
+                                                    @if let Some(judge) = self.participants.judges.get(&assigned.judge_id) {
+                                                        (render::clash_warnings(
+                                                            &judge.name,
+                                                            self.clashes.warnings(self.participants, debate, judge, repr.round.seq),
+                                                            false,
+                                                        ))
+                                                    }
+                                                }
+                                            }
                                             div class="draw-panel-grid" {
                                             (render::judge_role(self.tournament, self.round_ids, self.participants, debate, &self.state, Role::Chair, "Chair", self.access.allows(Permission::ManageJudgeAlloc)))
                                             (render::judge_role(self.tournament, self.round_ids, self.participants, debate, &self.state, Role::Panelist, "Panelist", self.access.allows(Permission::ManageJudgeAlloc)))
@@ -497,6 +529,23 @@ impl Renderable for DrawAllocatorPage<'_> {
 
 mod render {
     use super::*;
+
+    pub(super) fn clash_warnings(
+        label: &str,
+        warnings: Vec<String>,
+        preview: bool,
+    ) -> impl Renderable + '_ {
+        maud! {
+            @if !warnings.is_empty() {
+                details class=(if preview { "draw-clash-warning draw-clash-preview" } else { "draw-clash-warning" }) open[preview] {
+                    summary { (label) " — " (warnings.len()) " allocation warning(s)" }
+                    ul {
+                        @for warning in &warnings { li { (warning) } }
+                    }
+                }
+            }
+        }
+    }
 
     pub(super) fn room_cell<'a>(
         tournament: &'a Tournament,
@@ -579,7 +628,7 @@ mod render {
         };
 
         maud! {
-            div class=(format!("draw-role-column draw-role-{}", role.to_string().to_lowercase())) {
+            div class=(format!("draw-role-column draw-role-{}", role.to_string().to_lowercase())) data-role-label=(role_label) {
                 div class="draw-role-judges" {
                     @for debate_judge in &judges {
                         @let judge = participants.judges.get(&debate_judge.judge_id).unwrap();
@@ -733,6 +782,7 @@ fn load_draw_allocator_context(
         reprs,
         participants,
         unallocated_rooms,
+        clashes: AllocationClashes::load(tournament_id, conn),
     })
 }
 
@@ -1172,6 +1222,16 @@ pub async fn draw_updates(
     })
 }
 
+// History depends on other rounds, and institutional warnings depend on
+// participant details. Redraw conservatively for either kind of change.
+fn updates_allocator(msg: &Msg, tournament_id: &str) -> bool {
+    msg.tournament.id == tournament_id
+        && matches!(
+            msg.inner,
+            MsgContents::DrawUpdated(_) | MsgContents::ParticipantsUpdate
+        )
+}
+
 async fn handle_socket(
     socket: ws::WebSocket,
     mut rx: Receiver<Msg>,
@@ -1190,6 +1250,7 @@ async fn handle_socket(
                 access.allows(Permission::ManageJudgeAlloc),
                 access.allows(Permission::ManageRoomAlloc),
                 access.is_superuser(),
+                access.allows(Permission::ViewConflicts),
             )
         };
         let mut last_rights = rights(&initial_access);
@@ -1201,7 +1262,7 @@ async fn handle_socket(
             let force_update = tokio::select! {
                 _ = recheck.tick() => false,
                 message = rx.recv() => match message {
-                    Ok(msg) if msg.tournament.id == tournament_id && matches!(&msg.inner, MsgContents::DrawUpdated(id) if round_ids.contains(id)) => true,
+                    Ok(msg) if updates_allocator(&msg, &tournament_id) => true,
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => true,
                     Ok(_) => continue,
                     Err(_) => break,
@@ -1290,6 +1351,7 @@ fn render_draw_allocator(
 
     DrawAllocatorPage {
         access,
+        clashes: &draw.clashes,
         tournament,
         reprs: &draw.reprs,
         participants: &draw.participants,

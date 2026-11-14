@@ -2,6 +2,10 @@
 
 use std::{collections::HashSet, fmt::Write};
 
+use super::clashes::{
+    AllocationClashes, AllocationWarning, Relation, WarningKind,
+};
+
 use axum::{
     Extension,
     extract::{Path, Query, WebSocketUpgrade, ws},
@@ -40,7 +44,6 @@ use crate::{
         },
         standings::compute::refresh_saved_standings,
     },
-    ui::View as _,
     util_resp::{
         StandardResponse, bad_request, err_not_found, see_other_ok, success,
     },
@@ -101,6 +104,7 @@ pub async fn edit_draws_page(
         reprs: draw_reprs,
         participants,
         unallocated_rooms,
+        clashes,
     } = draw;
 
     let current_rounds = crate::tournaments::rounds::Round::current_rounds(
@@ -127,6 +131,7 @@ pub async fn edit_draws_page(
 
         let content = DrawAllocatorPage {
             access: &access,
+            clashes: &clashes,
             tournament: &tournament,
             reprs: &draw_reprs,
             participants: &participants,
@@ -164,6 +169,7 @@ pub async fn edit_draws_page(
                 SidebarWrapper rounds=(&_all_rounds) tournament=(&tournament) active_page=(Some(crate::tournaments::manage::sidebar::SidebarPage::Draw)) selected_seq=(Some(rounds2edit[0].seq)) {
                     (DrawAllocatorPage {
                         access: &access,
+                        clashes: &clashes,
                         tournament: &tournament,
                         reprs: &draw_reprs,
                         participants: &participants,
@@ -194,6 +200,7 @@ fn can_allocate(access: &TournamentAccess) -> bool {
 
 struct DrawAllocatorPage<'a> {
     access: &'a TournamentAccess,
+    clashes: &'a AllocationClashes,
     tournament: &'a Tournament,
     reprs: &'a [RoundDrawRepr],
     participants: &'a TournamentParticipants,
@@ -210,6 +217,7 @@ struct DrawAllocatorContext {
     reprs: Vec<RoundDrawRepr>,
     participants: TournamentParticipants,
     unallocated_rooms: Vec<Room>,
+    clashes: AllocationClashes,
 }
 
 #[derive(Clone)]
@@ -330,38 +338,103 @@ impl Renderable for DrawAllocatorPage<'_> {
             self.tournament.id,
             self.round_ids.join(",")
         );
+        // Conflict data must not leak through colour, counts, titles or the key.
+        let selected_judge = self
+            .state
+            .selected_judge()
+            .filter(|_| self.access.allows(Permission::ViewConflicts));
+        let earliest_seq = self
+            .reprs
+            .iter()
+            .map(|repr| repr.round.seq)
+            .min()
+            .unwrap_or(0);
+        let selection = match &self.state {
+            DrawAllocatorState::Allocation => None,
+            DrawAllocatorState::JudgeSelected(source) => {
+                Some(("Selected judge", source.judge.name.as_str()))
+            }
+            DrawAllocatorState::RoomSelected(source) => self
+                .unallocated_rooms
+                .iter()
+                .find(|room| room.id == source.room_id)
+                .map(|room| room.name.as_str())
+                .or_else(|| {
+                    self.reprs
+                        .iter()
+                        .flat_map(|repr| &repr.debates)
+                        .find(|debate| {
+                            debate.debate.room_id.as_deref()
+                                == Some(source.room_id)
+                        })
+                        .and_then(|debate| debate.room.as_ref())
+                        .map(|room| room.name.as_str())
+                })
+                .map(|name| ("Selected room", name)),
+        };
         maud! {
             div id="draw-allocator" class="draw-allocator"
                 hx-ext="ws" hx-swap-oob="outerHTML"[self.oob] "ws-connect"=(ws_url) {
                 div class="draw-allocator-header" {
                     h1 { "Draw editor" }
-                    a class="btn btn-outline-secondary btn-sm" href=(edit_url)
-                        hx-get=(partial_href(&edit_url))
-                        hx-target="#draw-allocator"
-                        hx-swap="outerHTML show:none"
-                        hx-push-url="false" {
-                        "Clear selection"
-                    }
                 }
 
-                (crate::ui::presentation::restricted::<TournamentAccess>("Draw allocators").bind(self.access))
-                @if self.access.is_superuser() {
-                    details class="my-3" {
-                        summary { "Swap teams" }
-                        form method="post" action=(format!("/tournaments/{}/rounds/draws/edit/move_team",self.tournament.id))
-                            hx-post=(format!("/tournaments/{}/rounds/draws/edit/move_team?partial=true",self.tournament.id)) hx-target="#draw-allocator" hx-swap="outerHTML" {
-                            @for id in self.round_ids { input type="hidden" name="rounds" value=(id); }
-                            @for (field,label) in [("team1_id","First team"),("team2_id","Second team")] {
-                                label class="form-label" { (label)
-                                    select class="form-select" name=(field) required {
-                                        @for repr in self.reprs { @for debate in &repr.debates { @for assigned in &debate.teams_of_debate {
-                                            @if let Some(team)=debate.teams.get(&assigned.team_id) { option value=(team.id) { (self.participants.canonical_name_of_team(team)) } }
-                                        } } }
+                div class="draw-allocator-tools" {
+                    @if let Some((kind, name)) = selection {
+                        div class="draw-selection-context" role="group" aria-label="Current allocation selection" {
+                            div class="draw-selection-identity" {
+                                span class="draw-selection-label" { (kind) }
+                                span class="draw-selected-name" { (name) }
+                            }
+                            span class="draw-selection-instruction" { "Choose a destination" }
+                            a class="draw-clear-selection" href=(edit_url)
+                                hx-get=(partial_href(&edit_url))
+                                hx-target="#draw-allocator"
+                                hx-swap="outerHTML show:none"
+                                hx-push-url="false" { "Clear selection" }
+                        }
+                    } @else {
+                        span class="draw-allocation-hint" { "Select a room or judge to allocate" }
+                    }
+                    @if self.access.allows(Permission::ViewConflicts) {
+                        details class="draw-clash-help" {
+                            summary { "About allocation warnings" }
+                            p {
+                                "Warnings are advisory, not blocking. "
+                                span class="draw-kind-personal" { "Personal" } ": declared clashes. "
+                                span class="draw-kind-institutional" { "Institutional" } ": shared affiliation. "
+                                span class="draw-kind-history" { "History" } ": earlier debate encounters (including trainees)."
+                            }
+                            p { "History counts times judging a team or sharing a panel with a judge, before the displayed round. Unallocated judges use the earliest displayed round. Zero counts are omitted." }
+                        }
+                    }
+                    @if self.access.is_superuser() {
+                        details class="draw-team-swap" {
+                            summary { "Swap teams" }
+                            form method="post" action=(format!("/tournaments/{}/rounds/draws/edit/move_team",self.tournament.id))
+                                hx-post=(format!("/tournaments/{}/rounds/draws/edit/move_team?partial=true",self.tournament.id)) hx-target="#draw-allocator" hx-swap="outerHTML" {
+                                @for id in self.round_ids { input type="hidden" name="rounds" value=(id); }
+                                @for (field,label) in [("team1_id","First team"),("team2_id","Second team")] {
+                                    label class="form-label" { (label)
+                                        select class="form-select" name=(field) required {
+                                            @for repr in self.reprs { @for debate in &repr.debates { @for assigned in &debate.teams_of_debate {
+                                                @if let Some(team)=debate.teams.get(&assigned.team_id) { option value=(team.id) { (self.participants.canonical_name_of_team(team)) } }
+                                            } } }
+                                        }
                                     }
                                 }
+                                button type="submit" class="btn btn-primary" { "Swap teams" }
                             }
-                            button type="submit" class="btn btn-primary" { "Swap teams" }
                         }
+                    }
+
+                }
+
+                @if selected_judge.is_some() {
+                    div class="draw-relation-key" aria-label="Links to the selected judge" {
+                        span { span class="draw-kind-personal" { "Personal" span class="draw-clash-tag" { "clash (p)" } } span class="draw-meta" { " — declared clash" } }
+                        span { span class="draw-kind-institutional" { "Institutional" span class="draw-clash-tag" { "clash (i)" } } span class="draw-meta" { " — shared institution" } }
+                        span { span class="draw-kind-history" { "History" span class="draw-encounter-count" title="Number of earlier debate encounters" { "n prior" } } span class="draw-meta" { " — earlier debates" } }
                     }
                 }
 
@@ -369,80 +442,90 @@ impl Renderable for DrawAllocatorPage<'_> {
                     div class="alert alert-danger" role="alert" { (error) }
                 }
 
-                @if self.access.allows(Permission::ManageRoomAlloc) {
-                section class="draw-unallocated-bar" {
-                    h2 { "Unallocated rooms" }
-                    div class="draw-judge-strip" {
-                        @for room in self.unallocated_rooms {
-                            @let href = select_room_href(self.tournament, self.round_ids, &room.id, None);
-                            a class=(room_link_class(&self.state, &room.id, "judge-pill room-pill"))
-                                href=(&href)
-                                hx-get=(partial_href(&href))
-                                hx-target="#draw-allocator"
-                                hx-swap="outerHTML show:none"
-                                hx-push-url="false" {
-                                (room.name)
+                div class="draw-unallocated-pools" {
+                    @if self.access.allows(Permission::ManageRoomAlloc) {
+                    section class="draw-unallocated-bar draw-unallocated-rooms" {
+                        h2 { "Unallocated rooms" }
+                        div class="draw-judge-strip" {
+                            @for room in self.unallocated_rooms {
+                                @let href = select_room_href(self.tournament, self.round_ids, &room.id, None);
+                                a class=(room_link_class(&self.state, &room.id, "judge-pill room-pill"))
+                                    href=(&href)
+                                    hx-get=(partial_href(&href))
+                                    hx-target="#draw-allocator"
+                                    hx-swap="outerHTML show:none"
+                                    hx-push-url="false" {
+                                    (room.name)
+                                }
                             }
-                        }
-                        @if self.unallocated_rooms.is_empty() {
-                            span class="draw-empty-slot" { "No unallocated rooms" }
-                        }
-                        @if let DrawAllocatorState::RoomSelected(source) = &self.state {
-                            span class="draw-inline-action" {
-                                (MoveRoomActionForm {
-                                    tournament: self.tournament,
-                                    round_ids: self.round_ids,
-                                    room_id: source.room_id,
-                                    source_debate_id: source.location.debate_id(),
-                                    target_debate_id: None,
-                                    label: "De-allocate".to_string(),
-                                    disabled: matches!(source.location, DrawLocation::Unallocated),
-                                })
+                            @if self.unallocated_rooms.is_empty() {
+                                span class="draw-empty-slot" { "No unallocated rooms" }
+                            }
+                            @if let DrawAllocatorState::RoomSelected(source) = &self.state {
+                                span class="draw-inline-action" {
+                                    (MoveRoomActionForm {
+                                        tournament: self.tournament,
+                                        round_ids: self.round_ids,
+                                        room_id: source.room_id,
+                                        source_debate_id: source.location.debate_id(),
+                                        target_debate_id: None,
+                                        label: "De-allocate".to_string(),
+                                        disabled: matches!(source.location, DrawLocation::Unallocated),
+                                    })
+                                }
                             }
                         }
                     }
-                }
 
-                }
-                @if self.access.allows(Permission::ManageJudgeAlloc) {
-                section class="draw-unallocated-bar" {
-                    h2 { "Unallocated judges" }
-                    div class="draw-judge-strip" {
-                        @let allocated_judge_ids = allocated_judge_ids(self.reprs);
-                        @for judge in self.participants.judges.values().filter(|judge| !allocated_judge_ids.contains(&judge.id)) {
-                            @let href = select_judge_href(self.tournament, self.round_ids, &judge.id, None);
-                            a class=(judge_link_class(&self.state, &judge.id, "judge-pill"))
-                                href=(&href)
-                                hx-get=(partial_href(&href))
-                                hx-target="#draw-allocator"
-                                hx-swap="outerHTML show:none"
-                                hx-push-url="false" {
-                                (judge.name) " (j" (judge.number) ")"
+                    }
+                    @if self.access.allows(Permission::ManageJudgeAlloc) {
+                    section class="draw-unallocated-bar draw-unallocated-judges" {
+                        h2 { "Unallocated judges" }
+                        div class="draw-judge-strip" {
+                            @let allocated_judge_ids = allocated_judge_ids(self.reprs);
+                            @for judge in self.participants.judges.values().filter(|judge| !allocated_judge_ids.contains(&judge.id)) {
+                                @let href = select_judge_href(self.tournament, self.round_ids, &judge.id, None);
+                                @let relation = selected_judge.map(|source| self.clashes.judge_relation(self.participants, source, judge, earliest_seq)).unwrap_or_default();
+                                a class=(judge_link_class(&self.state, &judge.id, &format!("judge-pill {}", render::relation_class(relation))))
+                                    href=(&href)
+                                    hx-get=(partial_href(&href))
+                                    hx-target="#draw-allocator"
+                                    hx-swap="outerHTML show:none"
+                                    hx-push-url="false" {
+                                    span {
+                                        span class="draw-judge-identity" { (judge.name) " " span class="draw-judge-number" { "(j" (judge.number) ")" } }
+                                        (render::relation_marks(relation, false))
+                                        @if self.state.selected_judge_is(&judge.id) {
+                                            " " span class="draw-selected-marker" { "Selected" }
+                                        }
+                                    }
+                                }
                             }
-                        }
-                        @if let DrawAllocatorState::JudgeSelected(source) = &self.state {
-                            span class="draw-inline-action" {
-                                (MoveJudgeHtmlForm {
-                                    tournament: self.tournament,
-                                    judge: source.judge,
-                                    source: source.source.clone(),
-                                    dest: MoveJudgeDestination {
-                                        target: DrawLocOcc {
-                                            location: DrawLocation::Unallocated,
-                                            panel_snapshot: panel_snapshot_for_unallocated_from_repr(self.participants, self.reprs),
+                            @if let DrawAllocatorState::JudgeSelected(source) = &self.state {
+                                span class="draw-inline-action" {
+                                    (MoveJudgeHtmlForm {
+                                        tournament: self.tournament,
+                                        judge: source.judge,
+                                        source: source.source.clone(),
+                                        dest: MoveJudgeDestination {
+                                            target: DrawLocOcc {
+                                                location: DrawLocation::Unallocated,
+                                                panel_snapshot: panel_snapshot_for_unallocated_from_repr(self.participants, self.reprs),
+                                            },
+                                            role: Role::Panelist,
                                         },
-                                        role: Role::Panelist,
-                                    },
-                                    label: "Move here".to_string(),
-                                    disabled: matches!(source.source.location, DrawLocation::Unallocated),
-                                })
+                                        label: "Move here".to_string(),
+                                        disabled: matches!(source.source.location, DrawLocation::Unallocated),
+                                    })
+                                }
                             }
                         }
                     }
-                }
 
+                    }
                 }
                 @for repr in self.reprs {
+                    @let relations = selected_judge.map(|judge| (self.clashes, judge, repr.round.seq));
                     section class="draw-round-section" {
                         h2 { (repr.round.name) }
                         table class="table draw-table" {
@@ -457,29 +540,58 @@ impl Renderable for DrawAllocatorPage<'_> {
                                             }
                                         }
                                     }
-                                    th scope="col" { "Judges" }
+                                    th scope="col" {
+                                        "Judges"
+                                        div class="draw-panel-grid draw-panel-head" {
+                                            span { "Chair" }
+                                            span { "Panelist" }
+                                            span { "Trainee" }
+                                        }
+                                    }
                                 }
                             }
                             tbody {
                                 @for debate in &repr.debates {
                                     tr {
                                         th scope="row" { (debate.debate.number) }
-                                        td class="draw-room-cell" {
+                                        td class="draw-room-cell" data-label="Room" {
                                             (render::room_cell(self.tournament, self.round_ids, debate, &self.state, self.access.allows(Permission::ManageRoomAlloc)))
                                         }
                                         @for debate_team in &debate.teams_of_debate {
-                                            td class="draw-team-cell" {
+                                            td class="draw-team-cell" data-label=(crate::tournaments::rounds::side_names::name_of_side(self.tournament, debate_team.side, debate_team.seq, true)) {
                                                 @let team = self.participants.teams.get(&debate_team.team_id).unwrap();
-                                                a href=(format!("/tournaments/{}/teams/{}", self.tournament.id, debate_team.team_id)) {
+                                                @let relation = selected_judge.map(|source| self.clashes.team_relation(self.participants, source, team, repr.round.seq)).unwrap_or_default();
+                                                a class=(render::relation_class(relation)) href=(format!("/tournaments/{}/teams/{}", self.tournament.id, debate_team.team_id)) {
                                                     (self.participants.canonical_name_of_team(team))
+                                                    (render::relation_marks(relation, true))
                                                 }
                                             }
                                         }
-                                        td class="draw-panel-cell" {
+                                        td class="draw-panel-cell" data-label="Judges" {
                                             div class="draw-panel-grid" {
-                                            (render::judge_role(self.tournament, self.round_ids, self.participants, debate, &self.state, Role::Chair, "Chair", self.access.allows(Permission::ManageJudgeAlloc)))
-                                            (render::judge_role(self.tournament, self.round_ids, self.participants, debate, &self.state, Role::Panelist, "Panelist", self.access.allows(Permission::ManageJudgeAlloc)))
-                                            (render::judge_role(self.tournament, self.round_ids, self.participants, debate, &self.state, Role::Trainee, "Trainee", self.access.allows(Permission::ManageJudgeAlloc)))
+                                            (render::judge_role(self.tournament, self.round_ids, self.participants, debate, &self.state, Role::Chair, "Chair", self.access.allows(Permission::ManageJudgeAlloc), relations))
+                                            (render::judge_role(self.tournament, self.round_ids, self.participants, debate, &self.state, Role::Panelist, "Panelist", self.access.allows(Permission::ManageJudgeAlloc), relations))
+                                            (render::judge_role(self.tournament, self.round_ids, self.participants, debate, &self.state, Role::Trainee, "Trainee", self.access.allows(Permission::ManageJudgeAlloc), relations))
+                                            }
+                                            @if self.access.allows(Permission::ViewConflicts) {
+                                                @if let Some(judge) = self.state.selected_judge() {
+                                                    @if !debate.judges_of_debate.iter().any(|assigned| assigned.judge_id == judge.id) {
+                                                        (render::clash_warnings(
+                                                            &format!("If allocating {} here", judge.name),
+                                                            self.clashes.warnings(self.participants, debate, judge, repr.round.seq),
+                                                            true,
+                                                        ))
+                                                    }
+                                                }
+                                                @for assigned in &debate.judges_of_debate {
+                                                    @if let Some(judge) = self.participants.judges.get(&assigned.judge_id) {
+                                                        (render::clash_warnings(
+                                                            &judge.name,
+                                                            self.clashes.warnings(self.participants, debate, judge, repr.round.seq),
+                                                            false,
+                                                        ))
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -497,6 +609,90 @@ impl Renderable for DrawAllocatorPage<'_> {
 
 mod render {
     use super::*;
+
+    fn kind_class(kind: WarningKind) -> &'static str {
+        match kind {
+            WarningKind::Personal => "draw-kind-personal",
+            WarningKind::Institutional => "draw-kind-institutional",
+            WarningKind::History => "draw-kind-history",
+        }
+    }
+
+    pub(super) fn relation_class(relation: Relation) -> &'static str {
+        if relation.is_empty() {
+            ""
+        } else if relation.personal {
+            kind_class(WarningKind::Personal)
+        } else if relation.institutional {
+            kind_class(WarningKind::Institutional)
+        } else {
+            kind_class(WarningKind::History)
+        }
+    }
+
+    pub(super) fn relation_marks(
+        relation: Relation,
+        team: bool,
+    ) -> impl Renderable {
+        let plural = if relation.encounters == 1 { "" } else { "s" };
+        let history = if team {
+            format!(
+                "Judged by the selected judge in {} earlier debate{plural}",
+                relation.encounters
+            )
+        } else {
+            format!(
+                "Shared a panel with the selected judge in {} earlier debate{plural}",
+                relation.encounters
+            )
+        };
+        maud! {
+            @if !relation.is_empty() {
+                " " span class="draw-relation-metadata" {
+                    @if relation.personal {
+                        span class="draw-relation-mark draw-clash-tag draw-kind-personal" title="Declared personal clash with the selected judge" {
+                            span aria-hidden="true" { "clash (p)" }
+                            span class="visually-hidden" { "Personal clash with the selected judge" }
+                        }
+                    }
+                    @if relation.institutional {
+                        span class="draw-relation-mark draw-clash-tag draw-kind-institutional" title="Shares an institution with the selected judge" {
+                            span aria-hidden="true" { "clash (i)" }
+                            span class="visually-hidden" { "Institutional clash with the selected judge" }
+                        }
+                    }
+                    @if relation.encounters > 0 {
+                        span class="draw-relation-mark draw-encounter-count draw-kind-history" title=(&history) {
+                            span aria-hidden="true" { (relation.encounters) " prior" }
+                            span class="visually-hidden" { (history) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    pub(super) fn clash_warnings(
+        label: &str,
+        warnings: Vec<AllocationWarning>,
+        preview: bool,
+    ) -> impl Renderable + '_ {
+        maud! {
+            @if !warnings.is_empty() {
+                details class=(if preview { "draw-clash-warning draw-clash-preview" } else { "draw-clash-warning" }) open[preview] {
+                    summary {
+                        span class="draw-warning-count" { (warnings.len()) " warning" @if warnings.len() != 1 { "s" } }
+                        span class="draw-warning-context" { " · " (label) }
+                    }
+                    ul {
+                        @for warning in &warnings {
+                            li { span class=(kind_class(warning.kind)) { (warning.kind.label()) } ": " (warning.message) }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     pub(super) fn room_cell<'a>(
         tournament: &'a Tournament,
@@ -528,7 +724,9 @@ mod render {
                     }
                     } @else { span { (room.name) } }
                 } @else {
-                    span class="draw-empty-slot" { "Open" }
+                    @if !(allowed && matches!(state, DrawAllocatorState::RoomSelected(_))) {
+                        span class="draw-empty-slot" { "Open" }
+                    }
                 }
                 @if let (true, DrawAllocatorState::RoomSelected(source)) = (allowed, state) {
                     div class="draw-cell-action" {
@@ -560,6 +758,7 @@ mod render {
         role: Role,
         role_label: &'a str,
         allowed: bool,
+        relations: Option<(&'a AllocationClashes, &'a Judge, i64)>,
     ) -> impl Renderable + 'a {
         let status = role.to_string();
         let judges = debate
@@ -579,31 +778,32 @@ mod render {
         };
 
         maud! {
-            div class=(format!("draw-role-column draw-role-{}", role.to_string().to_lowercase())) {
+            div class=(format!("draw-role-column draw-role-{}", role.to_string().to_lowercase())) data-role-label=(role_label) role="group" aria-label=(role_label) {
                 div class="draw-role-judges" {
                     @for debate_judge in &judges {
                         @let judge = participants.judges.get(&debate_judge.judge_id).unwrap();
                         @let href = select_judge_href(tournament, round_ids, &judge.id, Some(&debate.debate.id));
+                        @let relation = relations.map(|(clashes, source, seq)| clashes.judge_relation(participants, source, judge, seq)).unwrap_or_default();
                         @if allowed {
-                        a class=(judge_link_class(state, &judge.id, &role_class(role)))
+                        a class=(judge_link_class(state, &judge.id, &format!("judge-pill {}", relation_class(relation))))
                             href=(&href)
                             hx-get=(partial_href(&href))
                             hx-target="#draw-allocator"
                             hx-swap="outerHTML show:none"
                             hx-push-url="false" {
-                            (judge.name) " (j" (judge.number) ")"
-                        }
-                        } @else { span { (judge.name) } }
-                    }
-                    @let show_open_slot = judges.is_empty() || role != Role::Chair;
-                    @if show_open_slot {
-                        span class="draw-empty-slot" {
-                            @if judges.is_empty() {
-                                (role_label)
-                            } @else {
-                                "Add another"
+                            span {
+                                span class="draw-judge-identity" { (judge.name) " " span class="draw-judge-number" { "(j" (judge.number) ")" } }
+                                (relation_marks(relation, false))
+                                @if state.selected_judge_is(&judge.id) {
+                                    " " span class="draw-selected-marker" { "Selected" }
+                                }
                             }
                         }
+                        } @else { span class=(relation_class(relation)) { (judge.name) (relation_marks(relation, false)) } }
+                    }
+                    @let show_open_slot = judges.is_empty() || role != Role::Chair;
+                    @if judges.is_empty() && !(allowed && matches!(state, DrawAllocatorState::JudgeSelected(_))) {
+                        span class="draw-empty-slot" { "Unassigned" }
                     }
                     @if let (true, DrawAllocatorState::JudgeSelected(source)) = (allowed, state) {
                         @if show_open_slot || role == Role::Chair {
@@ -621,13 +821,12 @@ mod render {
                                         },
                                         role,
                                     },
-                                    label: if role == Role::Chair && !judges.is_empty() {
-                                        "Replace chair".to_string()
-                                    } else if !judges.is_empty() {
-                                        "Add another".to_string()
-                                    } else {
-                                        role_label.to_string()
-                                    },
+                                    label: match role {
+                                        Role::Chair if !judges.is_empty() => "Replace chair",
+                                        Role::Chair => "Assign chair",
+                                        Role::Panelist => "Add to panel",
+                                        Role::Trainee => "Add trainee",
+                                    }.to_string(),
                                     disabled: selected_already_in_target_role,
                                 })
                             }
@@ -733,6 +932,7 @@ fn load_draw_allocator_context(
         reprs,
         participants,
         unallocated_rooms,
+        clashes: AllocationClashes::load(tournament_id, conn),
     })
 }
 
@@ -845,14 +1045,6 @@ fn room_link_class(
         format!("{base_class} selected")
     } else {
         base_class.to_string()
-    }
-}
-
-fn role_class(role: Role) -> String {
-    match role {
-        Role::Chair => "judge-pill judge-pill-chair".to_string(),
-        Role::Panelist => "judge-pill judge-pill-panelist".to_string(),
-        Role::Trainee => "judge-pill judge-pill-trainee".to_string(),
     }
 }
 
@@ -1172,6 +1364,16 @@ pub async fn draw_updates(
     })
 }
 
+// History depends on other rounds, and institutional warnings depend on
+// participant details. Redraw conservatively for either kind of change.
+fn updates_allocator(msg: &Msg, tournament_id: &str) -> bool {
+    msg.tournament.id == tournament_id
+        && matches!(
+            msg.inner,
+            MsgContents::DrawUpdated(_) | MsgContents::ParticipantsUpdate
+        )
+}
+
 async fn handle_socket(
     socket: ws::WebSocket,
     mut rx: Receiver<Msg>,
@@ -1190,6 +1392,7 @@ async fn handle_socket(
                 access.allows(Permission::ManageJudgeAlloc),
                 access.allows(Permission::ManageRoomAlloc),
                 access.is_superuser(),
+                access.allows(Permission::ViewConflicts),
             )
         };
         let mut last_rights = rights(&initial_access);
@@ -1201,7 +1404,7 @@ async fn handle_socket(
             let force_update = tokio::select! {
                 _ = recheck.tick() => false,
                 message = rx.recv() => match message {
-                    Ok(msg) if msg.tournament.id == tournament_id && matches!(&msg.inner, MsgContents::DrawUpdated(id) if round_ids.contains(id)) => true,
+                    Ok(msg) if updates_allocator(&msg, &tournament_id) => true,
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => true,
                     Ok(_) => continue,
                     Err(_) => break,
@@ -1290,6 +1493,7 @@ fn render_draw_allocator(
 
     DrawAllocatorPage {
         access,
+        clashes: &draw.clashes,
         tournament,
         reprs: &draw.reprs,
         participants: &draw.participants,

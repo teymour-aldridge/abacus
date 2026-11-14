@@ -1,6 +1,7 @@
 pub mod allocate;
 pub mod availability;
 pub mod briefing;
+mod clashes;
 pub mod create;
 pub mod draw_edit;
 pub mod edit;

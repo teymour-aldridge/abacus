@@ -55,6 +55,11 @@ pub type TeamsOfRoom = (Vec<Team>, Vec<Team>);
 pub fn make_inround_draw(
     mut input: DrawInput,
 ) -> Result<Vec<TeamsOfRoom>, MakeDrawError> {
+    // todo: check if this can arise (should be impossible)
+    assert!(
+        input.tournament.institution_penalty >= 0
+            && input.tournament.history_penalty >= 0
+    );
     if input.teams.is_empty() {
         return Err(MakeDrawError::InvalidTeamCount(
             "There are no teams!".to_string(),
@@ -425,11 +430,78 @@ pub fn make_inround_draw(
         obj
     };
 
+    // Charge each unordered pair once per shared room, independent of side
+    // or position (including same-side teams in BP). These are soft costs:
+    // unavoidable clashes must not make a draw infeasible.
+    //
+    // Keep the existing power/position weighting. The configured penalties
+    // use the same units as position costs, so sufficiently large penalties
+    // can outweigh power-pairing preferences.
+    let conflict_objective = {
+        let mut obj = Expression::default();
+        for (a, b) in input.teams.iter().tuple_combinations() {
+            let same_institution = a.institution_id.is_some()
+                && a.institution_id == b.institution_id;
+            let history_cost = if input.tournament.history_penalty > 0 {
+                input.tournament.history_penalty as f64
+                    * input.opponent_history.n_times_prev_debated(&a.id, &b.id)
+                        as f64
+            } else {
+                0.0
+            };
+            let cost = history_cost
+                + if same_institution {
+                    input.tournament.institution_penalty as f64
+                } else {
+                    0.0
+                };
+            // HiGHS treats costs at 1e20 as infinite. In particular, a large
+            // history weight multiplied by repeated meetings must not turn
+            // this soft penalty into a forbidden pairing.
+            if !cost.is_finite() || cost >= 1e20 {
+                return Err(MakeDrawError::InvalidConfiguration(
+                    "The combined history and institution cost is too large; \
+                     reduce the draw penalties."
+                        .to_string(),
+                ));
+            }
+            // In particular, zero settings add no variables or constraints
+            // and leave the existing draw objective unchanged.
+            if cost == 0.0 {
+                continue;
+            }
+            for room in 0..rooms {
+                let assigned_to_room = |team: &Team| -> Expression {
+                    (0..teams_per_room)
+                        .map(|position| {
+                            *variable_map
+                                .team_allocs
+                                .get(&(team.id.clone(), room, position))
+                                .unwrap()
+                        })
+                        .sum()
+                };
+                let a_in_room = assigned_to_room(a);
+                let b_in_room = assigned_to_room(b);
+                // Continuous is sufficient: both room-membership sums are
+                // binary, and minimisation with positive cost makes this
+                // variable their logical AND. No new integer variables.
+                let together = problem.add(variable().min(0).max(1));
+                constraints
+                    .push(constraint!(together >= a_in_room + b_in_room - 1));
+                obj += cost * together;
+            }
+        }
+        obj
+    };
+
     let solution = {
         let mut highs_prob = problem
             .optimise(
                 good_lp::solvers::ObjectiveDirection::Minimisation,
-                1000 * power_pairing_objective + position_balance_objective,
+                1000 * power_pairing_objective
+                    + position_balance_objective
+                    + conflict_objective,
             )
             .using(highs);
 

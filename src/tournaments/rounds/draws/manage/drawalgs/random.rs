@@ -17,6 +17,7 @@ pub fn gen_random(
         mut rng,
         standings: _,
         history: _,
+        opponent_history: _,
     }: DrawInput,
 ) -> Result<Vec<TeamsOfRoom>, MakeDrawError> {
     let denominator = (tournament.teams_per_side * 2) as usize;

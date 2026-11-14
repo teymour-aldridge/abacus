@@ -33,6 +33,7 @@ use crate::{
 
 pub mod elimination;
 pub mod general;
+pub mod history;
 pub mod random;
 
 /// The error messages will be shown on the application page, and therefore
@@ -54,6 +55,7 @@ pub struct DrawInput {
     pub teams: Vec<Team>,
     pub standings: TeamStandings,
     pub history: TeamHistory,
+    pub opponent_history: history::OpponentHistory,
     pub rng: rand_chacha::ChaCha20Rng,
 }
 
@@ -165,6 +167,12 @@ fn draw_with_ticket(
 ) -> Result<(), MakeDrawError> {
     let standings = TeamStandings::fetch(&tournament.id, conn);
     let history = TeamHistory::fetch(&tournament.id, conn);
+    let opponent_history =
+        if round.is_prelim() && tournament.history_penalty > 0 {
+            history::OpponentHistory::fetch(round, conn)
+        } else {
+            history::OpponentHistory::default()
+        };
 
     let available_teams = teams::table
         .filter(teams::tournament_id.eq(&tournament.id))
@@ -218,6 +226,7 @@ fn draw_with_ticket(
         rng,
         standings,
         history,
+        opponent_history,
     };
 
     let generated = match catch_unwind(move || {

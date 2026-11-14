@@ -640,6 +640,7 @@ mod tests {
             teams: teams::table.load(&mut conn).unwrap(),
             standings,
             history: history::TeamHistory(HashMap::new()),
+            opponent_history: Default::default(),
             rng: rand_chacha::ChaCha20Rng::seed_from_u64(42),
         })
         .unwrap();
@@ -740,6 +741,7 @@ mod tests {
                 teams: teams::table.load(&mut conn).unwrap(),
                 standings: saved,
                 history: history::TeamHistory(HashMap::new()),
+                opponent_history: Default::default(),
                 rng: rand_chacha::ChaCha20Rng::seed_from_u64(42),
             })
             .unwrap();

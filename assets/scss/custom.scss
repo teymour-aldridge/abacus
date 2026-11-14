@@ -428,121 +428,307 @@ input::placeholder {
     width: 100%;
 }
 
+// A shared column system aligns the inventory and debate table.
 .draw-allocator {
-    max-width: none;
+    --abacus-body-font: var(--abacus-heading-font);
+    --draw-number-width: 3rem;
+    --draw-room-width: 10rem;
+    --draw-panel-width: 40%;
+    --draw-personal-ink: #9b2838;
+    --draw-institutional-ink: #805500;
+    --draw-history-ink: #245b87;
+    --draw-selection-ink: #68408a;
+    color: var(--abacus-ink);
+    font-family: var(--abacus-heading-font);
+    font-size: 0.875rem;
+    line-height: 1.5rem;
     width: 100%;
 }
 
 .draw-allocator-header {
-    align-items: baseline;
-    display: flex;
-    gap: 1rem;
-    justify-content: space-between;
-    margin-bottom: 1.25rem;
+    margin-bottom: 1rem;
 }
 
 .draw-allocator-header h1 {
-    font-size: 1.65rem;
-    line-height: 1.1;
-    margin-top: 0;
+    font-size: 1.625rem;
+    line-height: 2rem;
+    margin: 0;
 }
 
-.draw-selection-panel,
+.draw-allocator .btn {
+    font-family: inherit;
+    font-size: 0.75rem;
+    line-height: 1.5rem;
+    padding: 0 0.5rem;
+}
+
+.draw-allocator-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.draw-allocator-tools summary {
+    color: var(--abacus-muted);
+    font-size: 0.75rem;
+    line-height: 1rem;
+}
+
+.draw-allocation-hint,
+.draw-selection-instruction,
+.draw-meta,
+.draw-judge-number {
+    color: var(--abacus-muted);
+}
+
+.draw-allocation-hint,
+.draw-selection-instruction {
+    font-size: 0.8125rem;
+}
+
+.draw-selection-context {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    border: 1px solid var(--draw-selection-ink);
+    flex-basis: 100%;
+    gap: 0.5rem 1.5rem;
+    min-width: 0;
+    padding: 0.75rem 1rem;
+}
+
+.draw-selection-identity {
+    display: grid;
+    gap: 0.25rem;
+    min-width: 0;
+}
+
+.draw-selection-label {
+    color: var(--abacus-muted);
+    font-size: 0.75rem;
+    line-height: 1rem;
+}
+
+.draw-selected-name {
+    color: var(--draw-selection-ink);
+    font-size: 1.125rem;
+    line-height: 1.5rem;
+    overflow-wrap: anywhere;
+}
+
+.draw-selection-context .draw-clear-selection {
+    align-items: center;
+    color: var(--draw-selection-ink);
+    display: inline-flex;
+    font-size: 0.8125rem;
+    margin-inline-start: auto;
+    min-height: 2.75rem;
+}
+
+.draw-allocator-tools:has(+ .draw-relation-key) {
+    margin-bottom: 0.5rem;
+}
+
+.draw-relation-key {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.5rem;
+    font-size: 0.8125rem;
+    margin-bottom: 1.5rem;
+}
+
+.draw-meta,
+.draw-judge-number,
+.draw-clear-selection {
+    font-size: 0.75rem;
+}
+
+.draw-judge-number {
+    white-space: nowrap;
+}
+
+.draw-clear-selection {
+    color: var(--abacus-muted);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+}
+
+.draw-clear-selection:hover {
+    color: var(--abacus-ink);
+}
+
+.draw-selection-instruction::before {
+    content: "→";
+    color: var(--draw-selection-ink);
+    margin-right: 0.5rem;
+}
+
+.draw-allocator summary {
+    cursor: pointer;
+}
+
+.draw-allocator-tools details[open] {
+    flex-basis: 100%;
+    min-width: 0;
+}
+
+.draw-clash-help p {
+    margin: 0.5rem 0 0;
+    max-width: 65ch;
+}
+
+.draw-unallocated-pools {
+    display: grid;
+    grid-template-columns: var(--draw-number-width) minmax(0, 1fr) var(--draw-panel-width);
+    border-bottom: 1px solid var(--abacus-rule);
+    padding-bottom: 1rem;
+}
+
+.draw-unallocated-rooms {
+    grid-column: 2;
+}
+
+.draw-unallocated-judges {
+    grid-column: 3;
+}
+
 .draw-unallocated-bar {
-    background: var(--abacus-panel);
-    margin-bottom: 0.85rem;
-    padding: 0.35rem 0 0.7rem;
-    width: 100%;
+    min-width: 0;
+    padding-right: 1rem;
 }
 
-.draw-selection-panel {
-    background: var(--tournament-accent-wash);
-    padding: 0.75rem 0.85rem;
-}
-
-.draw-selection-panel h2,
 .draw-unallocated-bar h2,
 .draw-round-section h2 {
-    color: var(--abacus-ink);
-    font-family: var(--abacus-heading-font);
-    font-size: 1.05rem;
-    font-weight: 700;
-    line-height: 1.15;
-    margin: 0 0 0.55rem;
-    border-top: 0;
-    padding-top: 0;
+    border: 0;
+    font-weight: 400;
+    margin: 0;
+    padding: 0;
+}
+
+.draw-unallocated-bar h2 {
+    color: var(--abacus-muted);
+    font-size: 0.75rem;
+    line-height: 1rem;
+    margin-bottom: 0.5rem;
 }
 
 .draw-round-section {
-    margin-top: 1.4rem;
+    margin-top: 2rem;
 }
 
 .draw-round-section h2 {
-    align-items: center;
-    background: var(--abacus-paper);
-    display: flex;
-    min-height: 2.45rem;
-    padding: 0.62rem 0.25rem 0.55rem;
+    font-size: 1.125rem;
+    line-height: 1.5rem;
+    margin-bottom: 1rem;
 }
 
-.draw-judge-strip,
-.draw-option-grid,
-.draw-role-judges {
-    align-items: center;
+.draw-judge-strip {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.35rem;
-    min-height: 1.9rem;
+    align-items: baseline;
+    gap: 0.5rem 1rem;
 }
 
 .judge-pill {
-    background: #fff;
-    border: 1px solid var(--abacus-rule);
-    color: black;
+    color: var(--abacus-ink);
     display: inline-flex;
-    font-family: var(--abacus-heading-font);
-    font-size: 0.78rem;
-    font-weight: 700;
-    line-height: 1.15;
+    font-size: inherit;
+    line-height: inherit;
     max-width: 100%;
     min-width: 0;
-    min-height: 1.75rem;
     overflow-wrap: anywhere;
-    padding: 0.28rem 0.48rem;
     text-decoration: none;
-    transition:
-        background-color 0.12s ease,
-        border-color 0.12s ease,
-        box-shadow 0.12s ease,
-        color 0.12s ease;
+    text-underline-offset: 0.2em;
 }
 
-.judge-pill:hover,
-.judge-pill.selected {
-    background: var(--abacus-nav-hover);
-    border-color: black;
-    color: black;
-    box-shadow: inset 0 -2px 0 var(--tournament-accent);
+.judge-pill:hover {
+    color: var(--abacus-ink);
+    text-decoration: underline;
+}
+
+.draw-allocator .judge-pill.selected {
+    color: var(--draw-selection-ink);
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+}
+
+.draw-allocator .judge-pill.selected:not(.room-pill) {
     text-decoration: none;
 }
 
-.judge-pill-chair {
-    border-left: 4px solid var(--tournament-accent-deep);
+.draw-allocator .judge-pill.selected .draw-judge-identity {
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
 }
 
-.judge-pill-panelist {
-    border-left: 4px solid var(--tournament-accent);
+.draw-selected-marker {
+    color: var(--draw-selection-ink);
+    display: block;
+    font-size: 0.75rem;
+    line-height: 1rem;
+    margin-top: 0.25rem;
 }
 
-.judge-pill-trainee {
-    border-left: 4px solid var(--abacus-rule);
+.draw-allocator .draw-kind-personal {
+    color: var(--draw-personal-ink);
+}
+
+.draw-allocator .draw-kind-institutional {
+    color: var(--draw-institutional-ink);
+}
+
+.draw-allocator .draw-kind-history {
+    color: var(--draw-history-ink);
+}
+
+.draw-relation-mark {
+    font-size: 0.75rem;
+    white-space: nowrap;
+}
+
+.draw-encounter-count,
+.draw-clash-tag {
+    cursor: help;
+    display: inline-block;
+    font-size: 0.75rem;
+    line-height: 1rem;
+    vertical-align: baseline;
+    white-space: nowrap;
+}
+
+.draw-clash-tag {
+    border: 1px solid currentColor;
+    border-radius: 2px;
+    padding: 0 0.25rem;
+}
+
+.draw-encounter-count {
+    font-variant-numeric: tabular-nums;
+}
+
+.draw-relation-metadata {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.375rem;
+    margin-top: 0.25rem;
+}
+
+.draw-relation-key :is(.draw-clash-tag, .draw-encounter-count) {
+    margin-inline-start: 0.375rem;
+}
+
+.draw-allocator :is(a, button, summary, select):focus-visible {
+    outline: 2px solid var(--abacus-ink);
+    outline-offset: 3px;
 }
 
 .draw-table {
     --bs-table-bg: transparent;
-    --bs-table-hover-bg: var(--abacus-nav-hover);
+    --bs-table-color: var(--abacus-ink);
     border-color: var(--abacus-rule);
-    border-top: 1px solid var(--abacus-rule);
     margin-bottom: 0;
     table-layout: fixed;
     width: 100%;
@@ -550,155 +736,174 @@ input::placeholder {
 
 .draw-table > :not(caption) > * > * {
     border-bottom-color: var(--abacus-rule);
-    padding: 0.62rem 0.72rem;
+    font-size: inherit;
+    font-weight: 400;
+    line-height: inherit;
+    padding: 1rem 1rem 1rem 0;
+    vertical-align: top;
 }
 
 .draw-table thead th {
-    background: #f8f8f8;
-    border-bottom: 1px solid var(--abacus-rule-strong);
-    color: var(--abacus-ink);
-    font-family: var(--abacus-heading-font);
-    font-size: 0.76rem;
-    font-weight: 700;
-    line-height: 1.15;
-    vertical-align: middle;
-}
-
-.draw-table tbody tr {
-    background: #fff;
-}
-
-.draw-table tbody tr:hover > * {
-    background: var(--bs-table-hover-bg);
+    border-bottom: 1px solid var(--tournament-accent, var(--abacus-rule));
+    font-size: 0.75rem;
+    line-height: 1rem;
+    padding-top: 0;
+    padding-bottom: 0.5rem;
+    vertical-align: bottom;
 }
 
 .draw-table th:first-child {
-    width: 3.5rem;
+    width: var(--draw-number-width);
 }
 
 .draw-table th:nth-child(2) {
-    width: 10.5rem;
+    width: var(--draw-room-width);
 }
 
 .draw-table th:last-child {
-    width: 34%;
+    width: var(--draw-panel-width);
 }
 
-.draw-table tbody th {
-    color: var(--abacus-ink);
-    font-family: var(--abacus-heading-font);
-    font-size: 0.9rem;
-    font-weight: 700;
-    vertical-align: middle;
-}
-
-.draw-team-cell {
-    color: var(--abacus-ink);
-    font-size: 0.94rem;
-    line-height: 1.2;
-    vertical-align: middle;
-    width: auto;
+.draw-table > :not(caption) > * > :last-child {
+    padding-right: 0;
 }
 
 .draw-team-cell a {
     color: var(--abacus-ink);
-    text-decoration-color: var(--abacus-rule);
-    text-decoration-thickness: 1px;
-    text-underline-offset: 0.16em;
+    display: inline-block;
+    max-width: 100%;
+    text-decoration: none;
+    text-underline-offset: 0.2em;
 }
 
 .draw-team-cell a:hover {
-    color: var(--abacus-link);
+    text-decoration: underline;
 }
 
-.draw-panel-cell {
-    min-width: 0;
-    padding-bottom: 0.36rem !important;
-    padding-top: 0.36rem !important;
-    vertical-align: top;
-}
-
-.draw-room-cell {
-    min-width: 0;
-    width: 10.5rem;
-}
-
-.draw-room-slot {
-    align-items: center;
-    background: rgba(0, 0, 0, 0.015);
-    border-left: 3px solid var(--abacus-rule);
+.draw-room-slot,
+.draw-role-judges {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.35rem;
-    min-height: 1.9rem;
-    padding-bottom: 0.35rem;
-    padding-left: 0.5rem;
-    padding-right: 9.25rem;
-    padding-top: 0.35rem;
-    position: relative;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    min-width: 0;
 }
 
 .draw-panel-grid {
     display: grid;
-    gap: 0.45rem;
+    gap: 1rem;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     min-width: 0;
 }
 
-.room-pill {
-    border-left: 4px solid var(--abacus-rule-strong);
+.draw-panel-head {
+    color: var(--abacus-muted);
+    margin-top: 0.5rem;
 }
 
 .draw-role-column {
     min-width: 0;
 }
 
-.draw-role-judges {
-    align-content: flex-start;
-    align-items: flex-start;
-    background: rgba(0, 0, 0, 0.015);
-    border-left: 3px solid var(--abacus-rule);
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.32rem;
-    min-height: 2.6rem;
-    min-width: 0;
-    padding: 0.38rem 0.45rem;
-    overflow: hidden;
-}
+@media (min-width: 901px) {
+    .draw-role-column {
+        display: flex;
+        flex-direction: column;
+    }
 
-.draw-empty-slot {
-    color: var(--abacus-muted);
-    font-family: var(--abacus-heading-font);
-    font-size: 0.78rem;
-    line-height: 1.2;
-    padding: 0.22rem 0;
-}
+    .draw-role-judges {
+        flex: 1;
+    }
 
-.draw-move-form {
-    display: inline;
-}
-
-.draw-move-form .btn {
-    border-radius: 0;
-    font-size: 0.78rem;
-    padding: 0.2rem 0.4rem;
-    white-space: nowrap;
+    .draw-role-judges > .draw-cell-action {
+        margin-top: auto;
+    }
 }
 
 .draw-cell-action {
-    position: absolute;
-    right: 0;
-    top: 0;
+    align-self: stretch;
 }
 
-.draw-role-judges .draw-cell-action {
-    position: static;
+.draw-empty-slot,
+.draw-move-form .btn {
+    border: 1px dashed #888;
+    border-radius: 0;
+    font-size: 0.8125rem;
+    min-height: 2.75rem;
+    padding: 0.5rem 0.75rem;
+    width: 100%;
+}
+
+.draw-empty-slot {
+    align-items: center;
+    color: var(--abacus-muted);
+    display: flex;
+}
+
+.draw-clash-warning {
+    margin-top: 1rem;
+    overflow-wrap: anywhere;
+}
+
+.draw-clash-warning summary {
+    font-size: 0.8125rem;
+    line-height: 1.5rem;
+}
+
+.draw-clash-warning summary::marker,
+.draw-warning-count {
+    color: var(--abacus-ink);
+}
+
+.draw-warning-count {
+    font-size: 0.875rem;
+}
+
+.draw-warning-context {
+    color: var(--abacus-muted);
+}
+
+.draw-clash-warning ul {
+    margin: 0.5rem 0 0;
+    padding-left: 1rem;
+}
+
+.draw-move-form {
+    display: block;
+    width: 100%;
+}
+
+.draw-move-form .btn {
+    --bs-btn-hover-bg: transparent;
+    --bs-btn-active-bg: transparent;
+    --bs-btn-active-color: var(--abacus-ink);
+    --bs-btn-active-shadow: none;
+    --bs-btn-focus-box-shadow: none;
+    background: transparent;
+    border-style: solid;
+    color: var(--abacus-ink);
+    text-align: left;
+    text-decoration: none;
+}
+
+.draw-move-form .btn:hover {
+    border-color: var(--draw-selection-ink);
+    color: var(--draw-selection-ink);
+}
+
+.draw-move-form .btn:disabled {
+    border-color: transparent;
+    color: var(--abacus-muted);
+    opacity: 1;
+    padding-inline: 0;
 }
 
 .draw-inline-action {
+    align-items: center;
+    align-self: stretch;
     display: inline-flex;
-    margin-left: 0.35rem;
+    max-width: 100%;
+    min-width: 7rem;
 }
 
 .round-nav-divider {
@@ -737,6 +942,14 @@ input::placeholder {
 }
 
 @media (max-width: 640px) {
+    .draw-selection-context {
+        padding: 0.75rem;
+    }
+
+    .draw-selection-identity {
+        flex-basis: 100%;
+    }
+
     .abacus-masthead,
     .round-nav-shell {
         align-items: flex-start !important;
@@ -762,41 +975,146 @@ input::placeholder {
         padding: 0.4rem 0.55rem;
     }
 
-    .draw-allocator {
-        max-width: none;
+    body:has(.draw-allocator) .round-nav-shell {
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 0.5rem !important;
     }
 
-    .draw-allocator-header {
-        align-items: flex-start;
-        flex-direction: column;
-        gap: 0.65rem;
+    body:has(.draw-allocator) .round-stage-nav {
+        flex-basis: 100%;
+        flex-wrap: wrap;
+    }
+
+    body:has(.draw-allocator) .abacus-page {
+        padding-top: 0.5rem;
+    }
+
+    body:has(.draw-allocator) .tournament-round-rail {
+        padding-top: 0.5rem !important;
+        padding-bottom: 0.5rem !important;
+    }
+
+    .abacus-content:has(.draw-allocator) {
+        padding-top: 1rem !important;
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+    }
+}
+
+@media (max-width: 900px) {
+    .draw-allocation-hint,
+    .draw-selection-context {
+        flex-basis: 100%;
+    }
+
+    .draw-unallocated-pools {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 1rem;
     }
 
     .draw-unallocated-bar {
-        padding: 0.7rem;
-    }
-
-    .draw-round-section {
-        overflow-x: auto;
-    }
-
-    .draw-table {
-        min-width: 58rem;
-    }
-
-    .draw-table > :not(caption) > * > * {
-        padding-left: 0.55rem;
-        padding-right: 0.55rem;
-    }
-
-    .draw-room-slot,
-    .draw-role-judges {
+        grid-column: 1;
         padding-right: 0;
     }
 
-    .draw-cell-action {
-        margin-top: 0.3rem;
-        position: static;
+    .draw-table,
+    .draw-table tbody {
+        display: block;
+    }
+
+    .draw-table thead {
+        display: none;
+    }
+
+    .draw-table tbody tr {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+
+    .draw-table tbody tr > * {
+        min-width: 0;
+        width: auto;
+        border-bottom: 0;
+        overflow-wrap: anywhere;
+        padding: 0;
+    }
+
+    .draw-table tbody th,
+    .draw-room-cell,
+    .draw-panel-cell {
+        grid-column: 1 / -1;
+    }
+
+    .draw-table tbody th:first-child {
+        font-size: 1.125rem;
+        line-height: 1.5rem;
+        width: auto;
+        border-bottom: 1px solid var(--tournament-accent, var(--abacus-rule));
+        padding-bottom: 0.5rem;
+    }
+
+    .draw-table tbody th::before {
+        content: "Debate ";
+    }
+
+    .draw-table td::before,
+    .draw-role-column::before {
+        display: block;
+        color: var(--abacus-muted);
+        font-size: 0.75rem;
+        line-height: 1rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .draw-table td::before {
+        content: attr(data-label);
+    }
+
+    .draw-role-column::before {
+        content: attr(data-role-label);
+        line-height: 1.5rem;
+        margin: 0;
+        padding: 0.625rem 0;
+    }
+
+    .draw-panel-grid {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0.5rem;
+    }
+
+    .draw-role-column {
+        display: grid;
+        grid-template-columns: 5rem minmax(0, 1fr);
+        gap: 1rem;
+    }
+
+    .draw-allocator .judge-pill,
+    .draw-allocator .btn,
+    .draw-clear-selection,
+    .draw-allocator summary {
+        min-height: 2.75rem;
+    }
+
+    .draw-allocator .judge-pill {
+        align-items: center;
+    }
+
+    .draw-clear-selection {
+        display: inline-flex;
+        align-items: center;
+    }
+
+    .draw-role-judges > span {
+        display: flex;
+        align-items: center;
+        min-height: 2.75rem;
+    }
+
+    .draw-allocator summary {
+        padding: 0.875rem 0;
     }
 }
 

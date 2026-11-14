@@ -91,6 +91,9 @@ pub async fn do_create_team(
             teams::number.eq(number),
         ))
         .execute(&mut *conn)?;
+    crate::tournaments::categories::speaker::recompute_break_eligibility(
+        &tid, &mut *conn,
+    );
     refresh_saved_standings(&tid, &mut *conn)?;
     take_snapshot(&tid, &mut *conn);
     let _ = tx.send(Msg {

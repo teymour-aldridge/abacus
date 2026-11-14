@@ -618,6 +618,36 @@ input::placeholder {
     vertical-align: top;
 }
 
+.draw-clash-help {
+    color: var(--abacus-muted);
+    font-size: 0.85rem;
+}
+
+.draw-clash-warning {
+    background: #fff8e6;
+    border-left: 3px solid #9a6700;
+    color: #684600;
+    font-size: 0.8rem;
+    margin-bottom: 0.4rem;
+    overflow-wrap: anywhere;
+    padding: 0.35rem 0.5rem;
+}
+
+.draw-clash-warning summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.draw-clash-warning ul {
+    margin: 0.35rem 0 0;
+    padding-left: 1.2rem;
+}
+
+.draw-clash-preview {
+    border: 1px dashed #9a6700;
+    border-left-width: 3px;
+}
+
 .draw-room-cell {
     min-width: 0;
     width: 10.5rem;
@@ -633,9 +663,8 @@ input::placeholder {
     min-height: 1.9rem;
     padding-bottom: 0.35rem;
     padding-left: 0.5rem;
-    padding-right: 9.25rem;
+    padding-right: 0.5rem;
     padding-top: 0.35rem;
-    position: relative;
 }
 
 .draw-panel-grid {
@@ -684,16 +713,6 @@ input::placeholder {
     font-size: 0.78rem;
     padding: 0.2rem 0.4rem;
     white-space: nowrap;
-}
-
-.draw-cell-action {
-    position: absolute;
-    right: 0;
-    top: 0;
-}
-
-.draw-role-judges .draw-cell-action {
-    position: static;
 }
 
 .draw-inline-action {
@@ -767,21 +786,133 @@ input::placeholder {
     }
 
     .draw-allocator-header {
-        align-items: flex-start;
-        flex-direction: column;
+        align-items: center;
+        flex-direction: row;
         gap: 0.65rem;
+        margin-bottom: 0.85rem;
+    }
+
+    .draw-allocator-header h1 {
+        font-size: 1.35rem;
+    }
+
+    body:has(.draw-allocator) .round-nav-shell {
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 0.5rem !important;
+    }
+
+    body:has(.draw-allocator) .round-stage-nav {
+        flex-basis: 100%;
+        flex-wrap: wrap;
+    }
+
+    body:has(.draw-allocator) .abacus-page {
+        padding-top: 0.5rem;
+    }
+
+    body:has(.draw-allocator) .tournament-round-rail {
+        padding-top: 0.5rem !important;
+        padding-bottom: 0.5rem !important;
+    }
+
+    .abacus-content:has(.draw-allocator) {
+        padding-top: 1rem !important;
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
     }
 
     .draw-unallocated-bar {
-        padding: 0.7rem;
+        padding: 0;
+        margin-bottom: 1rem;
     }
 
     .draw-round-section {
-        overflow-x: auto;
+        overflow-x: visible;
     }
 
+    // Keep every team's position, the panel, and its warnings on screen.
+    // Desktop retains the original allocation table.
     .draw-table {
-        min-width: 58rem;
+        display: block;
+        min-width: 0;
+        border-top: 0;
+    }
+
+    .draw-table thead {
+        display: none;
+    }
+
+    .draw-table tbody {
+        display: grid;
+        gap: 1rem;
+    }
+
+    .draw-table tbody tr {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        border: 1px solid var(--abacus-rule);
+    }
+
+    .draw-table tbody tr > * {
+        min-width: 0;
+        width: auto;
+        border-bottom: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .draw-table tbody th,
+    .draw-room-cell,
+    .draw-panel-cell {
+        grid-column: 1 / -1;
+    }
+
+    .draw-table tbody th:first-child {
+        width: auto;
+        background: #f8f8f8;
+        border-bottom: 1px solid var(--abacus-rule);
+    }
+
+    .draw-table tbody th::before {
+        content: "Debate ";
+    }
+
+    .draw-table td::before,
+    .draw-role-column::before {
+        display: block;
+        color: var(--abacus-muted);
+        font-family: var(--abacus-heading-font);
+        font-size: 0.76rem;
+        font-weight: 700;
+        margin-bottom: 0.35rem;
+    }
+
+    .draw-table td::before {
+        content: attr(data-label);
+    }
+
+    .draw-role-column::before {
+        content: attr(data-role-label);
+    }
+
+    .draw-panel-grid {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0.65rem;
+    }
+
+    .draw-allocator .judge-pill,
+    .draw-allocator .btn,
+    .draw-clash-warning summary {
+        min-height: 2.75rem;
+    }
+
+    .draw-allocator .judge-pill {
+        align-items: center;
+    }
+
+    .draw-clash-warning summary {
+        padding-top: 0.5rem;
+        padding-bottom: 0.5rem;
     }
 
     .draw-table > :not(caption) > * > * {
@@ -796,7 +927,6 @@ input::placeholder {
 
     .draw-cell-action {
         margin-top: 0.3rem;
-        position: static;
     }
 }
 

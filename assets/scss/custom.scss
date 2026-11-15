@@ -139,7 +139,7 @@ body.abacus-has-tournament {
     padding: 0 0 0 0.55rem;
 }
 
-.abacus-user-link {
+.abacus-user-name {
     color: var(--abacus-ink);
     font-family: var(--abacus-heading-font);
     font-weight: 400;
@@ -152,15 +152,11 @@ a {
 }
 
 a:hover,
-.abacus-user-link:hover,
 .abacus-wordmark:hover {
     color: var(--abacus-link);
     text-decoration: underline;
 }
 
-.abacus-user-link:hover {
-    color: var(--abacus-ink);
-}
 
 .abacus-tournament-link:hover {
     color: var(--tournament-accent-deep);

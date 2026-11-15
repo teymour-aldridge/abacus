@@ -611,7 +611,18 @@ impl<'a> BallotBuilder<'a> {
     ) -> Result<(), String> {
         tracing::debug!("Adding team for side={side} and seq={seq}");
 
-        let dt = self.debate.team_of_side_and_seq(side as i64, seq as i64);
+        // Reject extra teams before looking up their (nonexistent) draw slot.
+        // Both public submissions and admin overrides use this builder.
+        let expected_teams = (self.tournament.teams_per_side * 2) as usize;
+        if self.teams_added >= expected_teams {
+            return Err("Error: incorrect number of teams submitted".into());
+        }
+        let dt = self
+            .debate
+            .teams_of_debate
+            .iter()
+            .find(|team| team.side == side as i64 && team.seq == seq as i64)
+            .ok_or("Error: invalid team position submitted")?;
 
         if !self.records_positions && !speakers.is_empty() {
             return Err(

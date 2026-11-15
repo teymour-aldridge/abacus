@@ -5,7 +5,7 @@ usage() {
   cat <<'EOF'
 Usage:
   abacus serve [TOURNAMENT_PRESET] [--release] [--database-url PATH_OR_URL] [-- ARGS...]
-  abacus test [--rust-only] [--frontend-only] [-- ARGS...]
+  abacus test [--rust-only] [-- ARGS...]
   abacus help
 
 Environment:
@@ -89,19 +89,17 @@ import_tournament_preset() {
 }
 
 test_all() {
-  local rust=1
-  local frontend=1
   local cargo_args=()
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --rust-only)
-        frontend=0
+        # Compatibility alias: tests are now Rust-only by default.
         shift
         ;;
       --frontend-only)
-        rust=0
-        shift
+        echo "abacus test: --frontend-only is no longer supported; there is no frontend test suite" >&2
+        return 2
         ;;
       --)
         shift
@@ -115,13 +113,7 @@ test_all() {
     esac
   done
 
-  if [[ "$frontend" == "1" ]]; then
-    npm run build --prefix frontend
-  fi
-
-  if [[ "$rust" == "1" ]]; then
-    cargo test --locked --all-targets "${cargo_args[@]}"
-  fi
+  cargo test --locked --all-targets "${cargo_args[@]}"
 }
 
 case "${1:-help}" in

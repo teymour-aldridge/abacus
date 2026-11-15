@@ -275,8 +275,11 @@ impl<R1: Renderable, R2: Renderable, R3: Renderable, const TX: bool> Renderable
                                     }
 
                                     @if let Some(user) = &self.user {
-                                        a class="abacus-user-link text-decoration-none" href="/user" {
+                                        span class="abacus-user-name" {
                                             (user.username)
+                                        }
+                                        form method="post" action="/logout" class="m-0" {
+                                            button type="submit" class="btn btn-sm btn-outline-secondary" { "Log out" }
                                         }
                                     } @else {
                                         a class="btn btn-sm btn-outline-secondary me-1" href="/login" { "Sign in" }
